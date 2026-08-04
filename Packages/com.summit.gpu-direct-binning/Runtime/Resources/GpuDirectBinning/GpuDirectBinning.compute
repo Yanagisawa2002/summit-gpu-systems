@@ -1,0 +1,147 @@
+#pragma kernel ClearUint
+#pragma kernel CountBins
+#pragma kernel CountBinsGuaranteedInRange
+#pragma kernel PrepareOffsetsAndWriteHeads
+#pragma kernel ScatterValues
+#pragma kernel ScatterValuesGuaranteedInRange
+#pragma target 5.0
+
+StructuredBuffer<uint> _Keys;
+StructuredBuffer<uint> _Values;
+
+RWStructuredBuffer<uint> _ClearBuffer;
+RWStructuredBuffer<uint> _BinCounts;
+RWStructuredBuffer<uint> _BinOffsets;
+RWStructuredBuffer<uint> _BinnedValues;
+RWStructuredBuffer<uint> _WriteHeads;
+RWStructuredBuffer<uint> _Diagnostics;
+
+int _ClearCount;
+int _ElementCount;
+int _BinCount;
+
+static const uint InvalidKeyCountWord = 0u;
+static const uint ErrorFlagsWord = 1u;
+static const uint InvalidKeyEncountered = 1u << 0u;
+static const uint ScatterDestinationOutOfRange = 1u << 1u;
+
+[numthreads(256, 1, 1)]
+void ClearUint(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint index = dispatchThreadId.x;
+    if (index < (uint)_ClearCount)
+    {
+        _ClearBuffer[index] = 0u;
+    }
+}
+
+[numthreads(256, 1, 1)]
+void CountBins(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint index = dispatchThreadId.x;
+    if (index >= (uint)_ElementCount)
+    {
+        return;
+    }
+
+    uint key = _Keys[index];
+    if (key < (uint)_BinCount)
+    {
+        uint ignored;
+        InterlockedAdd(_BinCounts[key], 1u, ignored);
+        return;
+    }
+
+    uint ignoredCount;
+    uint ignoredFlags;
+    InterlockedAdd(
+        _Diagnostics[InvalidKeyCountWord],
+        1u,
+        ignoredCount);
+    InterlockedOr(
+        _Diagnostics[ErrorFlagsWord],
+        InvalidKeyEncountered,
+        ignoredFlags);
+}
+
+// Trusted producer contract: every key is strictly less than _BinCount.
+[numthreads(256, 1, 1)]
+void CountBinsGuaranteedInRange(
+    uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint index = dispatchThreadId.x;
+    if (index >= (uint)_ElementCount)
+    {
+        return;
+    }
+
+    uint ignored;
+    InterlockedAdd(_BinCounts[_Keys[index]], 1u, ignored);
+}
+
+[numthreads(256, 1, 1)]
+void PrepareOffsetsAndWriteHeads(
+    uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint bin = dispatchThreadId.x;
+    if (bin >= (uint)_BinCount)
+    {
+        return;
+    }
+
+    uint offset = _BinOffsets[bin];
+    _WriteHeads[bin] = offset;
+
+    if (bin + 1u == (uint)_BinCount)
+    {
+        _BinOffsets[_BinCount] = offset + _BinCounts[bin];
+    }
+}
+
+[numthreads(256, 1, 1)]
+void ScatterValues(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint source = dispatchThreadId.x;
+    if (source >= (uint)_ElementCount)
+    {
+        return;
+    }
+
+    uint key = _Keys[source];
+    if (key >= (uint)_BinCount)
+    {
+        return;
+    }
+
+    uint destination;
+    InterlockedAdd(_WriteHeads[key], 1u, destination);
+    if (destination < (uint)_ElementCount)
+    {
+        _BinnedValues[destination] = _Values[source];
+        return;
+    }
+
+    uint ignoredFlags;
+    InterlockedOr(
+        _Diagnostics[ErrorFlagsWord],
+        ScatterDestinationOutOfRange,
+        ignoredFlags);
+}
+
+// CountBinsGuaranteedInRange establishes exactly one destination per input,
+// so both key and destination bounds follow from the trusted producer contract.
+[numthreads(256, 1, 1)]
+void ScatterValuesGuaranteedInRange(
+    uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint source = dispatchThreadId.x;
+    if (source >= (uint)_ElementCount)
+    {
+        return;
+    }
+
+    uint key = _Keys[source];
+    uint destination;
+    InterlockedAdd(_WriteHeads[key], 1u, destination);
+    _BinnedValues[destination] = _Values[source];
+}

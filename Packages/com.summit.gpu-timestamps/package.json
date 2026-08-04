@@ -1,0 +1,17 @@
+{
+  "name": "com.summit.gpu-timestamps",
+  "version": "0.1.0",
+  "displayName": "SUMMIT GPU Timestamps",
+  "description": "Optional nonblocking Direct3D 12 timestamp-query scopes for Unity CommandBuffers.",
+  "unity": "6000.0",
+  "keywords": [
+    "gpu",
+    "profiling",
+    "timestamp",
+    "direct3d12",
+    "benchmark"
+  ],
+  "author": {
+    "name": "SUMMIT"
+  }
+}

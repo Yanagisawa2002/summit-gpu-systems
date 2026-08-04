@@ -1,0 +1,427 @@
+#pragma kernel CullAndCompactBfp2ClustersWave
+#pragma kernel CullAndBuildBfp2VisibleTiles32
+#pragma kernel CullAndBuildBfp2VisibleTiles64
+#pragma kernel CullAndBuildBfp2VisibleTiles32Index16
+#pragma target 6.0
+#pragma use_dxc
+
+StructuredBuffer<uint> _Bfp2Indices;
+StructuredBuffer<uint> _Bfp2ClusterIndexBases16;
+RWStructuredBuffer<uint> _Bfp2CompactClusterWords;
+
+RWStructuredBuffer<uint> _Bfp2VisibleIndices;
+RWStructuredBuffer<uint> _Bfp2VisibleTileWords;
+RWStructuredBuffer<uint> _Bfp2DrawArgs;
+RWStructuredBuffer<uint> _Bfp2Stats;
+
+uint _Bfp2ClusterCount;
+uint _Bfp2MaxVisibleIndices;
+uint _Bfp2MaxVisibleTileWords;
+float4 _Bfp2FrustumPlanes[6];
+float3 _Bfp2CameraPositionOS;
+uint _Bfp2CameraFrameCount;
+float4 _Bfp2CameraFrustumPlanes[48];
+float4 _Bfp2CameraPositionsOS[8];
+float4 _Bfp2CameraScreenParams[8];
+float _Bfp2MaxDistance;
+uint _Bfp2EnableFrustumCulling;
+uint _Bfp2EnableDistanceCulling;
+uint _Bfp2EnableNormalConeCulling;
+uint _Bfp2EnableScreenSizeCulling;
+uint _Bfp2UseProjectedPixelScreenSizeCulling;
+uint _Bfp2FlipTriangleWinding;
+float _Bfp2MinScreenRadiusRatio;
+float _Bfp2MinScreenRadiusPixels;
+
+struct Bfp2CompactCullCluster
+{
+    uint firstIndex;
+    uint indexCount;
+    float3 center;
+    float3 extents;
+    uint coneWord;
+    uint lodCutoffWord;
+};
+
+int Bfp2SignExtend16(uint value)
+{
+    int v = (int)(value & 0xffffu);
+    return (v >= 32768) ? (v - 65536) : v;
+}
+
+float3 Bfp2DecodeOct16(int2 packedOct)
+{
+    float2 f = clamp(float2(packedOct) / 32767.0, -1.0, 1.0);
+    float3 n = float3(f.x, f.y, 1.0 - abs(f.x) - abs(f.y));
+    if (n.z < 0.0)
+    {
+        float2 folded = (1.0 - abs(n.yx)) * sign(n.xy);
+        n.xy = folded;
+    }
+    return normalize(n);
+}
+
+bool Bfp2AabbOutsideCameraFrame(uint cameraIndex, float3 center, float3 extents)
+{
+    uint planeOffset = cameraIndex * 6u;
+    [unroll]
+    for (uint i = 0u; i < 6u; i++)
+    {
+        float4 plane = _Bfp2CameraFrustumPlanes[planeOffset + i];
+        float radius = dot(abs(plane.xyz), extents);
+        float distance = dot(plane.xyz, center) + plane.w;
+        if (distance < -radius)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool Bfp2AabbOutsideAnyCamera(float3 center, float3 extents)
+{
+    uint cameraCount = min(_Bfp2CameraFrameCount, 8u);
+    if (cameraCount == 0u)
+    {
+        [unroll]
+        for (uint i = 0u; i < 6u; i++)
+        {
+            float4 plane = _Bfp2FrustumPlanes[i];
+            float radius = dot(abs(plane.xyz), extents);
+            float distance = dot(plane.xyz, center) + plane.w;
+            if (distance < -radius)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    [loop]
+    for (uint cameraIndex = 0u; cameraIndex < cameraCount; cameraIndex++)
+    {
+        if (!Bfp2AabbOutsideCameraFrame(cameraIndex, center, extents))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+float3 Bfp2NearestCameraPosition(float3 center)
+{
+    uint cameraCount = min(_Bfp2CameraFrameCount, 8u);
+    if (cameraCount == 0u)
+    {
+        return _Bfp2CameraPositionOS;
+    }
+
+    float bestDistanceSq = 3.402823466e+38;
+    float3 bestPosition = _Bfp2CameraPositionsOS[0].xyz;
+    [loop]
+    for (uint cameraIndex = 0u; cameraIndex < cameraCount; cameraIndex++)
+    {
+        float3 candidate = _Bfp2CameraPositionsOS[cameraIndex].xyz;
+        float distanceSq = dot(candidate - center, candidate - center);
+        if (distanceSq < bestDistanceSq)
+        {
+            bestDistanceSq = distanceSq;
+            bestPosition = candidate;
+        }
+    }
+    return bestPosition;
+}
+
+float Bfp2ProjectedRadiusPixels(uint cameraIndex, float3 center, float radius)
+{
+    float4 screenParams = _Bfp2CameraScreenParams[cameraIndex];
+    float projectionScale = max(screenParams.x, 0.0);
+    if (screenParams.y > 0.5)
+    {
+        return radius * max(screenParams.z, 0.000001) * projectionScale;
+    }
+
+    float3 toCamera = _Bfp2CameraPositionsOS[cameraIndex].xyz - center;
+    float distanceSq = dot(toCamera, toCamera);
+    float radiusSq = radius * radius;
+    if (distanceSq <= radiusSq)
+    {
+        return 3.402823466e+38;
+    }
+    return radius * projectionScale / sqrt(max(distanceSq - radiusSq, 0.000001));
+}
+
+bool Bfp2BelowProjectedRadiusThreshold(float3 center, float radius, float thresholdPixels)
+{
+    uint cameraCount = min(_Bfp2CameraFrameCount, 8u);
+    if (cameraCount == 0u)
+    {
+        return false;
+    }
+
+    [loop]
+    for (uint cameraIndex = 0u; cameraIndex < cameraCount; cameraIndex++)
+    {
+        if (Bfp2ProjectedRadiusPixels(cameraIndex, center, radius) >= thresholdPixels)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+Bfp2CompactCullCluster Bfp2LoadCompactCullCluster(uint clusterIndex)
+{
+    uint baseWord = clusterIndex * 10u;
+    Bfp2CompactCullCluster cluster;
+    cluster.firstIndex = _Bfp2CompactClusterWords[baseWord + 0u];
+    cluster.indexCount = _Bfp2CompactClusterWords[baseWord + 1u];
+    cluster.center = float3(
+        asfloat(_Bfp2CompactClusterWords[baseWord + 2u]),
+        asfloat(_Bfp2CompactClusterWords[baseWord + 3u]),
+        asfloat(_Bfp2CompactClusterWords[baseWord + 4u]));
+    cluster.extents = float3(
+        asfloat(_Bfp2CompactClusterWords[baseWord + 5u]),
+        asfloat(_Bfp2CompactClusterWords[baseWord + 6u]),
+        asfloat(_Bfp2CompactClusterWords[baseWord + 7u]));
+    cluster.coneWord = _Bfp2CompactClusterWords[baseWord + 8u];
+    cluster.lodCutoffWord = _Bfp2CompactClusterWords[baseWord + 9u];
+    return cluster;
+}
+
+bool Bfp2CompactCullClusterVisible(Bfp2CompactCullCluster cluster)
+{
+    if (_Bfp2EnableFrustumCulling != 0u &&
+        Bfp2AabbOutsideAnyCamera(cluster.center, cluster.extents))
+    {
+        return false;
+    }
+
+    float3 toCamera = Bfp2NearestCameraPosition(cluster.center) - cluster.center;
+    float distanceToCamera = length(toCamera);
+    float radius = length(cluster.extents);
+
+    if (_Bfp2EnableDistanceCulling != 0u &&
+        _Bfp2MaxDistance > 0.0 &&
+        distanceToCamera - radius > _Bfp2MaxDistance)
+    {
+        return false;
+    }
+
+    if (_Bfp2EnableScreenSizeCulling != 0u)
+    {
+        bool culledByScreenSize = false;
+        if (_Bfp2UseProjectedPixelScreenSizeCulling != 0u)
+        {
+            culledByScreenSize =
+                _Bfp2MinScreenRadiusPixels > 0.0 &&
+                Bfp2BelowProjectedRadiusThreshold(
+                    cluster.center,
+                    radius,
+                    _Bfp2MinScreenRadiusPixels);
+        }
+        else if (_Bfp2MinScreenRadiusRatio > 0.0)
+        {
+            float ratio = radius / max(distanceToCamera, 0.001);
+            culledByScreenSize = ratio < _Bfp2MinScreenRadiusRatio;
+        }
+        if (culledByScreenSize)
+        {
+            return false;
+        }
+    }
+
+    if (_Bfp2EnableNormalConeCulling != 0u && distanceToCamera > 0.001)
+    {
+        int coneX = Bfp2SignExtend16(cluster.coneWord);
+        int coneY = Bfp2SignExtend16(cluster.coneWord >> 16);
+        int coneCutoffRaw = Bfp2SignExtend16(cluster.lodCutoffWord >> 16);
+        float coneCutoff = clamp((float)coneCutoffRaw / 32767.0, -1.0, 1.0);
+        float3 coneAxis = Bfp2DecodeOct16(int2(coneX, coneY));
+        float3 viewDirection = toCamera / distanceToCamera;
+        if (dot(coneAxis, viewDirection) < -coneCutoff)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+[numthreads(128, 1, 1)]
+void CullAndCompactBfp2ClustersWave(uint3 id : SV_DispatchThreadID)
+{
+    uint clusterIndex = id.x;
+    bool validCluster = clusterIndex < _Bfp2ClusterCount;
+    Bfp2CompactCullCluster cluster = (Bfp2CompactCullCluster)0;
+    bool visible = false;
+    if (validCluster)
+    {
+        cluster = Bfp2LoadCompactCullCluster(clusterIndex);
+        visible = Bfp2CompactCullClusterVisible(cluster);
+    }
+
+    uint visibleIndexCount = visible ? cluster.indexCount : 0u;
+    uint waveIndexCount = WaveActiveSum(visibleIndexCount);
+    uint waveBaseOffset = 0u;
+    if (WaveIsFirstLane() && waveIndexCount > 0u)
+    {
+        InterlockedAdd(_Bfp2DrawArgs[0], waveIndexCount, waveBaseOffset);
+    }
+    waveBaseOffset = WaveReadLaneFirst(waveBaseOffset);
+    uint dstOffset = waveBaseOffset + WavePrefixSum(visibleIndexCount);
+    bool overflow = visible && dstOffset + cluster.indexCount > _Bfp2MaxVisibleIndices;
+    bool accepted = visible && !overflow;
+
+    uint waveVisibleClusters = WaveActiveCountBits(accepted);
+    uint waveVisibleIndices = WaveActiveSum(accepted ? cluster.indexCount : 0u);
+    uint waveCulledClusters = WaveActiveCountBits(validCluster && !visible);
+    uint waveOverflowClusters = WaveActiveCountBits(overflow);
+    if (WaveIsFirstLane())
+    {
+        if (waveVisibleClusters > 0u)
+        {
+            InterlockedAdd(_Bfp2Stats[0], waveVisibleClusters);
+            InterlockedAdd(_Bfp2Stats[1], waveVisibleIndices);
+        }
+        if (waveCulledClusters > 0u)
+        {
+            InterlockedAdd(_Bfp2Stats[2], waveCulledClusters);
+        }
+        if (waveOverflowClusters > 0u)
+        {
+            InterlockedAdd(_Bfp2Stats[3], waveOverflowClusters);
+        }
+    }
+
+    if (!accepted)
+    {
+        return;
+    }
+
+    if (_Bfp2FlipTriangleWinding != 0u)
+    {
+        for (uint i = 0u; i + 2u < cluster.indexCount; i += 3u)
+        {
+            _Bfp2VisibleIndices[dstOffset + i + 0u] = _Bfp2Indices[cluster.firstIndex + i + 0u];
+            _Bfp2VisibleIndices[dstOffset + i + 1u] = _Bfp2Indices[cluster.firstIndex + i + 2u];
+            _Bfp2VisibleIndices[dstOffset + i + 2u] = _Bfp2Indices[cluster.firstIndex + i + 1u];
+        }
+    }
+    else
+    {
+        for (uint i = 0u; i < cluster.indexCount; i++)
+        {
+            _Bfp2VisibleIndices[dstOffset + i] = _Bfp2Indices[cluster.firstIndex + i];
+        }
+    }
+}
+
+void Bfp2CullAndBuildVisibleTiles(
+    uint3 id,
+    uint tileTriangleCount,
+    uint descriptorWordCount,
+    uint useClusterLocalIndices16)
+{
+    uint clusterIndex = id.x;
+    bool validCluster = clusterIndex < _Bfp2ClusterCount;
+    Bfp2CompactCullCluster cluster = (Bfp2CompactCullCluster)0;
+    bool visible = false;
+    if (validCluster)
+    {
+        cluster = Bfp2LoadCompactCullCluster(clusterIndex);
+        visible = Bfp2CompactCullClusterVisible(cluster);
+    }
+
+    uint tileIndexCount = tileTriangleCount * 3u;
+    uint clusterTileCount =
+        visible ? (cluster.indexCount + tileIndexCount - 1u) / tileIndexCount : 0u;
+    uint waveTileCount = WaveActiveSum(clusterTileCount);
+    uint waveBaseVertex = 0u;
+    if (WaveIsFirstLane() && waveTileCount > 0u)
+    {
+        InterlockedAdd(
+            _Bfp2DrawArgs[0],
+            waveTileCount * tileIndexCount,
+            waveBaseVertex);
+    }
+    waveBaseVertex = WaveReadLaneFirst(waveBaseVertex);
+
+    uint firstTile =
+        waveBaseVertex / tileIndexCount + WavePrefixSum(clusterTileCount);
+    bool overflow =
+        visible &&
+        (firstTile + clusterTileCount) * descriptorWordCount >
+        _Bfp2MaxVisibleTileWords;
+    bool accepted = visible && !overflow;
+
+    uint waveVisibleClusters = WaveActiveCountBits(accepted);
+    uint waveVisibleIndices = WaveActiveSum(accepted ? cluster.indexCount : 0u);
+    uint waveCulledClusters = WaveActiveCountBits(validCluster && !visible);
+    uint waveOverflowClusters = WaveActiveCountBits(overflow);
+    if (WaveIsFirstLane())
+    {
+        if (waveVisibleClusters > 0u)
+        {
+            InterlockedAdd(_Bfp2Stats[0], waveVisibleClusters);
+            InterlockedAdd(_Bfp2Stats[1], waveVisibleIndices);
+        }
+        if (waveCulledClusters > 0u)
+        {
+            InterlockedAdd(_Bfp2Stats[2], waveCulledClusters);
+        }
+        if (waveOverflowClusters > 0u)
+        {
+            InterlockedAdd(_Bfp2Stats[3], waveOverflowClusters);
+        }
+    }
+
+    if (!accepted)
+    {
+        return;
+    }
+
+    [loop]
+    for (uint tileOffset = 0u; tileOffset < clusterTileCount; tileOffset++)
+    {
+        uint sourceOffset = tileOffset * tileIndexCount;
+        uint validIndexCount = min(
+            tileIndexCount,
+            cluster.indexCount - sourceOffset);
+        uint descriptorWord =
+            (firstTile + tileOffset) * descriptorWordCount;
+        _Bfp2VisibleTileWords[descriptorWord + 0u] =
+            cluster.firstIndex + sourceOffset;
+        if (useClusterLocalIndices16 != 0u)
+        {
+            // Tile32 produces at most 96 indices, so seven low bits are
+            // sufficient for the valid count. Keep the descriptor at two
+            // words and carry the pack-local cluster index in the remaining
+            // bits; the vertex stage fetches baseVertex from the compact,
+            // cluster-coherent base table.
+            _Bfp2VisibleTileWords[descriptorWord + 1u] =
+                (clusterIndex << 7u) | (validIndexCount & 0x7fu);
+        }
+        else
+        {
+            _Bfp2VisibleTileWords[descriptorWord + 1u] = validIndexCount;
+        }
+    }
+}
+
+[numthreads(128, 1, 1)]
+void CullAndBuildBfp2VisibleTiles32(uint3 id : SV_DispatchThreadID)
+{
+    Bfp2CullAndBuildVisibleTiles(id, 32u, 2u, 0u);
+}
+
+[numthreads(128, 1, 1)]
+void CullAndBuildBfp2VisibleTiles64(uint3 id : SV_DispatchThreadID)
+{
+    Bfp2CullAndBuildVisibleTiles(id, 64u, 2u, 0u);
+}
+
+[numthreads(128, 1, 1)]
+void CullAndBuildBfp2VisibleTiles32Index16(uint3 id : SV_DispatchThreadID)
+{
+    Bfp2CullAndBuildVisibleTiles(id, 32u, 2u, 1u);
+}

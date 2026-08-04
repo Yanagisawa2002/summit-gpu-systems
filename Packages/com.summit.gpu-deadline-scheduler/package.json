@@ -1,0 +1,17 @@
+{
+  "name": "com.summit.gpu-deadline-scheduler",
+  "version": "0.1.0",
+  "displayName": "SUMMIT GPU Deadline Scheduler",
+  "description": "Portable slack-aware GPU task planning and a deterministic copy/compute/graphics workload for deadline scheduling experiments.",
+  "unity": "6000.0",
+  "keywords": [
+    "gpu",
+    "scheduler",
+    "deadline",
+    "async-compute",
+    "robotics"
+  ],
+  "author": {
+    "name": "SUMMIT"
+  }
+}

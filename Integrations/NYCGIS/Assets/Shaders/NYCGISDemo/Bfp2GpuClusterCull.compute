@@ -1,0 +1,502 @@
+#pragma kernel ClearBfp2Args
+#pragma kernel CountBfp2CameraExpansion
+#pragma kernel PackBfp2CompactCullClusters
+#pragma kernel CullAndCompactBfp2Clusters
+#pragma kernel CullAndCompactBfp2ClustersCompact
+
+StructuredBuffer<uint> _Bfp2Indices;
+StructuredBuffer<uint> _Bfp2ClusterWords;
+RWStructuredBuffer<uint> _Bfp2CompactClusterWords;
+
+RWStructuredBuffer<uint> _Bfp2VisibleIndices;
+RWStructuredBuffer<uint> _Bfp2DrawArgs;
+RWStructuredBuffer<uint> _Bfp2Stats;
+RWStructuredBuffer<uint> _Bfp2CameraExpansionStats;
+
+uint _Bfp2ClusterCount;
+uint _Bfp2MaxVisibleIndices;
+float4 _Bfp2FrustumPlanes[6];
+float3 _Bfp2CameraPositionOS;
+uint _Bfp2CameraFrameCount;
+float4 _Bfp2CameraFrustumPlanes[48];
+float4 _Bfp2CameraPositionsOS[8];
+// x: vertical projection scale in pixels, y: 1 for orthographic, z: max object scale.
+float4 _Bfp2CameraScreenParams[8];
+float _Bfp2MaxDistance;
+uint _Bfp2EnableFrustumCulling;
+uint _Bfp2EnableDistanceCulling;
+uint _Bfp2EnableNormalConeCulling;
+uint _Bfp2EnableScreenSizeCulling;
+uint _Bfp2UseProjectedPixelScreenSizeCulling;
+uint _Bfp2FlipTriangleWinding;
+float _Bfp2MinScreenRadiusRatio;
+float _Bfp2MinScreenRadiusPixels;
+
+int Bfp2SignExtend16(uint value)
+{
+    int v = (int)(value & 0xffffu);
+    return (v >= 32768) ? (v - 65536) : v;
+}
+
+float3 Bfp2DecodeOct16(int2 packedOct)
+{
+    float2 f = clamp(float2(packedOct) / 32767.0, -1.0, 1.0);
+    float3 n = float3(f.x, f.y, 1.0 - abs(f.x) - abs(f.y));
+    if (n.z < 0.0)
+    {
+        float2 folded = (1.0 - abs(n.yx)) * sign(n.xy);
+        n.xy = folded;
+    }
+    return normalize(n);
+}
+
+bool Bfp2AabbOutsideFrustum(float3 center, float3 extents)
+{
+    [unroll]
+    for (uint i = 0; i < 6; i++)
+    {
+        float4 plane = _Bfp2FrustumPlanes[i];
+        float radius = dot(abs(plane.xyz), extents);
+        float distance = dot(plane.xyz, center) + plane.w;
+        if (distance < -radius)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool Bfp2AabbOutsideCameraFrame(uint cameraIndex, float3 center, float3 extents)
+{
+    uint planeOffset = cameraIndex * 6u;
+    [unroll]
+    for (uint i = 0; i < 6; i++)
+    {
+        float4 plane = _Bfp2CameraFrustumPlanes[planeOffset + i];
+        float radius = dot(abs(plane.xyz), extents);
+        float distance = dot(plane.xyz, center) + plane.w;
+        if (distance < -radius)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool Bfp2AabbOutsideAnyCamera(float3 center, float3 extents)
+{
+    uint cameraCount = min(_Bfp2CameraFrameCount, 8u);
+    if (cameraCount == 0u)
+    {
+        return Bfp2AabbOutsideFrustum(center, extents);
+    }
+
+    [loop]
+    for (uint cameraIndex = 0u; cameraIndex < cameraCount; cameraIndex++)
+    {
+        if (!Bfp2AabbOutsideCameraFrame(cameraIndex, center, extents))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+float3 Bfp2NearestCameraPosition(float3 center)
+{
+    uint cameraCount = min(_Bfp2CameraFrameCount, 8u);
+    if (cameraCount == 0u)
+    {
+        return _Bfp2CameraPositionOS;
+    }
+
+    float bestDistanceSq = 3.402823466e+38;
+    float3 bestPosition = _Bfp2CameraPositionsOS[0].xyz;
+    [loop]
+    for (uint cameraIndex = 0u; cameraIndex < cameraCount; cameraIndex++)
+    {
+        float3 candidate = _Bfp2CameraPositionsOS[cameraIndex].xyz;
+        float distanceSq = dot(candidate - center, candidate - center);
+        if (distanceSq < bestDistanceSq)
+        {
+            bestDistanceSq = distanceSq;
+            bestPosition = candidate;
+        }
+    }
+    return bestPosition;
+}
+
+float Bfp2ProjectedRadiusPixels(uint cameraIndex, float3 center, float radius)
+{
+    float4 screenParams = _Bfp2CameraScreenParams[cameraIndex];
+    float projectionScale = max(screenParams.x, 0.0);
+    if (screenParams.y > 0.5)
+    {
+        return radius * max(screenParams.z, 0.000001) * projectionScale;
+    }
+
+    float3 toCamera = _Bfp2CameraPositionsOS[cameraIndex].xyz - center;
+    float distanceSq = dot(toCamera, toCamera);
+    float radiusSq = radius * radius;
+    if (distanceSq <= radiusSq)
+    {
+        return 3.402823466e+38;
+    }
+
+    // tan(angular radius) = radius / sqrt(distance^2 - radius^2).
+    return radius * projectionScale / sqrt(max(distanceSq - radiusSq, 0.000001));
+}
+
+bool Bfp2BelowProjectedRadiusThreshold(float3 center, float radius, float thresholdPixels)
+{
+    uint cameraCount = min(_Bfp2CameraFrameCount, 8u);
+    if (cameraCount == 0u)
+    {
+        return false;
+    }
+
+    [loop]
+    for (uint cameraIndex = 0u; cameraIndex < cameraCount; cameraIndex++)
+    {
+        if (Bfp2ProjectedRadiusPixels(cameraIndex, center, radius) >= thresholdPixels)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+struct Bfp2CompactCullCluster
+{
+    uint firstIndex;
+    uint indexCount;
+    float3 center;
+    float3 extents;
+    uint coneWord;
+    uint lodCutoffWord;
+};
+
+Bfp2CompactCullCluster Bfp2LoadCompactCullCluster(uint clusterIndex)
+{
+    uint baseWord = clusterIndex * 10u;
+    Bfp2CompactCullCluster cluster;
+    cluster.firstIndex = _Bfp2CompactClusterWords[baseWord + 0u];
+    cluster.indexCount = _Bfp2CompactClusterWords[baseWord + 1u];
+    cluster.center = float3(
+        asfloat(_Bfp2CompactClusterWords[baseWord + 2u]),
+        asfloat(_Bfp2CompactClusterWords[baseWord + 3u]),
+        asfloat(_Bfp2CompactClusterWords[baseWord + 4u]));
+    cluster.extents = float3(
+        asfloat(_Bfp2CompactClusterWords[baseWord + 5u]),
+        asfloat(_Bfp2CompactClusterWords[baseWord + 6u]),
+        asfloat(_Bfp2CompactClusterWords[baseWord + 7u]));
+    cluster.coneWord = _Bfp2CompactClusterWords[baseWord + 8u];
+    cluster.lodCutoffWord = _Bfp2CompactClusterWords[baseWord + 9u];
+    return cluster;
+}
+
+bool Bfp2CompactCullClusterVisible(Bfp2CompactCullCluster cluster)
+{
+    if (_Bfp2EnableFrustumCulling != 0u &&
+        Bfp2AabbOutsideAnyCamera(cluster.center, cluster.extents))
+    {
+        return false;
+    }
+
+    float3 toCamera = Bfp2NearestCameraPosition(cluster.center) - cluster.center;
+    float distanceToCamera = length(toCamera);
+    float radius = length(cluster.extents);
+
+    if (_Bfp2EnableDistanceCulling != 0u &&
+        _Bfp2MaxDistance > 0.0 &&
+        distanceToCamera - radius > _Bfp2MaxDistance)
+    {
+        return false;
+    }
+
+    if (_Bfp2EnableScreenSizeCulling != 0u)
+    {
+        bool culledByScreenSize = false;
+        if (_Bfp2UseProjectedPixelScreenSizeCulling != 0u)
+        {
+            culledByScreenSize =
+                _Bfp2MinScreenRadiusPixels > 0.0 &&
+                Bfp2BelowProjectedRadiusThreshold(
+                    cluster.center,
+                    radius,
+                    _Bfp2MinScreenRadiusPixels);
+        }
+        else if (_Bfp2MinScreenRadiusRatio > 0.0)
+        {
+            float ratio = radius / max(distanceToCamera, 0.001);
+            culledByScreenSize = ratio < _Bfp2MinScreenRadiusRatio;
+        }
+
+        if (culledByScreenSize)
+        {
+            return false;
+        }
+    }
+
+    if (_Bfp2EnableNormalConeCulling != 0u && distanceToCamera > 0.001)
+    {
+        int coneX = Bfp2SignExtend16(cluster.coneWord);
+        int coneY = Bfp2SignExtend16(cluster.coneWord >> 16);
+        int coneCutoffRaw = Bfp2SignExtend16(cluster.lodCutoffWord >> 16);
+        float coneCutoff = clamp((float)coneCutoffRaw / 32767.0, -1.0, 1.0);
+        float3 coneAxis = Bfp2DecodeOct16(int2(coneX, coneY));
+        float3 viewDirection = toCamera / distanceToCamera;
+        if (dot(coneAxis, viewDirection) < -coneCutoff)
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+[numthreads(1, 1, 1)]
+void ClearBfp2Args(uint3 id : SV_DispatchThreadID)
+{
+    _Bfp2DrawArgs[0] = 0u;
+    _Bfp2DrawArgs[1] = 1u;
+    _Bfp2DrawArgs[2] = 0u;
+    _Bfp2DrawArgs[3] = 0u;
+
+    _Bfp2Stats[0] = 0u; // visible clusters
+    _Bfp2Stats[1] = 0u; // visible indices
+    _Bfp2Stats[2] = 0u; // culled clusters
+    _Bfp2Stats[3] = 0u; // overflow clusters
+}
+
+// Builds the 40-byte per-cluster hot set used by the optimized kernels from the
+// original 80-byte BFP2 record. This runs once after a pack is uploaded.
+[numthreads(128, 1, 1)]
+void PackBfp2CompactCullClusters(uint3 id : SV_DispatchThreadID)
+{
+    uint clusterIndex = id.x;
+    if (clusterIndex >= _Bfp2ClusterCount)
+    {
+        return;
+    }
+
+    uint sourceWord = clusterIndex * 20u;
+    uint destinationWord = clusterIndex * 10u;
+    _Bfp2CompactClusterWords[destinationWord + 0u] = _Bfp2ClusterWords[sourceWord + 0u];
+    _Bfp2CompactClusterWords[destinationWord + 1u] = _Bfp2ClusterWords[sourceWord + 1u];
+    _Bfp2CompactClusterWords[destinationWord + 2u] = _Bfp2ClusterWords[sourceWord + 8u];
+    _Bfp2CompactClusterWords[destinationWord + 3u] = _Bfp2ClusterWords[sourceWord + 9u];
+    _Bfp2CompactClusterWords[destinationWord + 4u] = _Bfp2ClusterWords[sourceWord + 10u];
+    _Bfp2CompactClusterWords[destinationWord + 5u] = _Bfp2ClusterWords[sourceWord + 11u];
+    _Bfp2CompactClusterWords[destinationWord + 6u] = _Bfp2ClusterWords[sourceWord + 12u];
+    _Bfp2CompactClusterWords[destinationWord + 7u] = _Bfp2ClusterWords[sourceWord + 13u];
+    _Bfp2CompactClusterWords[destinationWord + 8u] = _Bfp2ClusterWords[sourceWord + 14u];
+    _Bfp2CompactClusterWords[destinationWord + 9u] = _Bfp2ClusterWords[sourceWord + 15u];
+}
+
+[numthreads(128, 1, 1)]
+void CountBfp2CameraExpansion(uint3 id : SV_DispatchThreadID)
+{
+    uint clusterIndex = id.x;
+    if (clusterIndex >= _Bfp2ClusterCount)
+    {
+        return;
+    }
+
+    uint cameraCount = min(_Bfp2CameraFrameCount, 8u);
+    if (cameraCount == 0u)
+    {
+        return;
+    }
+
+    uint baseWord = clusterIndex * 20u;
+    float3 center = float3(
+        asfloat(_Bfp2ClusterWords[baseWord + 8u]),
+        asfloat(_Bfp2ClusterWords[baseWord + 9u]),
+        asfloat(_Bfp2ClusterWords[baseWord + 10u])
+    );
+    float3 extents = float3(
+        asfloat(_Bfp2ClusterWords[baseWord + 11u]),
+        asfloat(_Bfp2ClusterWords[baseWord + 12u]),
+        asfloat(_Bfp2ClusterWords[baseWord + 13u])
+    );
+
+    bool primaryVisible = !Bfp2AabbOutsideCameraFrame(0u, center, extents);
+    bool unionVisible = primaryVisible || !Bfp2AabbOutsideAnyCamera(center, extents);
+    if (primaryVisible)
+    {
+        InterlockedAdd(_Bfp2CameraExpansionStats[0], 1u);
+    }
+    if (unionVisible)
+    {
+        InterlockedAdd(_Bfp2CameraExpansionStats[1], 1u);
+    }
+}
+
+[numthreads(128, 1, 1)]
+void CullAndCompactBfp2Clusters(uint3 id : SV_DispatchThreadID)
+{
+    uint clusterIndex = id.x;
+    if (clusterIndex >= _Bfp2ClusterCount)
+    {
+        return;
+    }
+
+    uint baseWord = clusterIndex * 20u;
+    uint firstIndex = _Bfp2ClusterWords[baseWord + 0u];
+    uint indexCount = _Bfp2ClusterWords[baseWord + 1u];
+
+    float3 center = float3(
+        asfloat(_Bfp2ClusterWords[baseWord + 8u]),
+        asfloat(_Bfp2ClusterWords[baseWord + 9u]),
+        asfloat(_Bfp2ClusterWords[baseWord + 10u])
+    );
+    float3 extents = float3(
+        asfloat(_Bfp2ClusterWords[baseWord + 11u]),
+        asfloat(_Bfp2ClusterWords[baseWord + 12u]),
+        asfloat(_Bfp2ClusterWords[baseWord + 13u])
+    );
+
+    if (_Bfp2EnableFrustumCulling != 0u && Bfp2AabbOutsideAnyCamera(center, extents))
+    {
+        InterlockedAdd(_Bfp2Stats[2], 1u);
+        return;
+    }
+
+    float3 toCamera = Bfp2NearestCameraPosition(center) - center;
+    float distanceToCamera = length(toCamera);
+    float radius = length(extents);
+
+    if (_Bfp2EnableDistanceCulling != 0u && _Bfp2MaxDistance > 0.0)
+    {
+        if (distanceToCamera - radius > _Bfp2MaxDistance)
+        {
+            InterlockedAdd(_Bfp2Stats[2], 1u);
+            return;
+        }
+    }
+
+    if (_Bfp2EnableScreenSizeCulling != 0u)
+    {
+        bool culledByScreenSize = false;
+        if (_Bfp2UseProjectedPixelScreenSizeCulling != 0u)
+        {
+            // A union draw must retain the cluster when any active camera can resolve it.
+            culledByScreenSize =
+                _Bfp2MinScreenRadiusPixels > 0.0 &&
+                Bfp2BelowProjectedRadiusThreshold(
+                    center,
+                    radius,
+                    _Bfp2MinScreenRadiusPixels);
+        }
+        else if (_Bfp2MinScreenRadiusRatio > 0.0)
+        {
+            float ratio = radius / max(distanceToCamera, 0.001);
+            culledByScreenSize = ratio < _Bfp2MinScreenRadiusRatio;
+        }
+
+        if (culledByScreenSize)
+        {
+            InterlockedAdd(_Bfp2Stats[2], 1u);
+            return;
+        }
+    }
+
+    if (_Bfp2EnableNormalConeCulling != 0u && distanceToCamera > 0.001)
+    {
+        uint coneWord = _Bfp2ClusterWords[baseWord + 14u];
+        uint lodCutoffWord = _Bfp2ClusterWords[baseWord + 15u];
+        int coneX = Bfp2SignExtend16(coneWord);
+        int coneY = Bfp2SignExtend16(coneWord >> 16);
+        int coneCutoffRaw = Bfp2SignExtend16(lodCutoffWord >> 16);
+        float coneCutoff = clamp((float)coneCutoffRaw / 32767.0, -1.0, 1.0);
+        float3 coneAxis = Bfp2DecodeOct16(int2(coneX, coneY));
+        float3 viewDirection = toCamera / distanceToCamera;
+
+        if (dot(coneAxis, viewDirection) < -coneCutoff)
+        {
+            InterlockedAdd(_Bfp2Stats[2], 1u);
+            return;
+        }
+    }
+
+    uint dstOffset;
+    InterlockedAdd(_Bfp2DrawArgs[0], indexCount, dstOffset);
+
+    if (dstOffset + indexCount > _Bfp2MaxVisibleIndices)
+    {
+        InterlockedAdd(_Bfp2Stats[3], 1u);
+        return;
+    }
+
+    if (_Bfp2FlipTriangleWinding != 0u)
+    {
+        for (uint i = 0u; i + 2u < indexCount; i += 3u)
+        {
+            _Bfp2VisibleIndices[dstOffset + i + 0u] = _Bfp2Indices[firstIndex + i + 0u];
+            _Bfp2VisibleIndices[dstOffset + i + 1u] = _Bfp2Indices[firstIndex + i + 2u];
+            _Bfp2VisibleIndices[dstOffset + i + 2u] = _Bfp2Indices[firstIndex + i + 1u];
+        }
+    }
+    else
+    {
+        for (uint i = 0u; i < indexCount; i++)
+        {
+            _Bfp2VisibleIndices[dstOffset + i] = _Bfp2Indices[firstIndex + i];
+        }
+    }
+
+    InterlockedAdd(_Bfp2Stats[0], 1u);
+    InterlockedAdd(_Bfp2Stats[1], indexCount);
+}
+
+// Scalar control variant over the compact hot layout. Keeping this separate from
+// the wave kernel makes the cache/layout contribution independently measurable.
+[numthreads(128, 1, 1)]
+void CullAndCompactBfp2ClustersCompact(uint3 id : SV_DispatchThreadID)
+{
+    uint clusterIndex = id.x;
+    if (clusterIndex >= _Bfp2ClusterCount)
+    {
+        return;
+    }
+
+    Bfp2CompactCullCluster cluster = Bfp2LoadCompactCullCluster(clusterIndex);
+    if (!Bfp2CompactCullClusterVisible(cluster))
+    {
+        InterlockedAdd(_Bfp2Stats[2], 1u);
+        return;
+    }
+
+    uint dstOffset;
+    InterlockedAdd(_Bfp2DrawArgs[0], cluster.indexCount, dstOffset);
+    if (dstOffset + cluster.indexCount > _Bfp2MaxVisibleIndices)
+    {
+        InterlockedAdd(_Bfp2Stats[3], 1u);
+        return;
+    }
+
+    if (_Bfp2FlipTriangleWinding != 0u)
+    {
+        for (uint i = 0u; i + 2u < cluster.indexCount; i += 3u)
+        {
+            _Bfp2VisibleIndices[dstOffset + i + 0u] =
+                _Bfp2Indices[cluster.firstIndex + i + 0u];
+            _Bfp2VisibleIndices[dstOffset + i + 1u] =
+                _Bfp2Indices[cluster.firstIndex + i + 2u];
+            _Bfp2VisibleIndices[dstOffset + i + 2u] =
+                _Bfp2Indices[cluster.firstIndex + i + 1u];
+        }
+    }
+    else
+    {
+        for (uint i = 0u; i < cluster.indexCount; i++)
+        {
+            _Bfp2VisibleIndices[dstOffset + i] =
+                _Bfp2Indices[cluster.firstIndex + i];
+        }
+    }
+
+    InterlockedAdd(_Bfp2Stats[0], 1u);
+    InterlockedAdd(_Bfp2Stats[1], cluster.indexCount);
+}

@@ -1,0 +1,22 @@
+{
+  "name": "com.summit.gpu-adaptive-binning",
+  "version": "0.1.0",
+  "displayName": "SUMMIT GPU Adaptive Binning",
+  "description": "Backend-neutral GPU spatial binning with independently forceable direct and radix paths.",
+  "unity": "6000.0",
+  "dependencies": {
+    "com.summit.gpu-direct-binning": "0.1.0",
+    "com.summit.gpu-primitives": "0.1.0"
+  },
+  "keywords": [
+    "gpu",
+    "compute",
+    "spatial-binning",
+    "csr",
+    "radix",
+    "adaptive"
+  ],
+  "author": {
+    "name": "SUMMIT"
+  }
+}

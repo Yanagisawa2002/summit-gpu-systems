@@ -1,0 +1,430 @@
+#pragma kernel GenerateMortonPairs
+#pragma kernel RadixHistogram
+#pragma kernel RadixScanOffsets
+#pragma kernel RadixScatterStable
+#pragma kernel ClearCellRanges
+#pragma kernel ClearValidation
+#pragma kernel BuildCellRanges
+#pragma kernel BruteForceQueries
+#pragma kernel QueryCellRanges
+#pragma kernel ValidateIndex
+#pragma target 6.0
+#pragma use_dxc
+
+Texture2D<float> _SensorDepth;
+
+StructuredBuffer<uint2> _SpatialPairsIn;
+RWStructuredBuffer<uint2> _SpatialPairsOut;
+RWStructuredBuffer<uint2> _SpatialPairsGenerated;
+RWStructuredBuffer<uint> _SpatialGroupHistograms;
+RWStructuredBuffer<uint> _SpatialGroupOffsets;
+RWStructuredBuffer<uint> _SpatialCellStarts;
+RWStructuredBuffer<uint> _SpatialCellEnds;
+StructuredBuffer<uint4> _SpatialQueries;
+StructuredBuffer<uint> _SpatialExpectedQueryCounts;
+RWStructuredBuffer<uint> _SpatialQueryCounts;
+RWStructuredBuffer<uint> _SpatialValidation;
+
+int _SensorWidth;
+int _SensorHeight;
+int _SensorPointCount;
+int _SpatialGridResolution;
+int _SpatialCellCount;
+int _SpatialGroupCount;
+int _SpatialRadixShift;
+int _SpatialQueryCount;
+int _SpatialValidationEnabled;
+
+groupshared uint _GroupHistogram[16];
+groupshared uint _WaveBinCounts[128];
+groupshared uint _GroupQueryCounts[256];
+
+uint ExpandMortonBits(uint value)
+{
+    value &= 0x000003ffu;
+    value = (value | (value << 16u)) & 0x030000ffu;
+    value = (value | (value << 8u)) & 0x0300f00fu;
+    value = (value | (value << 4u)) & 0x030c30c3u;
+    value = (value | (value << 2u)) & 0x09249249u;
+    return value;
+}
+
+uint Morton3D(uint x, uint y, uint z)
+{
+    return ExpandMortonBits(x) |
+           (ExpandMortonBits(y) << 1u) |
+           (ExpandMortonBits(z) << 2u);
+}
+
+uint QuantizeDepth(float depth)
+{
+    float scaled = floor((depth - 4.0f) * 4.0f);
+    return (uint)clamp(scaled, 0.0f, (float)(_SpatialGridResolution - 1));
+}
+
+[numthreads(256, 1, 1)]
+void GenerateMortonPairs(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint pointIndex = dispatchThreadId.x;
+    if (pointIndex >= (uint)_SensorPointCount)
+    {
+        return;
+    }
+
+    uint x = pointIndex % (uint)_SensorWidth;
+    uint y = pointIndex / (uint)_SensorWidth;
+    float depth = _SensorDepth.Load(int3(x, y, 0));
+    uint cellX = min(
+        (x * (uint)_SpatialGridResolution) / (uint)_SensorWidth,
+        (uint)(_SpatialGridResolution - 1));
+    uint cellY = min(
+        (y * (uint)_SpatialGridResolution) / (uint)_SensorHeight,
+        (uint)(_SpatialGridResolution - 1));
+    uint cellZ = QuantizeDepth(depth);
+    _SpatialPairsGenerated[pointIndex] =
+        uint2(Morton3D(cellX, cellY, cellZ), pointIndex);
+}
+
+[numthreads(256, 1, 1)]
+void RadixHistogram(
+    uint3 groupId : SV_GroupID,
+    uint3 groupThreadId : SV_GroupThreadID,
+    uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint localIndex = groupThreadId.x;
+    if (localIndex < 16u)
+    {
+        _GroupHistogram[localIndex] = 0u;
+    }
+    GroupMemoryBarrierWithGroupSync();
+
+    uint pointIndex = dispatchThreadId.x;
+    bool valid = pointIndex < (uint)_SensorPointCount;
+    uint digit = valid
+        ? ((_SpatialPairsIn[pointIndex].x >>
+            (uint)_SpatialRadixShift) & 15u)
+        : 0u;
+    [unroll]
+    for (uint bin = 0u; bin < 16u; bin++)
+    {
+        uint waveCount = WaveActiveCountBits(valid && digit == bin);
+        if (WaveIsFirstLane() && waveCount > 0u)
+        {
+            uint ignored;
+            InterlockedAdd(_GroupHistogram[bin], waveCount, ignored);
+        }
+    }
+    GroupMemoryBarrierWithGroupSync();
+
+    if (localIndex < 16u)
+    {
+        _SpatialGroupHistograms[groupId.x * 16u + localIndex] =
+            _GroupHistogram[localIndex];
+    }
+}
+
+[numthreads(16, 1, 1)]
+void RadixScanOffsets(uint3 groupThreadId : SV_GroupThreadID)
+{
+    uint digit = groupThreadId.x;
+    uint binTotal = 0u;
+    for (uint groupIndex = 0u;
+         groupIndex < (uint)_SpatialGroupCount;
+         groupIndex++)
+    {
+        binTotal +=
+            _SpatialGroupHistograms[groupIndex * 16u + digit];
+    }
+    _GroupHistogram[digit] = binTotal;
+    GroupMemoryBarrierWithGroupSync();
+
+    uint binBase = 0u;
+    for (uint lowerDigit = 0u; lowerDigit < digit; lowerDigit++)
+    {
+        binBase += _GroupHistogram[lowerDigit];
+    }
+
+    uint running = binBase;
+    for (uint groupIndex = 0u;
+         groupIndex < (uint)_SpatialGroupCount;
+         groupIndex++)
+    {
+        uint histogramIndex = groupIndex * 16u + digit;
+        _SpatialGroupOffsets[histogramIndex] = running;
+        running += _SpatialGroupHistograms[histogramIndex];
+    }
+}
+
+[numthreads(256, 1, 1)]
+void RadixScatterStable(
+    uint3 groupId : SV_GroupID,
+    uint3 groupThreadId : SV_GroupThreadID,
+    uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint pointIndex = dispatchThreadId.x;
+    uint localIndex = groupThreadId.x;
+    bool valid = pointIndex < (uint)_SensorPointCount;
+    uint2 pair = valid ? _SpatialPairsIn[pointIndex] : uint2(0u, 0u);
+    uint digit = valid
+        ? ((pair.x >> (uint)_SpatialRadixShift) & 15u)
+        : 0u;
+    uint waveLaneCount = WaveGetLaneCount();
+    uint waveIndex = localIndex / waveLaneCount;
+    uint localRank = 0u;
+
+    [unroll]
+    for (uint bin = 0u; bin < 16u; bin++)
+    {
+        bool matches = valid && digit == bin;
+        uint waveRank = WavePrefixSum(matches ? 1u : 0u);
+        uint waveCount = WaveActiveCountBits(matches);
+        if (WaveIsFirstLane())
+        {
+            _WaveBinCounts[waveIndex * 16u + bin] = waveCount;
+        }
+        if (matches)
+        {
+            localRank = waveRank;
+        }
+    }
+    GroupMemoryBarrierWithGroupSync();
+
+    if (!valid)
+    {
+        return;
+    }
+
+    uint precedingWaveCount = 0u;
+    for (uint precedingWave = 0u;
+         precedingWave < waveIndex;
+         precedingWave++)
+    {
+        precedingWaveCount +=
+            _WaveBinCounts[precedingWave * 16u + digit];
+    }
+    uint destination =
+        _SpatialGroupOffsets[groupId.x * 16u + digit] +
+        precedingWaveCount +
+        localRank;
+    _SpatialPairsOut[destination] = pair;
+}
+
+[numthreads(256, 1, 1)]
+void ClearCellRanges(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint cellIndex = dispatchThreadId.x;
+    if (cellIndex < (uint)_SpatialCellCount)
+    {
+        _SpatialCellStarts[cellIndex] = 0xffffffffu;
+        _SpatialCellEnds[cellIndex] = 0u;
+    }
+}
+
+[numthreads(8, 1, 1)]
+void ClearValidation(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    if (dispatchThreadId.x < 8u)
+    {
+        _SpatialValidation[dispatchThreadId.x] = 0u;
+    }
+}
+
+[numthreads(256, 1, 1)]
+void BuildCellRanges(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint pointIndex = dispatchThreadId.x;
+    if (pointIndex >= (uint)_SensorPointCount)
+    {
+        return;
+    }
+
+    uint code = _SpatialPairsIn[pointIndex].x;
+    bool startsCell =
+        pointIndex == 0u || _SpatialPairsIn[pointIndex - 1u].x != code;
+    bool endsCell =
+        pointIndex + 1u == (uint)_SensorPointCount ||
+        _SpatialPairsIn[pointIndex + 1u].x != code;
+
+    if (startsCell)
+    {
+        _SpatialCellStarts[code] = pointIndex;
+        if (_SpatialValidationEnabled != 0)
+        {
+            uint ignored;
+            InterlockedAdd(_SpatialValidation[5], 1u, ignored);
+        }
+    }
+    if (endsCell)
+    {
+        _SpatialCellEnds[code] = pointIndex + 1u;
+    }
+}
+
+[numthreads(128, 1, 1)]
+void QueryCellRanges(
+    uint3 groupId : SV_GroupID,
+    uint3 groupThreadId : SV_GroupThreadID)
+{
+    uint queryIndex = groupId.x;
+    uint localIndex = groupThreadId.x;
+    if (queryIndex >= (uint)_SpatialQueryCount)
+    {
+        return;
+    }
+
+    uint4 query = _SpatialQueries[queryIndex];
+    uint diameter = query.w * 2u + 1u;
+    uint candidateCellCount = diameter * diameter * diameter;
+    uint localCount = 0u;
+
+    for (uint candidateIndex = localIndex;
+         candidateIndex < candidateCellCount;
+         candidateIndex += 128u)
+    {
+        uint offsetX = candidateIndex % diameter;
+        uint offsetY = (candidateIndex / diameter) % diameter;
+        uint offsetZ = candidateIndex / (diameter * diameter);
+        uint cellX = query.x + offsetX - query.w;
+        uint cellY = query.y + offsetY - query.w;
+        uint cellZ = query.z + offsetZ - query.w;
+        uint code = Morton3D(cellX, cellY, cellZ);
+        uint start = _SpatialCellStarts[code];
+        uint end = _SpatialCellEnds[code];
+        if (start != 0xffffffffu && end >= start)
+        {
+            localCount += end - start;
+        }
+    }
+
+    _GroupQueryCounts[localIndex] = localCount;
+    GroupMemoryBarrierWithGroupSync();
+    for (uint stride = 64u; stride > 0u; stride >>= 1u)
+    {
+        if (localIndex < stride)
+        {
+            _GroupQueryCounts[localIndex] +=
+                _GroupQueryCounts[localIndex + stride];
+        }
+        GroupMemoryBarrierWithGroupSync();
+    }
+
+    if (localIndex == 0u)
+    {
+        uint result = _GroupQueryCounts[0];
+        _SpatialQueryCounts[queryIndex] = result;
+        if (_SpatialValidationEnabled != 0 &&
+            result != _SpatialExpectedQueryCounts[queryIndex])
+        {
+            uint ignored;
+            InterlockedAdd(_SpatialValidation[2], 1u, ignored);
+        }
+    }
+}
+
+[numthreads(256, 1, 1)]
+void BruteForceQueries(
+    uint3 groupId : SV_GroupID,
+    uint3 groupThreadId : SV_GroupThreadID)
+{
+    uint queryIndex = groupId.x;
+    uint localIndex = groupThreadId.x;
+    if (queryIndex >= (uint)_SpatialQueryCount)
+    {
+        return;
+    }
+
+    uint4 query = _SpatialQueries[queryIndex];
+    uint localCount = 0u;
+    for (uint pointIndex = localIndex;
+         pointIndex < (uint)_SensorPointCount;
+         pointIndex += 256u)
+    {
+        uint x = pointIndex % (uint)_SensorWidth;
+        uint y = pointIndex / (uint)_SensorWidth;
+        float depth = _SensorDepth.Load(int3(x, y, 0));
+        uint cellX = min(
+            (x * (uint)_SpatialGridResolution) / (uint)_SensorWidth,
+            (uint)(_SpatialGridResolution - 1));
+        uint cellY = min(
+            (y * (uint)_SpatialGridResolution) / (uint)_SensorHeight,
+            (uint)(_SpatialGridResolution - 1));
+        uint cellZ = QuantizeDepth(depth);
+        bool inside =
+            cellX + query.w >= query.x &&
+            cellX <= query.x + query.w &&
+            cellY + query.w >= query.y &&
+            cellY <= query.y + query.w &&
+            cellZ + query.w >= query.z &&
+            cellZ <= query.z + query.w;
+        localCount += inside ? 1u : 0u;
+    }
+
+    _GroupQueryCounts[localIndex] = localCount;
+    GroupMemoryBarrierWithGroupSync();
+    for (uint stride = 128u; stride > 0u; stride >>= 1u)
+    {
+        if (localIndex < stride)
+        {
+            _GroupQueryCounts[localIndex] +=
+                _GroupQueryCounts[localIndex + stride];
+        }
+        GroupMemoryBarrierWithGroupSync();
+    }
+
+    if (localIndex == 0u)
+    {
+        uint result = _GroupQueryCounts[0];
+        _SpatialQueryCounts[queryIndex] = result;
+        if (_SpatialValidationEnabled != 0 &&
+            result != _SpatialExpectedQueryCounts[queryIndex])
+        {
+            uint ignored;
+            InterlockedAdd(_SpatialValidation[2], 1u, ignored);
+        }
+    }
+}
+
+[numthreads(256, 1, 1)]
+void ValidateIndex(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint sortedIndex = dispatchThreadId.x;
+    if (sortedIndex >= (uint)_SensorPointCount)
+    {
+        return;
+    }
+
+    uint2 pair = _SpatialPairsIn[sortedIndex];
+    if (pair.x >= (uint)_SpatialCellCount ||
+        pair.y >= (uint)_SensorPointCount)
+    {
+        uint ignoredBounds;
+        InterlockedAdd(_SpatialValidation[6], 1u, ignoredBounds);
+        return;
+    }
+
+    if (sortedIndex > 0u)
+    {
+        uint2 previousPair = _SpatialPairsIn[sortedIndex - 1u];
+        if (previousPair.x > pair.x ||
+            (previousPair.x == pair.x && previousPair.y > pair.y))
+        {
+            uint ignoredOrder;
+            InterlockedAdd(_SpatialValidation[0], 1u, ignoredOrder);
+        }
+    }
+
+    uint start = _SpatialCellStarts[pair.x];
+    uint end = _SpatialCellEnds[pair.x];
+    if (start == 0xffffffffu ||
+        sortedIndex < start ||
+        sortedIndex >= end)
+    {
+        uint ignoredRange;
+        InterlockedAdd(_SpatialValidation[1], 1u, ignoredRange);
+    }
+
+    uint ignoredXor;
+    uint ignoredSum;
+    InterlockedXor(_SpatialValidation[3], pair.y, ignoredXor);
+    InterlockedAdd(_SpatialValidation[4], pair.y, ignoredSum);
+}

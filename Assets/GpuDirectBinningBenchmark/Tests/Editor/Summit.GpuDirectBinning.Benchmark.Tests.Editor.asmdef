@@ -1,0 +1,21 @@
+{
+  "name": "Summit.GpuDirectBinning.Benchmark.Tests.Editor",
+  "rootNamespace": "Summit.GpuDirectBinning.Benchmark.Tests",
+  "references": [
+    "Summit.GpuDirectBinning.Benchmark"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": false,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false,
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ]
+}

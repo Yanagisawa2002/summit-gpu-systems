@@ -1,0 +1,521 @@
+#pragma kernel ClearUint
+#pragma kernel ProducePackedSoaAndCount
+#pragma kernel ScatterPackedIds
+#pragma kernel RangeQueryPackedSoaDigest
+#pragma kernel ReduceFrameDigest
+#pragma kernel ValidatePackedSamples
+#pragma kernel ValidateCsrBins
+#pragma target 5.0
+
+static const uint ThreadGroupSize = 256u;
+static const uint CoordinateMask = 65535u;
+static const uint GridBits = 6u;
+static const uint GridShift = 10u;
+static const uint PackedLaneMask = 65535u;
+
+RWStructuredBuffer<uint> _ClearBuffer;
+
+StructuredBuffer<uint> _PackedX;
+StructuredBuffer<uint> _PackedY;
+StructuredBuffer<uint> _PackedZ;
+StructuredBuffer<uint> _PackedIntensity;
+RWStructuredBuffer<uint> _PackedXRW;
+RWStructuredBuffer<uint> _PackedYRW;
+RWStructuredBuffer<uint> _PackedZRW;
+RWStructuredBuffer<uint> _PackedIntensityRW;
+
+RWStructuredBuffer<uint> _BinCounts;
+RWStructuredBuffer<uint> _BinOffsetsRW;
+StructuredBuffer<uint> _BinOffsets;
+RWStructuredBuffer<uint> _BinnedIdsRW;
+StructuredBuffer<uint> _BinnedIds;
+StructuredBuffer<uint4> _Queries;
+RWStructuredBuffer<uint4> _QueryDigests;
+RWStructuredBuffer<uint4> _FrameDigest;
+RWStructuredBuffer<uint> _ValidationDiagnostics;
+
+int _ClearCount;
+int _ElementCount;
+int _BinCount;
+int _QueryCount;
+int _Seed;
+int _LogicalState;
+
+groupshared uint _ReduceA[256];
+groupshared uint _ReduceB[256];
+groupshared uint _ReduceC[256];
+groupshared uint _ReduceD[256];
+
+uint Mix32(uint value)
+{
+    value ^= value >> 16u;
+    value *= 0x7FEB352Du;
+    value ^= value >> 15u;
+    value *= 0x846CA68Bu;
+    value ^= value >> 16u;
+    return value;
+}
+
+uint4 GenerateRawSample(uint index)
+{
+    uint logicalState = (uint)_LogicalState;
+    uint source = index ^ (uint)_Seed;
+    uint baseX = Mix32(source ^ 0xA511E9B3u) & CoordinateMask;
+    uint baseY = Mix32(source ^ 0x63D83595u) & CoordinateMask;
+    uint baseZ = Mix32(source ^ 0xC2B2AE35u) & CoordinateMask;
+    uint shiftX = ((logicalState * 17u) & 63u) << GridShift;
+    uint shiftY = ((logicalState * 29u) & 63u) << GridShift;
+    uint shiftZ = ((logicalState * 43u) & 63u) << GridShift;
+    uint x = (baseX + shiftX) & CoordinateMask;
+    uint y = (baseY + shiftY) & CoordinateMask;
+    uint z = (baseZ + shiftZ) & CoordinateMask;
+    uint payload = Mix32(source ^ 0x9E3779B9u) ^
+        Mix32(logicalState ^ 0xD1B54A35u);
+    return uint4(x, y, z, payload);
+}
+
+uint QuantizeIntensity16(uint rawValue)
+{
+    uint quotient = rawValue / 65537u;
+    uint remainder = rawValue - quotient * 65537u;
+    quotient += remainder > 32768u ? 1u : 0u;
+    return min(quotient, PackedLaneMask);
+}
+
+uint PackLanes(uint first, uint second)
+{
+    return (first & PackedLaneMask) |
+        ((second & PackedLaneMask) << 16u);
+}
+
+uint UnpackLane(uint packed, uint elementIndex)
+{
+    uint shift = (elementIndex & 1u) << 4u;
+    return (packed >> shift) & PackedLaneMask;
+}
+
+uint3 LoadPackedCoordinates(uint index)
+{
+    uint wordIndex = index >> 1u;
+    return uint3(
+        UnpackLane(_PackedX[wordIndex], index),
+        UnpackLane(_PackedY[wordIndex], index),
+        UnpackLane(_PackedZ[wordIndex], index));
+}
+
+uint LoadPackedIntensity(uint index)
+{
+    return UnpackLane(_PackedIntensity[index >> 1u], index);
+}
+
+uint4 LoadPackedSample(uint index)
+{
+    uint3 coordinates = LoadPackedCoordinates(index);
+    return uint4(coordinates, LoadPackedIntensity(index));
+}
+
+uint ComputeKey(uint x, uint y, uint z)
+{
+    uint cellX = x >> GridShift;
+    uint cellY = y >> GridShift;
+    uint cellZ = z >> GridShift;
+    return cellX | (cellY << GridBits) |
+        (cellZ << (GridBits * 2u));
+}
+
+uint ComputeKey(uint4 sample)
+{
+    return ComputeKey(sample.x, sample.y, sample.z);
+}
+
+uint ComputeKey(uint3 coordinates)
+{
+    return ComputeKey(
+        coordinates.x,
+        coordinates.y,
+        coordinates.z);
+}
+
+uint HashSample(uint id, uint4 sample)
+{
+    uint hash = Mix32(id ^ 0x85EBCA6Bu);
+    hash = Mix32(hash ^ sample.x);
+    hash = Mix32(hash ^ sample.y);
+    hash = Mix32(hash ^ sample.z);
+    return Mix32(hash ^ sample.w);
+}
+
+void RecordPackedMismatch(uint index, uint4 expected, uint4 actual)
+{
+    uint ignored;
+    uint delta = Mix32(
+        index ^ expected.x ^ actual.x ^
+        expected.y ^ actual.y ^
+        expected.z ^ actual.z ^
+        expected.w ^ actual.w ^
+        0xD6E8FEB9u);
+    InterlockedAdd(_ValidationDiagnostics[0], 1u, ignored);
+    InterlockedXor(_ValidationDiagnostics[1], delta, ignored);
+}
+
+void RecordCsrMismatch(uint bin, uint cursor, uint id, uint tag)
+{
+    uint ignored;
+    uint delta = Mix32(
+        bin ^ cursor ^ id ^ tag ^ 0x94D049BBu);
+    InterlockedAdd(_ValidationDiagnostics[2], 1u, ignored);
+    InterlockedXor(_ValidationDiagnostics[3], delta, ignored);
+}
+
+[numthreads(256, 1, 1)]
+void ClearUint(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint index = dispatchThreadId.x;
+    if (index < (uint)_ClearCount)
+    {
+        _ClearBuffer[index] = 0u;
+    }
+}
+
+[numthreads(256, 1, 1)]
+void ProducePackedSoaAndCount(
+    uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint wordIndex = dispatchThreadId.x;
+    uint firstIndex = wordIndex << 1u;
+    if (firstIndex >= (uint)_ElementCount)
+    {
+        return;
+    }
+
+    uint4 first = GenerateRawSample(firstIndex);
+    uint4 second = uint4(0u, 0u, 0u, 0u);
+    uint secondIndex = firstIndex + 1u;
+    bool hasSecond = secondIndex < (uint)_ElementCount;
+    if (hasSecond)
+    {
+        second = GenerateRawSample(secondIndex);
+    }
+
+    uint firstIntensity = QuantizeIntensity16(first.w);
+    uint secondIntensity = hasSecond
+        ? QuantizeIntensity16(second.w)
+        : 0u;
+    _PackedXRW[wordIndex] = PackLanes(first.x, second.x);
+    _PackedYRW[wordIndex] = PackLanes(first.y, second.y);
+    _PackedZRW[wordIndex] = PackLanes(first.z, second.z);
+    _PackedIntensityRW[wordIndex] =
+        PackLanes(firstIntensity, secondIntensity);
+
+    uint ignored;
+    InterlockedAdd(
+        _BinCounts[ComputeKey(first)],
+        1u,
+        ignored);
+    if (hasSecond)
+    {
+        InterlockedAdd(
+            _BinCounts[ComputeKey(second)],
+            1u,
+            ignored);
+    }
+}
+
+[numthreads(256, 1, 1)]
+void ScatterPackedIds(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint wordIndex = dispatchThreadId.x;
+    uint firstIndex = wordIndex << 1u;
+    if (firstIndex >= (uint)_ElementCount)
+    {
+        return;
+    }
+
+    uint packedX = _PackedX[wordIndex];
+    uint packedY = _PackedY[wordIndex];
+    uint packedZ = _PackedZ[wordIndex];
+    uint3 firstCoordinates = uint3(
+        packedX & PackedLaneMask,
+        packedY & PackedLaneMask,
+        packedZ & PackedLaneMask);
+    uint destination;
+    InterlockedAdd(
+        _BinOffsetsRW[ComputeKey(firstCoordinates)],
+        1u,
+        destination);
+    _BinnedIdsRW[destination] = firstIndex;
+
+    uint secondIndex = firstIndex + 1u;
+    if (secondIndex < (uint)_ElementCount)
+    {
+        uint3 secondCoordinates = uint3(
+            packedX >> 16u,
+            packedY >> 16u,
+            packedZ >> 16u);
+        InterlockedAdd(
+            _BinOffsetsRW[ComputeKey(secondCoordinates)],
+            1u,
+            destination);
+        _BinnedIdsRW[destination] = secondIndex;
+    }
+}
+
+[numthreads(256, 1, 1)]
+void RangeQueryPackedSoaDigest(
+    uint3 groupId : SV_GroupID,
+    uint groupThreadIndex : SV_GroupIndex)
+{
+    uint queryIndex = groupId.x;
+    if (queryIndex >= (uint)_QueryCount)
+    {
+        return;
+    }
+
+    uint4 query = _Queries[queryIndex];
+    uint radius = min(query.w, CoordinateMask);
+    uint minX = query.x > radius ? query.x - radius : 0u;
+    uint minY = query.y > radius ? query.y - radius : 0u;
+    uint minZ = query.z > radius ? query.z - radius : 0u;
+    uint maxX = min(CoordinateMask, query.x + radius);
+    uint maxY = min(CoordinateMask, query.y + radius);
+    uint maxZ = min(CoordinateMask, query.z + radius);
+    uint minCellX = minX >> GridShift;
+    uint minCellY = minY >> GridShift;
+    uint minCellZ = minZ >> GridShift;
+    uint maxCellX = maxX >> GridShift;
+    uint maxCellY = maxY >> GridShift;
+    uint maxCellZ = maxZ >> GridShift;
+
+    uint localCount = 0u;
+    uint localXor = 0u;
+    uint localSum0 = 0u;
+    uint localSum1 = 0u;
+
+    uint cellCountX = maxCellX - minCellX + 1u;
+    uint cellCountY = maxCellY - minCellY + 1u;
+    uint cellCountZ = maxCellZ - minCellZ + 1u;
+    uint candidateCellCount = cellCountX * cellCountY * cellCountZ;
+    for (
+        uint cellIndex = groupThreadIndex;
+        cellIndex < candidateCellCount;
+        cellIndex += ThreadGroupSize)
+    {
+        uint cellXOffset = cellIndex % cellCountX;
+        uint yzIndex = cellIndex / cellCountX;
+        uint cellYOffset = yzIndex % cellCountY;
+        uint cellZOffset = yzIndex / cellCountY;
+        uint cellX = minCellX + cellXOffset;
+        uint cellY = minCellY + cellYOffset;
+        uint cellZ = minCellZ + cellZOffset;
+        uint key = cellX | (cellY << GridBits) |
+            (cellZ << (GridBits * 2u));
+        uint begin = 0u;
+        if (key > 0u)
+        {
+            begin = _BinOffsets[key - 1u];
+        }
+        uint end = _BinOffsets[key];
+        for (uint cursor = begin; cursor < end; ++cursor)
+        {
+            uint id = _BinnedIds[cursor];
+            if (id >= (uint)_ElementCount)
+            {
+                continue;
+            }
+            uint3 coordinates = LoadPackedCoordinates(id);
+            bool inside =
+                coordinates.x >= minX && coordinates.x <= maxX &&
+                coordinates.y >= minY && coordinates.y <= maxY &&
+                coordinates.z >= minZ && coordinates.z <= maxZ;
+            if (!inside)
+            {
+                continue;
+            }
+
+            uint4 sample = uint4(
+                coordinates,
+                LoadPackedIntensity(id));
+            uint hash = HashSample(id, sample);
+            localCount += 1u;
+            localXor ^= hash;
+            localSum0 += hash;
+            localSum1 += Mix32(hash ^ id ^ 0x27D4EB2Fu);
+        }
+    }
+
+    _ReduceA[groupThreadIndex] = localCount;
+    _ReduceB[groupThreadIndex] = localXor;
+    _ReduceC[groupThreadIndex] = localSum0;
+    _ReduceD[groupThreadIndex] = localSum1;
+    GroupMemoryBarrierWithGroupSync();
+
+    for (uint stride = 128u; stride > 0u; stride >>= 1u)
+    {
+        if (groupThreadIndex < stride)
+        {
+            _ReduceA[groupThreadIndex] +=
+                _ReduceA[groupThreadIndex + stride];
+            _ReduceB[groupThreadIndex] ^=
+                _ReduceB[groupThreadIndex + stride];
+            _ReduceC[groupThreadIndex] +=
+                _ReduceC[groupThreadIndex + stride];
+            _ReduceD[groupThreadIndex] +=
+                _ReduceD[groupThreadIndex + stride];
+        }
+        GroupMemoryBarrierWithGroupSync();
+    }
+
+    if (groupThreadIndex == 0u)
+    {
+        _QueryDigests[queryIndex] = uint4(
+            _ReduceA[0],
+            _ReduceB[0],
+            _ReduceC[0],
+            _ReduceD[0]);
+    }
+}
+
+[numthreads(256, 1, 1)]
+void ReduceFrameDigest(uint groupThreadIndex : SV_GroupIndex)
+{
+    uint localCount = 0u;
+    uint localXor = 0u;
+    uint localSum0 = 0u;
+    uint localSum1 = 0u;
+    for (
+        uint queryIndex = groupThreadIndex;
+        queryIndex < (uint)_QueryCount;
+        queryIndex += ThreadGroupSize)
+    {
+        uint4 digest = _QueryDigests[queryIndex];
+        uint tag = Mix32(
+            queryIndex ^ digest.x ^ digest.y ^
+            digest.z ^ digest.w ^ 0x165667B1u);
+        localCount += digest.x;
+        localXor ^= tag;
+        localSum0 += digest.z + tag;
+        localSum1 += digest.w + Mix32(tag ^ 0x9E3779B9u);
+    }
+
+    _ReduceA[groupThreadIndex] = localCount;
+    _ReduceB[groupThreadIndex] = localXor;
+    _ReduceC[groupThreadIndex] = localSum0;
+    _ReduceD[groupThreadIndex] = localSum1;
+    GroupMemoryBarrierWithGroupSync();
+
+    for (uint stride = 128u; stride > 0u; stride >>= 1u)
+    {
+        if (groupThreadIndex < stride)
+        {
+            _ReduceA[groupThreadIndex] +=
+                _ReduceA[groupThreadIndex + stride];
+            _ReduceB[groupThreadIndex] ^=
+                _ReduceB[groupThreadIndex + stride];
+            _ReduceC[groupThreadIndex] +=
+                _ReduceC[groupThreadIndex + stride];
+            _ReduceD[groupThreadIndex] +=
+                _ReduceD[groupThreadIndex + stride];
+        }
+        GroupMemoryBarrierWithGroupSync();
+    }
+
+    if (groupThreadIndex == 0u)
+    {
+        _FrameDigest[(uint)_LogicalState] = uint4(
+            _ReduceA[0],
+            _ReduceB[0] ^ Mix32((uint)_LogicalState ^ 0x94D049BBu),
+            _ReduceC[0],
+            _ReduceD[0]);
+    }
+}
+
+[numthreads(256, 1, 1)]
+void ValidatePackedSamples(
+    uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint index = dispatchThreadId.x;
+    if (index >= (uint)_ElementCount)
+    {
+        return;
+    }
+
+    uint4 rawExpected = GenerateRawSample(index);
+    uint4 expected = uint4(
+        rawExpected.x,
+        rawExpected.y,
+        rawExpected.z,
+        QuantizeIntensity16(rawExpected.w));
+    uint4 actual = LoadPackedSample(index);
+    if (any(expected != actual))
+    {
+        RecordPackedMismatch(index, expected, actual);
+    }
+
+    if (index == 0u && (((uint)_ElementCount & 1u) != 0u))
+    {
+        uint wordIndex = (uint)_ElementCount >> 1u;
+        uint padding = (_PackedX[wordIndex] |
+            _PackedY[wordIndex] |
+            _PackedZ[wordIndex] |
+            _PackedIntensity[wordIndex]) >> 16u;
+        if (padding != 0u)
+        {
+            RecordPackedMismatch(
+                (uint)_ElementCount,
+                uint4(0u, 0u, 0u, 0u),
+                uint4(padding, 0u, 0u, 0u));
+        }
+    }
+}
+
+[numthreads(256, 1, 1)]
+void ValidateCsrBins(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint bin = dispatchThreadId.x;
+    if (bin >= (uint)_BinCount)
+    {
+        return;
+    }
+
+    uint begin = 0u;
+    if (bin > 0u)
+    {
+        begin = _BinOffsets[bin - 1u];
+    }
+    uint end = _BinOffsets[bin];
+    uint expectedEnd = begin + _BinCounts[bin];
+    if (begin > end ||
+        end > (uint)_ElementCount ||
+        expectedEnd != end ||
+        (bin + 1u == (uint)_BinCount &&
+            end != (uint)_ElementCount))
+    {
+        RecordCsrMismatch(bin, begin, end, 0xBAD00001u);
+        return;
+    }
+
+    for (uint cursor = begin; cursor < end; ++cursor)
+    {
+        uint id = _BinnedIds[cursor];
+        if (id >= (uint)_ElementCount)
+        {
+            RecordCsrMismatch(bin, cursor, id, 0xBAD00002u);
+            continue;
+        }
+        uint4 sample = LoadPackedSample(id);
+        if (ComputeKey(sample) != bin)
+        {
+            RecordCsrMismatch(bin, cursor, id, 0xBAD00003u);
+            continue;
+        }
+
+        uint ignored;
+        InterlockedAdd(_ValidationDiagnostics[4], 1u, ignored);
+        InterlockedXor(_ValidationDiagnostics[5], id, ignored);
+        InterlockedAdd(_ValidationDiagnostics[6], id, ignored);
+        InterlockedAdd(
+            _ValidationDiagnostics[7],
+            Mix32(id ^ 0x27D4EB2Fu),
+            ignored);
+    }
+}

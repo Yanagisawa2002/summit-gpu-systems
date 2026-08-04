@@ -1,0 +1,11 @@
+{
+  "name": "Summit.GpuAutotuning.Tests.Editor",
+  "rootNamespace": "Summit.GpuAutotuning.Tests",
+  "references": [
+    "Summit.GpuAutotuning",
+    "Summit.GpuPrimitives"
+  ],
+  "optionalUnityReferences": ["TestAssemblies"],
+  "includePlatforms": ["Editor"],
+  "autoReferenced": false
+}

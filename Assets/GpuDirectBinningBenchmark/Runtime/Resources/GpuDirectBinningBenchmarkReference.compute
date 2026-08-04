@@ -1,0 +1,68 @@
+#pragma kernel ClearDiagnostics
+#pragma kernel PrepareHeadsAndTotal
+#pragma kernel ScatterPortable
+
+StructuredBuffer<uint> _Keys;
+StructuredBuffer<uint> _Values;
+StructuredBuffer<uint> _BinCounts;
+RWStructuredBuffer<uint> _BinOffsets;
+RWStructuredBuffer<uint> _WriteHeads;
+RWStructuredBuffer<uint> _BinnedValues;
+RWStructuredBuffer<uint> _Diagnostics;
+
+int _ElementCount;
+int _BinCount;
+
+[numthreads(64, 1, 1)]
+void ClearDiagnostics(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    if (dispatchThreadId.x < 2u)
+    {
+        _Diagnostics[dispatchThreadId.x] = 0u;
+    }
+}
+
+[numthreads(256, 1, 1)]
+void PrepareHeadsAndTotal(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint bin = dispatchThreadId.x;
+    if (bin < (uint)_BinCount)
+    {
+        _WriteHeads[bin] = _BinOffsets[bin];
+    }
+    if (bin == 0u)
+    {
+        uint last = (uint)_BinCount - 1u;
+        _BinOffsets[(uint)_BinCount] =
+            _BinOffsets[last] + _BinCounts[last];
+    }
+}
+
+[numthreads(256, 1, 1)]
+void ScatterPortable(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint source = dispatchThreadId.x;
+    if (source >= (uint)_ElementCount)
+    {
+        return;
+    }
+
+    uint bin = _Keys[source];
+    if (bin >= (uint)_BinCount)
+    {
+        uint ignored;
+        InterlockedAdd(_Diagnostics[0], 1u, ignored);
+        InterlockedOr(_Diagnostics[1], 1u, ignored);
+        return;
+    }
+
+    uint destination;
+    InterlockedAdd(_WriteHeads[bin], 1u, destination);
+    if (destination >= (uint)_ElementCount)
+    {
+        uint ignored;
+        InterlockedOr(_Diagnostics[1], 2u, ignored);
+        return;
+    }
+    _BinnedValues[destination] = _Values[source];
+}

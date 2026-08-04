@@ -1,0 +1,18 @@
+{
+  "name": "Summit.GpuDeadlineScheduler.Benchmark.Editor",
+  "rootNamespace": "",
+  "references": [
+    "Summit.GpuDeadlineScheduler.Benchmark"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

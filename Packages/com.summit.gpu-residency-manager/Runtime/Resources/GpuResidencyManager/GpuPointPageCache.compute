@@ -1,0 +1,89 @@
+#pragma kernel ClearPageTable
+#pragma kernel ApplyPageTableDeltas
+#pragma kernel ScatterPageUploads
+#pragma kernel QueryPageDigests
+
+StructuredBuffer<uint4> _UploadPayload;
+StructuredBuffer<uint2> _Uploads;
+StructuredBuffer<uint2> _Deltas;
+StructuredBuffer<uint> _RequestedPages;
+RWStructuredBuffer<uint4> _PhysicalPoints;
+RWStructuredBuffer<uint> _PageTable;
+RWStructuredBuffer<uint4> _PageDigests;
+
+uint _VirtualPageCount;
+uint _PointsPerPage;
+uint _RequestedPageCount;
+uint _UploadCount;
+uint _DeltaCount;
+
+[numthreads(256, 1, 1)]
+void ClearPageTable(uint3 dispatchId : SV_DispatchThreadID)
+{
+    if (dispatchId.x < _VirtualPageCount)
+    {
+        _PageTable[dispatchId.x] = 0xffffffffu;
+    }
+}
+
+[numthreads(256, 1, 1)]
+void ApplyPageTableDeltas(uint3 dispatchId : SV_DispatchThreadID)
+{
+    uint index = dispatchId.x;
+    if (index < _DeltaCount)
+    {
+        uint2 delta = _Deltas[index];
+        _PageTable[delta.x] = delta.y;
+    }
+}
+
+[numthreads(256, 1, 1)]
+void ScatterPageUploads(uint3 dispatchId : SV_DispatchThreadID)
+{
+    uint index = dispatchId.x;
+    uint total = _UploadCount * _PointsPerPage;
+    if (index >= total)
+    {
+        return;
+    }
+    uint uploadIndex = index / _PointsPerPage;
+    uint pointIndex = index - uploadIndex * _PointsPerPage;
+    uint physicalSlot = _Uploads[uploadIndex].y;
+    _PhysicalPoints[physicalSlot * _PointsPerPage + pointIndex] =
+        _UploadPayload[index];
+}
+
+[numthreads(256, 1, 1)]
+void QueryPageDigests(uint3 dispatchId : SV_DispatchThreadID)
+{
+    uint requestIndex = dispatchId.x;
+    if (requestIndex >= _RequestedPageCount)
+    {
+        return;
+    }
+    uint virtualPage = _RequestedPages[requestIndex];
+    uint physicalSlot = _PageTable[virtualPage];
+    if (physicalSlot == 0xffffffffu)
+    {
+        _PageDigests[requestIndex] = 0xffffffffu;
+        return;
+    }
+
+    uint x = 2166136261u ^ virtualPage;
+    uint y = 0x9E3779B9u + virtualPage;
+    uint z = 0x85EBCA6Bu ^ _PointsPerPage;
+    uint w = 0xC2B2AE35u + virtualPage;
+    uint baseIndex = physicalSlot * _PointsPerPage;
+    [loop]
+    for (uint pointIndex = 0u;
+        pointIndex < _PointsPerPage;
+        pointIndex++)
+    {
+        uint4 value = _PhysicalPoints[baseIndex + pointIndex];
+        x = (x ^ value.x) * 16777619u;
+        y = (y + value.y) * 2246822519u;
+        z = (z ^ value.z) * 3266489917u;
+        w = (w + value.w) * 668265263u;
+    }
+    _PageDigests[requestIndex] = uint4(x, y, z, w);
+}

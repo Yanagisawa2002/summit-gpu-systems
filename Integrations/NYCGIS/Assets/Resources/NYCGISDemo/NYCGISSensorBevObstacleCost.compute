@@ -1,0 +1,93 @@
+#pragma kernel ClearBev
+#pragma kernel DepthToBev
+#pragma kernel BevToObstacleCost
+
+Texture2D<float> _SensorDepth;
+RWStructuredBuffer<uint> _SensorBev;
+RWStructuredBuffer<uint> _SensorObstacleCost;
+
+int _SensorWidth;
+int _SensorPointCount;
+int _SensorBevCellCount;
+int _SensorBevResolution;
+int _SensorCostRadius;
+float4 _SensorIntrinsics;
+float4 _SensorBevBounds;
+
+[numthreads(256, 1, 1)]
+void ClearBev(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint cellIndex = dispatchThreadId.x;
+    if (cellIndex < (uint)_SensorBevCellCount)
+    {
+        _SensorBev[cellIndex] = 0u;
+    }
+}
+
+[numthreads(256, 1, 1)]
+void DepthToBev(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint pointIndex = dispatchThreadId.x;
+    if (pointIndex >= (uint)_SensorPointCount)
+    {
+        return;
+    }
+
+    uint x = pointIndex % (uint)_SensorWidth;
+    uint y = pointIndex / (uint)_SensorWidth;
+    float depth = _SensorDepth.Load(int3(x, y, 0));
+    float pointX = ((float)x - _SensorIntrinsics.z) * depth / _SensorIntrinsics.x;
+    int cellX = (int)floor((pointX - _SensorBevBounds.x) * _SensorBevBounds.z);
+    int cellZ = (int)floor((depth - _SensorBevBounds.y) * _SensorBevBounds.w);
+    if (cellX < 0 || cellX >= _SensorBevResolution ||
+        cellZ < 0 || cellZ >= _SensorBevResolution)
+    {
+        return;
+    }
+
+    uint previous;
+    InterlockedAdd(
+        _SensorBev[(uint)(cellZ * _SensorBevResolution + cellX)],
+        1u,
+        previous);
+}
+
+[numthreads(8, 8, 1)]
+void BevToObstacleCost(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    int cellX = (int)dispatchThreadId.x;
+    int cellZ = (int)dispatchThreadId.y;
+    if (cellX >= _SensorBevResolution || cellZ >= _SensorBevResolution)
+    {
+        return;
+    }
+
+    uint bestDistanceSquared = 0xffffffffu;
+    for (int offsetZ = -_SensorCostRadius; offsetZ <= _SensorCostRadius; offsetZ++)
+    {
+        int sampleZ = cellZ + offsetZ;
+        if (sampleZ < 0 || sampleZ >= _SensorBevResolution)
+        {
+            continue;
+        }
+        for (int offsetX = -_SensorCostRadius; offsetX <= _SensorCostRadius; offsetX++)
+        {
+            int sampleX = cellX + offsetX;
+            if (sampleX < 0 || sampleX >= _SensorBevResolution)
+            {
+                continue;
+            }
+            if (_SensorBev[sampleZ * _SensorBevResolution + sampleX] == 0u)
+            {
+                continue;
+            }
+            uint distanceSquared = (uint)(offsetX * offsetX + offsetZ * offsetZ);
+            bestDistanceSquared = min(bestDistanceSquared, distanceSquared);
+        }
+    }
+
+    uint cost = bestDistanceSquared == 0xffffffffu
+        ? 0u
+        : 255u - min(255u, bestDistanceSquared * 12u);
+    _SensorObstacleCost[cellZ * _SensorBevResolution + cellX] = cost;
+}

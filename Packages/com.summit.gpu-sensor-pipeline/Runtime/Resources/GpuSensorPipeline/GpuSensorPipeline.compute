@@ -1,0 +1,340 @@
+#pragma kernel ProduceDeterministicSamplesAndKeys
+#pragma kernel RangeQueryDigest
+#pragma kernel ReduceFrameDigest
+#pragma kernel ClearValidationDiagnostics
+#pragma kernel ValidateKeys
+#pragma kernel ClearComparisonDigest
+#pragma kernel CompareDigests
+#pragma target 5.0
+
+static const uint ThreadGroupSize = 256u;
+static const uint CoordinateMask = 65535u;
+static const uint GridBits = 6u;
+static const uint GridShift = 10u;
+
+RWStructuredBuffer<uint4> _SamplesRW;
+RWStructuredBuffer<uint> _KeysRW;
+StructuredBuffer<uint4> _Samples;
+StructuredBuffer<uint> _Keys;
+StructuredBuffer<uint> _BinOffsets;
+StructuredBuffer<uint> _BinnedIds;
+StructuredBuffer<uint4> _Queries;
+RWStructuredBuffer<uint4> _QueryDigests;
+RWStructuredBuffer<uint4> _FrameDigest;
+RWStructuredBuffer<uint> _ValidationDiagnostics;
+StructuredBuffer<uint4> _ExpectedDigests;
+StructuredBuffer<uint4> _ActualDigests;
+RWStructuredBuffer<uint4> _ComparisonDigest;
+
+int _ElementCount;
+int _BinCount;
+int _QueryCount;
+int _QueryStart;
+int _CompareCount;
+int _Seed;
+int _LogicalState;
+int _QuantizeIntensity;
+
+groupshared uint _ReduceA[256];
+groupshared uint _ReduceB[256];
+groupshared uint _ReduceC[256];
+groupshared uint _ReduceD[256];
+
+uint Mix32(uint value)
+{
+    value ^= value >> 16u;
+    value *= 0x7FEB352Du;
+    value ^= value >> 15u;
+    value *= 0x846CA68Bu;
+    value ^= value >> 16u;
+    return value;
+}
+
+uint QuantizeIntensity16(uint rawValue)
+{
+    uint quotient = rawValue / 65537u;
+    uint remainder = rawValue - quotient * 65537u;
+    quotient += remainder > 32768u ? 1u : 0u;
+    return min(quotient, 65535u);
+}
+
+uint4 GenerateSample(uint index)
+{
+    uint logicalState = (uint)_LogicalState;
+    uint source = index ^ (uint)_Seed;
+    uint baseX = Mix32(source ^ 0xA511E9B3u) & CoordinateMask;
+    uint baseY = Mix32(source ^ 0x63D83595u) & CoordinateMask;
+    uint baseZ = Mix32(source ^ 0xC2B2AE35u) & CoordinateMask;
+    uint shiftX = ((logicalState * 17u) & 63u) << GridShift;
+    uint shiftY = ((logicalState * 29u) & 63u) << GridShift;
+    uint shiftZ = ((logicalState * 43u) & 63u) << GridShift;
+    uint x = (baseX + shiftX) & CoordinateMask;
+    uint y = (baseY + shiftY) & CoordinateMask;
+    uint z = (baseZ + shiftZ) & CoordinateMask;
+    uint payload = Mix32(source ^ 0x9E3779B9u) ^
+        Mix32(logicalState ^ 0xD1B54A35u);
+    return uint4(x, y, z, payload);
+}
+
+uint ComputeKey(uint4 sample)
+{
+    uint cellX = sample.x >> GridShift;
+    uint cellY = sample.y >> GridShift;
+    uint cellZ = sample.z >> GridShift;
+    return cellX | (cellY << GridBits) |
+        (cellZ << (GridBits * 2u));
+}
+
+uint HashSample(uint id, uint4 sample)
+{
+    uint hash = Mix32(id ^ 0x85EBCA6Bu);
+    hash = Mix32(hash ^ sample.x);
+    hash = Mix32(hash ^ sample.y);
+    hash = Mix32(hash ^ sample.z);
+    return Mix32(hash ^ sample.w);
+}
+
+[numthreads(256, 1, 1)]
+void ProduceDeterministicSamplesAndKeys(
+    uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint index = dispatchThreadId.x;
+    if (index >= (uint)_ElementCount)
+    {
+        return;
+    }
+
+    uint4 sample = GenerateSample(index);
+    _SamplesRW[index] = sample;
+    _KeysRW[index] = ComputeKey(sample);
+}
+
+[numthreads(256, 1, 1)]
+void RangeQueryDigest(
+    uint3 groupId : SV_GroupID,
+    uint groupThreadIndex : SV_GroupIndex)
+{
+    uint localQueryIndex = groupId.x;
+    if (localQueryIndex >= (uint)_QueryCount)
+    {
+        return;
+    }
+    uint queryIndex = (uint)_QueryStart + localQueryIndex;
+
+    uint4 query = _Queries[queryIndex];
+    uint radius = min(query.w, CoordinateMask);
+    uint minX = query.x > radius ? query.x - radius : 0u;
+    uint minY = query.y > radius ? query.y - radius : 0u;
+    uint minZ = query.z > radius ? query.z - radius : 0u;
+    uint maxX = min(CoordinateMask, query.x + radius);
+    uint maxY = min(CoordinateMask, query.y + radius);
+    uint maxZ = min(CoordinateMask, query.z + radius);
+    uint minCellX = minX >> GridShift;
+    uint minCellY = minY >> GridShift;
+    uint minCellZ = minZ >> GridShift;
+    uint maxCellX = maxX >> GridShift;
+    uint maxCellY = maxY >> GridShift;
+    uint maxCellZ = maxZ >> GridShift;
+
+    uint localCount = 0u;
+    uint localXor = 0u;
+    uint localSum0 = 0u;
+    uint localSum1 = 0u;
+
+    uint cellCountX = maxCellX - minCellX + 1u;
+    uint cellCountY = maxCellY - minCellY + 1u;
+    uint cellCountZ = maxCellZ - minCellZ + 1u;
+    uint candidateCellCount = cellCountX * cellCountY * cellCountZ;
+    for (
+        uint cellIndex = groupThreadIndex;
+        cellIndex < candidateCellCount;
+        cellIndex += ThreadGroupSize)
+    {
+        uint cellXOffset = cellIndex % cellCountX;
+        uint yzIndex = cellIndex / cellCountX;
+        uint cellYOffset = yzIndex % cellCountY;
+        uint cellZOffset = yzIndex / cellCountY;
+        uint cellX = minCellX + cellXOffset;
+        uint cellY = minCellY + cellYOffset;
+        uint cellZ = minCellZ + cellZOffset;
+        uint key = cellX | (cellY << GridBits) |
+            (cellZ << (GridBits * 2u));
+        uint begin = _BinOffsets[key];
+        uint end = _BinOffsets[key + 1u];
+        for (uint cursor = begin; cursor < end; ++cursor)
+        {
+            uint id = _BinnedIds[cursor];
+            if (id >= (uint)_ElementCount)
+            {
+                continue;
+            }
+            uint4 sample = _Samples[id];
+            if (_QuantizeIntensity != 0)
+            {
+                sample.w = QuantizeIntensity16(sample.w);
+            }
+            bool inside = sample.x >= minX && sample.x <= maxX &&
+                sample.y >= minY && sample.y <= maxY &&
+                sample.z >= minZ && sample.z <= maxZ;
+            if (!inside)
+            {
+                continue;
+            }
+
+            uint hash = HashSample(id, sample);
+            localCount += 1u;
+            localXor ^= hash;
+            localSum0 += hash;
+            localSum1 += Mix32(hash ^ id ^ 0x27D4EB2Fu);
+        }
+    }
+
+    _ReduceA[groupThreadIndex] = localCount;
+    _ReduceB[groupThreadIndex] = localXor;
+    _ReduceC[groupThreadIndex] = localSum0;
+    _ReduceD[groupThreadIndex] = localSum1;
+    GroupMemoryBarrierWithGroupSync();
+
+    for (uint stride = 128u; stride > 0u; stride >>= 1u)
+    {
+        if (groupThreadIndex < stride)
+        {
+            _ReduceA[groupThreadIndex] +=
+                _ReduceA[groupThreadIndex + stride];
+            _ReduceB[groupThreadIndex] ^=
+                _ReduceB[groupThreadIndex + stride];
+            _ReduceC[groupThreadIndex] +=
+                _ReduceC[groupThreadIndex + stride];
+            _ReduceD[groupThreadIndex] +=
+                _ReduceD[groupThreadIndex + stride];
+        }
+        GroupMemoryBarrierWithGroupSync();
+    }
+
+    if (groupThreadIndex == 0u)
+    {
+        _QueryDigests[queryIndex] = uint4(
+            _ReduceA[0],
+            _ReduceB[0],
+            _ReduceC[0],
+            _ReduceD[0]);
+    }
+}
+
+[numthreads(256, 1, 1)]
+void ReduceFrameDigest(uint groupThreadIndex : SV_GroupIndex)
+{
+    uint localCount = 0u;
+    uint localXor = 0u;
+    uint localSum0 = 0u;
+    uint localSum1 = 0u;
+    for (
+        uint queryIndex = groupThreadIndex;
+        queryIndex < (uint)_QueryCount;
+        queryIndex += ThreadGroupSize)
+    {
+        uint4 digest = _QueryDigests[queryIndex];
+        uint tag = Mix32(
+            queryIndex ^ digest.x ^ digest.y ^
+            digest.z ^ digest.w ^ 0x165667B1u);
+        localCount += digest.x;
+        localXor ^= tag;
+        localSum0 += digest.z + tag;
+        localSum1 += digest.w + Mix32(tag ^ 0x9E3779B9u);
+    }
+
+    _ReduceA[groupThreadIndex] = localCount;
+    _ReduceB[groupThreadIndex] = localXor;
+    _ReduceC[groupThreadIndex] = localSum0;
+    _ReduceD[groupThreadIndex] = localSum1;
+    GroupMemoryBarrierWithGroupSync();
+
+    for (uint stride = 128u; stride > 0u; stride >>= 1u)
+    {
+        if (groupThreadIndex < stride)
+        {
+            _ReduceA[groupThreadIndex] +=
+                _ReduceA[groupThreadIndex + stride];
+            _ReduceB[groupThreadIndex] ^=
+                _ReduceB[groupThreadIndex + stride];
+            _ReduceC[groupThreadIndex] +=
+                _ReduceC[groupThreadIndex + stride];
+            _ReduceD[groupThreadIndex] +=
+                _ReduceD[groupThreadIndex + stride];
+        }
+        GroupMemoryBarrierWithGroupSync();
+    }
+
+    if (groupThreadIndex == 0u)
+    {
+        _FrameDigest[(uint)_LogicalState] = uint4(
+            _ReduceA[0],
+            _ReduceB[0] ^ Mix32((uint)_LogicalState ^ 0x94D049BBu),
+            _ReduceC[0],
+            _ReduceD[0]);
+    }
+}
+
+[numthreads(1, 1, 1)]
+void ClearValidationDiagnostics(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    _ValidationDiagnostics[0] = 0u;
+    _ValidationDiagnostics[1] = 0u;
+}
+
+[numthreads(256, 1, 1)]
+void ValidateKeys(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint index = dispatchThreadId.x;
+    if (index >= (uint)_ElementCount)
+    {
+        return;
+    }
+
+    uint key = _Keys[index];
+    if (key < (uint)_BinCount)
+    {
+        return;
+    }
+
+    uint ignored;
+    InterlockedAdd(_ValidationDiagnostics[0], 1u, ignored);
+    InterlockedXor(
+        _ValidationDiagnostics[1],
+        Mix32(index ^ key ^ 0xD6E8FEB9u),
+        ignored);
+}
+
+[numthreads(1, 1, 1)]
+void ClearComparisonDigest(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    _ComparisonDigest[0] = uint4(0u, 0u, 0u, 0u);
+}
+
+[numthreads(256, 1, 1)]
+void CompareDigests(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint index = dispatchThreadId.x;
+    if (index >= (uint)_CompareCount)
+    {
+        return;
+    }
+
+    uint4 expected = _ExpectedDigests[index];
+    uint4 actual = _ActualDigests[index];
+    bool equal = all(expected == actual);
+    if (equal)
+    {
+        return;
+    }
+
+    uint delta0 = Mix32(index ^ expected.x ^ actual.x ^ 0x243F6A88u);
+    uint delta1 = Mix32(expected.y ^ actual.y ^ 0x85A308D3u);
+    uint delta2 = Mix32(
+        expected.z ^ actual.z ^ expected.w ^ actual.w ^ 0x13198A2Eu);
+    uint ignored;
+    InterlockedAdd(_ComparisonDigest[0].x, 1u, ignored);
+    InterlockedXor(_ComparisonDigest[0].y, delta0, ignored);
+    InterlockedAdd(_ComparisonDigest[0].z, delta1, ignored);
+    InterlockedAdd(_ComparisonDigest[0].w, delta2, ignored);
+}

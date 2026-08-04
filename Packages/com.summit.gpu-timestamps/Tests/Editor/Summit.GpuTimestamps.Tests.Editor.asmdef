@@ -1,0 +1,21 @@
+{
+  "name": "Summit.GpuTimestamps.Tests.Editor",
+  "rootNamespace": "Summit.GpuTimestamps.Tests",
+  "references": [
+    "Summit.GpuTimestamps"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": false,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ],
+  "noEngineReferences": false
+}

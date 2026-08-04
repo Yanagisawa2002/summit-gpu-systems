@@ -1,0 +1,45 @@
+# Unity generated state
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+[Mm]emoryCaptures/
+[Rr]ecordings/
+
+# Generated benchmark scenes and players
+Assets/**/Generated/
+[Bb]uild/
+[Bb]uilds/
+[Tt]est[Rr]esults/
+[Aa]rtifacts/
+[Rr]eports/
+
+# Native build intermediates
+Packages/*/Native~/Build/
+*.obj
+*.pdb
+*.ilk
+*.exp
+*.lib
+
+# IDE files
+.vs/
+.vscode/
+.idea/
+*.csproj
+*.sln
+*.suo
+*.user
+*.userprefs
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# GPU capture tools
+*.rgp
+*.rdc
+*.pix3
+*.wpix

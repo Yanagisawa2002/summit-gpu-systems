@@ -1,0 +1,78 @@
+#pragma kernel ClearUint
+#pragma kernel MarkSortedRanges
+#pragma kernel FinalizeCounts
+#pragma kernel WriteTerminalOffset
+#pragma target 5.0
+
+StructuredBuffer<uint> _SortedKeys;
+
+RWStructuredBuffer<uint> _ClearBuffer;
+RWStructuredBuffer<uint> _BinCounts;
+RWStructuredBuffer<uint> _BinOffsets;
+
+int _ClearCount;
+int _ElementCount;
+int _BinCount;
+
+[numthreads(256, 1, 1)]
+void ClearUint(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint index = dispatchThreadId.x;
+    if (index < (uint)_ClearCount)
+    {
+        _ClearBuffer[index] = 0u;
+    }
+}
+
+[numthreads(256, 1, 1)]
+void MarkSortedRanges(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint index = dispatchThreadId.x;
+    if (index >= (uint)_ElementCount)
+    {
+        return;
+    }
+
+    uint key = _SortedKeys[index];
+    if (key >= (uint)_BinCount)
+    {
+        return;
+    }
+
+    bool startsRun =
+        index == 0u || _SortedKeys[index - 1u] != key;
+    bool endsRun =
+        index + 1u == (uint)_ElementCount ||
+        _SortedKeys[index + 1u] != key;
+
+    if (startsRun)
+    {
+        _BinOffsets[key] = index;
+    }
+    if (endsRun)
+    {
+        _BinCounts[key] = index + 1u;
+    }
+}
+
+[numthreads(256, 1, 1)]
+void FinalizeCounts(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint bin = dispatchThreadId.x;
+    if (bin >= (uint)_BinCount)
+    {
+        return;
+    }
+
+    uint end = _BinCounts[bin];
+    uint start = _BinOffsets[bin];
+    _BinCounts[bin] = end > start ? end - start : 0u;
+}
+
+[numthreads(1, 1, 1)]
+void WriteTerminalOffset(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint lastBin = (uint)_BinCount - 1u;
+    _BinOffsets[_BinCount] =
+        _BinOffsets[lastBin] + _BinCounts[lastBin];
+}

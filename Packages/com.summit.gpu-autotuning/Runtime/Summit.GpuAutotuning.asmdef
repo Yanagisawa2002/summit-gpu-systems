@@ -1,0 +1,8 @@
+{
+  "name": "Summit.GpuAutotuning",
+  "rootNamespace": "Summit.GpuAutotuning",
+  "references": [
+    "Summit.GpuPrimitives"
+  ],
+  "autoReferenced": true
+}

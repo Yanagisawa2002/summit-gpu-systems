@@ -1,0 +1,21 @@
+{
+  "name": "Summit.GpuAdaptiveBinning.Benchmark.Tests.Editor",
+  "rootNamespace": "Summit.GpuAdaptiveBinning.Benchmark.Tests",
+  "references": [
+    "Summit.GpuAdaptiveBinning.Benchmark"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": false,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false,
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ]
+}

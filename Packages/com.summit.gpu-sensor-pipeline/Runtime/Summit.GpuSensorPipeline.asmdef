@@ -1,0 +1,17 @@
+{
+  "name": "Summit.GpuSensorPipeline",
+  "rootNamespace": "Summit.GpuSensorPipeline",
+  "references": [
+    "Summit.GpuDirectBinning",
+    "Summit.GpuPrimitives"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

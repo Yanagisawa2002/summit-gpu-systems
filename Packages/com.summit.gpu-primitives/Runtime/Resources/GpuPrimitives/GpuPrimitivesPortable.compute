@@ -1,0 +1,295 @@
+#pragma kernel ClearUint
+#pragma kernel NormalizePredicates
+#pragma kernel ScanBlocksPortable
+#pragma kernel AddBlockOffsets
+#pragma kernel HistogramAtomic
+#pragma kernel StableCompactScatter
+#pragma kernel AppendCompactAtomic
+#pragma kernel RadixHistogramPortable
+#pragma kernel RadixScanOffsets
+#pragma kernel RadixScatterPortable
+#pragma target 5.0
+
+StructuredBuffer<uint> _Input;
+StructuredBuffer<uint> _Values;
+StructuredBuffer<uint> _Predicates;
+StructuredBuffer<uint> _ScanInput;
+StructuredBuffer<uint> _ScannedPredicates;
+StructuredBuffer<uint> _BlockOffsets;
+StructuredBuffer<uint> _Keys;
+
+RWStructuredBuffer<uint> _Output;
+RWStructuredBuffer<uint> _ScanOutput;
+RWStructuredBuffer<uint> _BlockSums;
+RWStructuredBuffer<uint> _Histogram;
+RWStructuredBuffer<uint> _OutputCount;
+RWStructuredBuffer<uint> _ClearBuffer;
+RWStructuredBuffer<uint> _NormalizedPredicates;
+
+StructuredBuffer<uint> _RadixKeysIn;
+StructuredBuffer<uint> _RadixValuesIn;
+RWStructuredBuffer<uint> _RadixKeysOut;
+RWStructuredBuffer<uint> _RadixValuesOut;
+RWStructuredBuffer<uint> _RadixGroupHistograms;
+RWStructuredBuffer<uint> _RadixGroupOffsets;
+
+int _Count;
+int _ClearCount;
+int _BinCount;
+int _KeyShift;
+int _RadixGroupCount;
+int _RadixShift;
+
+groupshared uint _ScanShared[256];
+groupshared uint _RadixHistogramShared[16];
+groupshared uint _RadixDigits[256];
+groupshared uint _RadixKeysShared[256];
+groupshared uint _RadixValuesShared[256];
+groupshared uint _RadixBinRanks[16];
+
+[numthreads(256, 1, 1)]
+void ClearUint(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint index = dispatchThreadId.x;
+    if (index < (uint)_ClearCount)
+    {
+        _ClearBuffer[index] = 0u;
+    }
+}
+
+[numthreads(256, 1, 1)]
+void NormalizePredicates(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint index = dispatchThreadId.x;
+    if (index < (uint)_Count)
+    {
+        _NormalizedPredicates[index] =
+            _Predicates[index] != 0u ? 1u : 0u;
+    }
+}
+
+// One uint per lane keeps the hierarchy simple and makes every partial block
+// follow the same path. The CPU-side recorder recursively scans _BlockSums.
+[numthreads(256, 1, 1)]
+void ScanBlocksPortable(
+    uint3 groupId : SV_GroupID,
+    uint3 groupThreadId : SV_GroupThreadID,
+    uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint localIndex = groupThreadId.x;
+    uint globalIndex = dispatchThreadId.x;
+    _ScanShared[localIndex] =
+        globalIndex < (uint)_Count ? _ScanInput[globalIndex] : 0u;
+    GroupMemoryBarrierWithGroupSync();
+
+    [unroll]
+    for (uint upsweepStride = 1u;
+         upsweepStride < 256u;
+         upsweepStride <<= 1u)
+    {
+        uint treeIndex =
+            ((localIndex + 1u) * upsweepStride * 2u) - 1u;
+        if (treeIndex < 256u)
+        {
+            _ScanShared[treeIndex] +=
+                _ScanShared[treeIndex - upsweepStride];
+        }
+        GroupMemoryBarrierWithGroupSync();
+    }
+
+    if (localIndex == 0u)
+    {
+        _BlockSums[groupId.x] = _ScanShared[255];
+        _ScanShared[255] = 0u;
+    }
+    GroupMemoryBarrierWithGroupSync();
+
+    for (uint downsweepStride = 128u;
+         downsweepStride > 0u;
+         downsweepStride >>= 1u)
+    {
+        uint treeIndex =
+            ((localIndex + 1u) * downsweepStride * 2u) - 1u;
+        if (treeIndex < 256u)
+        {
+            uint left = _ScanShared[treeIndex - downsweepStride];
+            _ScanShared[treeIndex - downsweepStride] =
+                _ScanShared[treeIndex];
+            _ScanShared[treeIndex] += left;
+        }
+        GroupMemoryBarrierWithGroupSync();
+    }
+
+    if (globalIndex < (uint)_Count)
+    {
+        _ScanOutput[globalIndex] = _ScanShared[localIndex];
+    }
+}
+
+[numthreads(256, 1, 1)]
+void AddBlockOffsets(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint index = dispatchThreadId.x;
+    if (index < (uint)_Count)
+    {
+        _ScanOutput[index] += _BlockOffsets[index / 256u];
+    }
+}
+
+[numthreads(256, 1, 1)]
+void HistogramAtomic(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint index = dispatchThreadId.x;
+    if (index >= (uint)_Count)
+    {
+        return;
+    }
+
+    uint bin = (_Keys[index] >> (uint)_KeyShift) &
+        ((uint)_BinCount - 1u);
+    uint ignored;
+    InterlockedAdd(_Histogram[bin], 1u, ignored);
+}
+
+[numthreads(256, 1, 1)]
+void StableCompactScatter(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint index = dispatchThreadId.x;
+    if (index >= (uint)_Count)
+    {
+        return;
+    }
+
+    bool selected = _Predicates[index] != 0u;
+    uint prefix = _ScannedPredicates[index];
+    if (selected)
+    {
+        _Output[prefix] = _Values[index];
+    }
+
+    if (index + 1u == (uint)_Count)
+    {
+        _OutputCount[0] = prefix + (selected ? 1u : 0u);
+    }
+}
+
+[numthreads(256, 1, 1)]
+void AppendCompactAtomic(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint index = dispatchThreadId.x;
+    if (index >= (uint)_Count || _Predicates[index] == 0u)
+    {
+        return;
+    }
+
+    uint destination;
+    InterlockedAdd(_OutputCount[0], 1u, destination);
+    _Output[destination] = _Values[index];
+}
+
+[numthreads(256, 1, 1)]
+void RadixHistogramPortable(
+    uint3 groupId : SV_GroupID,
+    uint3 groupThreadId : SV_GroupThreadID,
+    uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint localIndex = groupThreadId.x;
+    if (localIndex < 16u)
+    {
+        _RadixHistogramShared[localIndex] = 0u;
+    }
+    GroupMemoryBarrierWithGroupSync();
+
+    uint index = dispatchThreadId.x;
+    if (index < (uint)_Count)
+    {
+        uint digit = (_RadixKeysIn[index] >> (uint)_RadixShift) & 15u;
+        uint ignored;
+        InterlockedAdd(_RadixHistogramShared[digit], 1u, ignored);
+    }
+    GroupMemoryBarrierWithGroupSync();
+
+    if (localIndex < 16u)
+    {
+        _RadixGroupHistograms[groupId.x * 16u + localIndex] =
+            _RadixHistogramShared[localIndex];
+    }
+}
+
+// Sixteen lanes independently scan one digit across dispatch groups. This is
+// intentionally simple and deterministic; the data-parallel work remains in
+// histogram and scatter, while later packages may replace this policy kernel.
+[numthreads(16, 1, 1)]
+void RadixScanOffsets(uint3 groupThreadId : SV_GroupThreadID)
+{
+    uint digit = groupThreadId.x;
+    uint binTotal = 0u;
+    for (uint countGroup = 0u;
+         countGroup < (uint)_RadixGroupCount;
+         countGroup++)
+    {
+        binTotal +=
+            _RadixGroupHistograms[countGroup * 16u + digit];
+    }
+    _RadixHistogramShared[digit] = binTotal;
+    GroupMemoryBarrierWithGroupSync();
+
+    uint binBase = 0u;
+    for (uint lowerDigit = 0u; lowerDigit < digit; lowerDigit++)
+    {
+        binBase += _RadixHistogramShared[lowerDigit];
+    }
+
+    uint running = binBase;
+    for (uint offsetGroup = 0u;
+         offsetGroup < (uint)_RadixGroupCount;
+         offsetGroup++)
+    {
+        uint histogramIndex = offsetGroup * 16u + digit;
+        _RadixGroupOffsets[histogramIndex] = running;
+        running += _RadixGroupHistograms[histogramIndex];
+    }
+}
+
+// Each group stages coalesced reads, then one lane emits its 256 values in
+// source order. This is a deterministic stable fallback with no wave-size
+// assumption; the WaveOps kernel supplies the parallel production path.
+[numthreads(256, 1, 1)]
+void RadixScatterPortable(
+    uint3 groupId : SV_GroupID,
+    uint3 groupThreadId : SV_GroupThreadID,
+    uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint localIndex = groupThreadId.x;
+    uint globalIndex = dispatchThreadId.x;
+    bool valid = globalIndex < (uint)_Count;
+    uint key = valid ? _RadixKeysIn[globalIndex] : 0u;
+    _RadixKeysShared[localIndex] = key;
+    _RadixValuesShared[localIndex] =
+        valid ? _RadixValuesIn[globalIndex] : 0u;
+    _RadixDigits[localIndex] =
+        valid ? ((key >> (uint)_RadixShift) & 15u) : 0xffffffffu;
+    if (localIndex < 16u)
+    {
+        _RadixBinRanks[localIndex] = 0u;
+    }
+    GroupMemoryBarrierWithGroupSync();
+
+    if (localIndex != 0u)
+    {
+        return;
+    }
+
+    uint groupStart = groupId.x * 256u;
+    uint validCount = min(256u, (uint)_Count - groupStart);
+    for (uint sourceLocal = 0u; sourceLocal < validCount; sourceLocal++)
+    {
+        uint digit = _RadixDigits[sourceLocal];
+        uint destination =
+            _RadixGroupOffsets[groupId.x * 16u + digit] +
+            _RadixBinRanks[digit];
+        _RadixBinRanks[digit]++;
+        _RadixKeysOut[destination] = _RadixKeysShared[sourceLocal];
+        _RadixValuesOut[destination] = _RadixValuesShared[sourceLocal];
+    }
+}

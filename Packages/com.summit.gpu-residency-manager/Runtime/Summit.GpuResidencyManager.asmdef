@@ -1,0 +1,14 @@
+{
+  "name": "Summit.GpuResidencyManager",
+  "rootNamespace": "Summit.GpuResidencyManager",
+  "references": [],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

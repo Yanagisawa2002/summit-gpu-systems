@@ -1,0 +1,20 @@
+{
+  "name": "Summit.GpuDeadlineScheduler.Tests.Editor",
+  "rootNamespace": "Summit.GpuDeadlineScheduler.Tests",
+  "references": [
+    "Summit.GpuDeadlineScheduler"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": false,
+  "defineConstraints": [
+    "UNITY_INCLUDE_TESTS"
+  ],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

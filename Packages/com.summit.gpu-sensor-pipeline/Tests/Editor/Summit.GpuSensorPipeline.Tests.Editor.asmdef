@@ -1,0 +1,22 @@
+{
+  "name": "Summit.GpuSensorPipeline.Tests.Editor",
+  "rootNamespace": "Summit.GpuSensorPipeline.Tests",
+  "references": [
+    "Summit.GpuSensorPipeline",
+    "Summit.GpuPrimitives"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": false,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false,
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ]
+}

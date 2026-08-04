@@ -1,0 +1,92 @@
+#pragma kernel DeadlineWork
+#pragma kernel GraphicsPressure
+
+StructuredBuffer<uint> _FrameControl;
+RWStructuredBuffer<uint4> _JobOutputs;
+RWStructuredBuffer<uint4> _JobDigests;
+RWStructuredBuffer<uint> _PressureOutputs;
+
+uint _JobId;
+uint _LogicalState;
+uint _Seed;
+uint _WorkItemCount;
+uint _Iterations;
+uint _PressureItemCount;
+
+uint Mix(uint value)
+{
+    value ^= value >> 16;
+    value *= 0x7FEB352Du;
+    value ^= value >> 15;
+    value *= 0x846CA68Bu;
+    value ^= value >> 16;
+    return value;
+}
+
+uint RunWork(
+    uint jobId,
+    uint logicalState,
+    uint threadIndex,
+    uint iterations,
+    uint frameControl,
+    uint seed)
+{
+    uint value = Mix(
+        seed ^
+        jobId * 0x9E3779B9u ^
+        logicalState * 0x85EBCA6Bu ^
+        threadIndex ^
+        frameControl);
+    [loop]
+    for (uint iteration = 0u; iteration < iterations; iteration++)
+    {
+        value = Mix(value ^ iteration * 0xC2B2AE35u);
+    }
+    return value;
+}
+
+[numthreads(256, 1, 1)]
+void DeadlineWork(uint3 dispatchId : SV_DispatchThreadID)
+{
+    uint index = dispatchId.x;
+    if (index >= _WorkItemCount)
+    {
+        return;
+    }
+
+    uint value = RunWork(
+        _JobId,
+        _LogicalState,
+        index,
+        _Iterations,
+        _FrameControl[0],
+        _Seed);
+    uint4 result = uint4(
+        value,
+        value ^ 0xA511E9B3u,
+        value + _JobId,
+        _Iterations);
+    _JobOutputs[index] = result;
+    if (index == 0u)
+    {
+        _JobDigests[0] = result;
+    }
+}
+
+[numthreads(256, 1, 1)]
+void GraphicsPressure(uint3 dispatchId : SV_DispatchThreadID)
+{
+    uint index = dispatchId.x;
+    if (index >= _PressureItemCount)
+    {
+        return;
+    }
+
+    uint value = Mix(index ^ _LogicalState ^ _FrameControl[0]);
+    [loop]
+    for (uint iteration = 0u; iteration < _Iterations; iteration++)
+    {
+        value = Mix(value ^ iteration * 0x27D4EB2Du);
+    }
+    _PressureOutputs[index] = value;
+}

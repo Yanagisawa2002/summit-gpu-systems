@@ -1,0 +1,18 @@
+{
+  "name": "Summit.GpuSensorPipeline.Benchmark",
+  "rootNamespace": "",
+  "references": [
+    "Summit.GpuSensorPipeline",
+    "Summit.GpuPrimitives",
+    "Summit.GpuTimestamps"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

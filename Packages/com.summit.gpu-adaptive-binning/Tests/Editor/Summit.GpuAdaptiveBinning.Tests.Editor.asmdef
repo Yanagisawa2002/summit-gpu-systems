@@ -1,0 +1,23 @@
+{
+  "name": "Summit.GpuAdaptiveBinning.Tests.Editor",
+  "rootNamespace": "Summit.GpuAdaptiveBinning.Tests",
+  "references": [
+    "Summit.GpuAdaptiveBinning",
+    "Summit.GpuDirectBinning",
+    "Summit.GpuPrimitives"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": false,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false,
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ]
+}

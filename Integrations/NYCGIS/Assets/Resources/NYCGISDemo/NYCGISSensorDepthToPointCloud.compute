@@ -1,0 +1,25 @@
+#pragma kernel DepthToPointCloud
+
+Texture2D<float> _SensorDepth;
+RWStructuredBuffer<float4> _SensorPoints;
+
+int _SensorWidth;
+int _SensorPointCount;
+float4 _SensorIntrinsics;
+
+[numthreads(256, 1, 1)]
+void DepthToPointCloud(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint pointIndex = dispatchThreadId.x;
+    if (pointIndex >= (uint)_SensorPointCount)
+    {
+        return;
+    }
+
+    uint x = pointIndex % (uint)_SensorWidth;
+    uint y = pointIndex / (uint)_SensorWidth;
+    float depth = _SensorDepth.Load(int3(x, y, 0));
+    float pointX = ((float)x - _SensorIntrinsics.z) * depth / _SensorIntrinsics.x;
+    float pointY = ((float)y - _SensorIntrinsics.w) * depth / _SensorIntrinsics.y;
+    _SensorPoints[pointIndex] = float4(pointX, pointY, depth, 1.0);
+}

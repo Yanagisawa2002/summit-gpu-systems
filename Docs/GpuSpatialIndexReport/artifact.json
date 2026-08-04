@@ -1,0 +1,576 @@
+{
+  "surface": "report",
+  "manifest": {
+    "version": 1,
+    "surface": "report",
+    "title": "GPU-Resident Spatial Index: AMD R9700 A/B",
+    "description": "Technical report for a GPU-resident Morton/radix uniform-grid index over a deterministic 921,600-depth-sample workload in the full NYC production scene.",
+    "generatedAt": "2026-07-30T00:00:00+08:00",
+    "cards": [
+      {
+        "id": "gpu_average_card",
+        "description": "Paired-median whole-frame GPU-average improvement at 1,024 queries.",
+        "dataset": "headline",
+        "sourceId": "report_data_sql",
+        "metrics": [
+          {
+            "label": "GPU average improvement",
+            "field": "gpu_average_improvement",
+            "format": "percent",
+            "signed": true
+          }
+        ]
+      },
+      {
+        "id": "gpu_p99_card",
+        "description": "Paired-median whole-frame GPU-P99 improvement at 1,024 queries.",
+        "dataset": "headline",
+        "sourceId": "report_data_sql",
+        "metrics": [
+          {
+            "label": "GPU P99 improvement",
+            "field": "gpu_p99_improvement",
+            "format": "percent",
+            "signed": true
+          }
+        ]
+      },
+      {
+        "id": "candidate_card",
+        "description": "Conceptual brute-force point-query pair avoidance for the cell-aligned count workload.",
+        "dataset": "headline",
+        "sourceId": "report_data_sql",
+        "metrics": [
+          {
+            "label": "Brute-force pairs avoided",
+            "field": "candidate_reduction",
+            "format": "percent"
+          }
+        ]
+      },
+      {
+        "id": "correctness_card",
+        "description": "Total sort, cell-range, and bounds violations across the three indexed runs.",
+        "dataset": "headline",
+        "sourceId": "report_data_sql",
+        "metrics": [
+          {
+            "label": "Indexed validation violations",
+            "field": "correctness_violations",
+            "format": "number"
+          }
+        ]
+      }
+    ],
+    "charts": [
+      {
+        "id": "crossover_chart",
+        "title": "Observed GPU-average change by query count",
+        "subtitle": "Paired median across 3 rounds per workload; q256 and q1024 used successive Player builds and separate-process drift was high.",
+        "question": "How did indexed versus brute-force whole-frame GPU time differ at the two tested query volumes?",
+        "rationale": "A signed bar comparison shows the two measured workload outcomes without claiming a universal crossover threshold.",
+        "type": "bar",
+        "dataset": "crossover",
+        "sourceId": "report_data_sql",
+        "valueFormat": "percent",
+        "layout": "full",
+        "encodings": {
+          "x": {
+            "field": "query_label",
+            "type": "nominal",
+            "label": "Queries"
+          },
+          "y": {
+            "fields": [
+              "Baseline-relative cost",
+              "Index benefit"
+            ],
+            "type": "quantitative",
+            "label": "GPU avg improvement",
+            "format": "percent"
+          },
+          "tooltip": [
+            {
+              "field": "gpu_p99_improvement",
+              "type": "quantitative",
+              "label": "GPU P99 improvement",
+              "format": "percent"
+            },
+            {
+              "field": "candidate_reduction",
+              "type": "quantitative",
+              "label": "Point-pair avoidance",
+              "format": "percent"
+            }
+          ]
+        }
+      }
+    ],
+    "tables": [
+      {
+        "id": "crossover_table",
+        "title": "Observed query-volume contrast",
+        "subtitle": "The q1024 pairs favored the index; q256 showed no reproducible benefit in a successive Player build.",
+        "dataset": "crossover",
+        "sourceId": "report_data_sql",
+        "defaultSort": {
+          "field": "query_count",
+          "direction": "asc"
+        },
+        "density": "dense",
+        "columns": [
+          {
+            "field": "query_count",
+            "label": "Queries",
+            "format": "number"
+          },
+          {
+            "field": "candidate_reduction",
+            "label": "Point-pair avoidance",
+            "format": "percent"
+          },
+          {
+            "field": "gpu_average_improvement",
+            "label": "GPU avg improvement",
+            "format": "percent"
+          },
+          {
+            "field": "gpu_p99_improvement",
+            "label": "GPU P99 improvement",
+            "format": "percent"
+          },
+          {
+            "field": "direction",
+            "label": "Conclusion",
+            "type": "text"
+          }
+        ]
+      },
+      {
+        "id": "paired_table",
+        "title": "1,024-query paired A/B",
+        "subtitle": "Three fresh-process rounds with complete Latin-square ordering.",
+        "dataset": "paired_q1024",
+        "sourceId": "report_data_sql",
+        "defaultSort": {
+          "field": "round",
+          "direction": "asc"
+        },
+        "density": "dense",
+        "columns": [
+          {
+            "field": "round",
+            "label": "Round",
+            "format": "number"
+          },
+          {
+            "field": "brute_gpu_average_ms",
+            "label": "Brute GPU avg ms",
+            "format": "number"
+          },
+          {
+            "field": "index_gpu_average_ms",
+            "label": "Index GPU avg ms",
+            "format": "number"
+          },
+          {
+            "field": "gpu_average_improvement",
+            "label": "GPU avg improvement",
+            "format": "percent"
+          },
+          {
+            "field": "gpu_p99_improvement",
+            "label": "GPU P99 improvement",
+            "format": "percent"
+          }
+        ]
+      },
+      {
+        "id": "quality_table",
+        "title": "Evidence and quality gates",
+        "subtitle": "Correctness is high confidence; exact effect size remains provisional.",
+        "dataset": "quality",
+        "sourceId": "report_data_sql",
+        "density": "dense",
+        "columns": [
+          {
+            "field": "check",
+            "label": "Check",
+            "type": "text"
+          },
+          {
+            "field": "result",
+            "label": "Result",
+            "type": "text"
+          },
+          {
+            "field": "confidence",
+            "label": "Confidence",
+            "type": "text"
+          }
+        ]
+      }
+    ],
+    "sources": [
+      {
+        "id": "report_data_sql",
+        "label": "Frozen portable-report presentation dataset",
+        "path": "Docs/GpuSpatialIndexReport/report-data.sql",
+        "query": {
+          "engine": "SQLite-compatible SQL",
+          "description": "Reviewed values frozen for presentation. This SQL does not import or recompute the raw benchmark CSV files."
+        }
+      },
+      {
+        "id": "formal_crossover",
+        "label": "Derived 256-versus-1,024 query-volume contrast",
+        "path": "Docs/GPU_RESIDENT_SPATIAL_INDEX_RESULTS_2026-07-30.md",
+        "query": {
+          "engine": "Reviewed benchmark synthesis",
+          "description": "Paired medians from successive q256 and q1024 Player builds; this is not a strict same-binary crossover.",
+          "tables_used": [
+            "Reports/GpuSpatialIndex/formal-wave-amd-r9700-1280x720-30hz-3x900/quality-summary.txt",
+            "Reports/GpuSpatialIndex/formal-wave-q1024-amd-r9700-1280x720-30hz-3x900/quality-summary.txt"
+          ]
+        }
+      },
+      {
+        "id": "formal_q1024",
+        "label": "Formal 1,024-query run summary",
+        "path": "Reports/GpuSpatialIndex/formal-wave-q1024-amd-r9700-1280x720-30hz-3x900/summary.csv",
+        "query": {
+          "engine": "Unity batchmode player",
+          "description": "Nine formal run rows containing timing, candidate, correctness, and production-signature fields.",
+          "executed_at": "2026-07-30T00:00:00+08:00"
+        }
+      },
+      {
+        "id": "formal_q1024_pairs",
+        "label": "Formal 1,024-query paired deltas",
+        "path": "Reports/GpuSpatialIndex/formal-wave-q1024-amd-r9700-1280x720-30hz-3x900/paired-deltas.csv",
+        "query": {
+          "engine": "PowerShell benchmark summarizer",
+          "description": "Exact per-round paired metrics parsed from Unity player reports.",
+          "executed_at": "2026-07-30T00:00:00+08:00"
+        }
+      },
+      {
+        "id": "formal_q256",
+        "label": "Formal 256-query quality summary",
+        "path": "Reports/GpuSpatialIndex/formal-wave-amd-r9700-1280x720-30hz-3x900/quality-summary.txt",
+        "query": {
+          "engine": "Unity batchmode player",
+          "description": "Three-round crossover test showing no reproducible index benefit at 256 queries.",
+          "executed_at": "2026-07-30T00:00:00+08:00"
+        }
+      },
+      {
+        "id": "cpu_reference",
+        "label": "Selectable CPU reference",
+        "path": "Reports/GpuSpatialIndex/resident-cpu-reference-q1024.txt",
+        "query": {
+          "engine": "Unity player CPU reference",
+          "description": "Burst and NativeArray.Sort oracle for expected 1,024-query counts; not an automatic unsupported-GPU fallback.",
+          "executed_at": "2026-07-30T00:00:00+08:00"
+        }
+      },
+      {
+        "id": "implementation",
+        "label": "GPU spatial-index implementation",
+        "path": "Assets/Resources/NYCGISDemo/NYCGISGpuSpatialIndex.compute",
+        "query": {
+          "engine": "repository source",
+          "description": "Morton encoding, wave radix sorting, cell-range construction, and query kernels."
+        }
+      },
+      {
+        "id": "formal_q1024_raw_brute_r3",
+        "label": "Formal 1,024-query brute round 3 raw report",
+        "path": "Reports/GpuSpatialIndex/formal-wave-q1024-amd-r9700-1280x720-30hz-3x900/device-0-cameras-1-gpu-spatial-brute-r3.txt",
+        "query": {
+          "engine": "Unity batchmode player",
+          "description": "Raw report preserving scheduled-update drops, measurement readback, timing-sample count, and production residency.",
+          "executed_at": "2026-07-30T00:00:00+08:00"
+        }
+      }
+    ],
+    "blocks": [
+      {
+        "id": "title",
+        "type": "markdown",
+        "sourceId": "formal_q1024",
+        "body": "# GPU-Resident Spatial Index: AMD R9700 A/B\n\nA GPU-resident Morton/radix uniform-grid index was implemented for a deterministic 921,600-depth-sample workload in the full NYC production scene. At 1,024 cell-aligned sensor-frustum range-count queries, all three paired runs favored the index; a separately built 256-query sweep showed no reproducible whole-frame benefit."
+      },
+      {
+        "id": "headline_metrics",
+        "type": "metric-strip",
+        "cardIds": [
+          "gpu_average_card",
+          "gpu_p99_card",
+          "candidate_card",
+          "correctness_card"
+        ]
+      },
+      {
+        "id": "key_findings",
+        "type": "markdown",
+        "sourceId": "formal_q1024",
+        "body": "## Key findings\n\n- Brute force performed **943,718,400** direct point-query inspections per update at 1,024 queries.\n- The indexed path performed **351,232** cell-range lookups covering **1,329,902** returned point-query memberships.\n- This represents **99.859079%** conceptual avoidance of brute-force point-query pairs.\n- All three q1024 pairs improved both GPU average and GPU P99.\n- The exact effect-size magnitude is provisional because separate-process `off` GPU averages drifted by **86.448%**."
+      },
+      {
+        "id": "crossover_section",
+        "type": "markdown",
+        "sourceId": "formal_crossover",
+        "body": "## Query-volume contrast\n\nThe q1024 pairs favored the index, while q256 showed no reproducible whole-frame benefit. Fixed build/sort overhead is a plausible explanation but was not isolated with per-region GPU timestamps. The sweeps also used successive Player builds, so they do not establish a universal crossover threshold."
+      },
+      {
+        "id": "crossover_visual",
+        "type": "chart",
+        "chartId": "crossover_chart"
+      },
+      {
+        "id": "scope",
+        "type": "markdown",
+        "sourceId": "formal_q1024_raw_brute_r3",
+        "body": "## Scope, data, and metric definitions\n\n**Platform:** Unity 6000.5.2f1, DX12 feature level 12.2, AMD Radeon AI PRO R9700, driver 32.0.31035.1003.\n\n**Workload:** deterministic 1280×720 depth input uploaded once; the index is rebuilt per update. This is not a changing live LiDAR feed.\n\n**Production gate:** 227 BFP2 packs, 73 resident, 0 loading, 1,932,028,912 resident GPU bytes, 66 base and 180 LOD0 orthophoto pages.\n\n**GPU average/P99:** whole-frame GPU timings reported by Unity `FrameTimingManager`; they are not isolated kernel timestamps.\n\n**Point-pair avoidance:** conceptual reduction from brute-force point-query pairs to returned memberships. The indexed kernel actually performs cell-range lookups and sums range lengths.\n\n**30 Hz:** a scheduling target, not a proven sustained rate. Raw reports contain nonzero scheduled-update drops, up to 321 in one q1024 run."
+      },
+      {
+        "id": "methodology",
+        "type": "markdown",
+        "sourceId": "formal_q1024_pairs",
+        "body": "## Methodology\n\nEach mode ran in a fresh player process for 900 sampled frames after warmup. Three rounds used complete Latin-square ordering: off→brute→index, brute→index→off, and index→off→brute. All 9 processes completed with 900/900 timing samples and the exact production signature; 6/6 GPU workload runs had zero per-query mismatches and zero measurement readback; 3/3 indexed runs passed sort, cell-range, bounds, and permutation-invariant gates. The q256 and q1024 sweeps used successive Player builds, and scheduled-update drops are preserved only in raw reports."
+      },
+      {
+        "id": "algorithm",
+        "type": "markdown",
+        "sourceId": "implementation",
+        "body": "## Algorithm and profiling-driven redesign\n\nThe indexed path voxelizes deterministic depth samples into a 64³ sensor-frustum grid, computes 18-bit Morton keys, performs five four-bit LSD radix passes, builds dense cell ranges, and answers cell-aligned occupancy-count queries by summing selected range lengths. It does not return point IDs or individually test the 1.33M returned memberships. The first version used serialized group-local stable ranking and was much slower; it was replaced with wave-aggregated histograms and wave-prefix stable scatter under Shader Model 6/DXC. A CPU Burst reference remains separately selectable as the oracle."
+      },
+      {
+        "id": "quality_section",
+        "type": "markdown",
+        "sourceId": "formal_q1024",
+        "body": "## Limitations and robustness\n\nPer-query GPU-vs-CPU count equivalence and indexed structure invariants are high-confidence. The positive q1024 direction is medium-confidence because all three pairs agree. The exact 28.293% GPU-average and 25.951% GPU-P99 medians are low-to-medium confidence because cross-process baseline drift was high. The q256/q1024 contrast is between builds, scheduled-update drops were nonzero, the input was deterministic rather than a changing live stream, and NVIDIA performance remains unverified."
+      },
+      {
+        "id": "next_steps",
+        "type": "markdown",
+        "sourceId": "formal_q1024",
+        "body": "## Recommended next steps\n\n1. Rerun q256 and q1024 from one hashed Player build and retain binary hashes.\n2. Add same-process interleaving to reduce clock, thermal, and scene-load drift.\n3. Add GPU timestamps around build, radix, range, and query markers.\n4. Preserve scheduled-update drops and loading-pack count in summary and quality gates.\n5. Capture RGP occupancy, VGPR, cache, wave-utilization, and bandwidth counters.\n6. Implement an adaptive policy from point count, query count, and index reuse.\n7. Test changing depth inputs and validate an NVIDIA path."
+      },
+      {
+        "id": "questions",
+        "type": "markdown",
+        "body": "## Further questions\n\n- What is the same-build operating boundary when one index serves two, four, or eight consumers?\n- Is radix build bandwidth-bound or instruction/occupancy-bound on RDNA 4?\n- Would sparse page tables or LBVH outperform the dense grid for nonuniform point distributions?\n- How stable is the direction under same-process GPU timestamps and fixed clock controls?"
+      }
+    ]
+  },
+  "snapshot": {
+    "version": 1,
+    "generatedAt": "2026-07-30T00:00:00+08:00",
+    "status": "ready",
+    "datasets": {
+      "headline": [
+        {
+          "gpu_average_improvement": 0.28293,
+          "gpu_p99_improvement": 0.25951,
+          "candidate_reduction": 0.99859079,
+          "correctness_violations": 0
+        }
+      ],
+      "crossover": [
+        {
+          "query_count": 256,
+          "query_label": "256 queries",
+          "candidate_reduction": 0.99858468,
+          "gpu_average_improvement": -0.13653,
+          "Baseline-relative cost": -0.13653,
+          "Index benefit": null,
+          "gpu_p99_improvement": -0.0058,
+          "direction": "No reproducible improvement"
+        },
+        {
+          "query_count": 1024,
+          "query_label": "1,024 queries",
+          "candidate_reduction": 0.99859079,
+          "gpu_average_improvement": 0.28293,
+          "Baseline-relative cost": null,
+          "Index benefit": 0.28293,
+          "gpu_p99_improvement": 0.25951,
+          "direction": "3/3 paired improvements"
+        }
+      ],
+      "paired_q1024": [
+        {
+          "round": 1,
+          "order": "off → brute → index",
+          "brute_gpu_average_ms": 22.433,
+          "index_gpu_average_ms": 18.117,
+          "gpu_average_improvement": 0.192395132171355,
+          "brute_gpu_p99_ms": 28.156,
+          "index_gpu_p99_ms": 23.67,
+          "gpu_p99_improvement": 0.159326608893309
+        },
+        {
+          "round": 2,
+          "order": "brute → index → off",
+          "brute_gpu_average_ms": 17.09,
+          "index_gpu_average_ms": 10.855,
+          "gpu_average_improvement": 0.364833235810415,
+          "brute_gpu_p99_ms": 28.065,
+          "index_gpu_p99_ms": 17.208,
+          "gpu_p99_improvement": 0.386851950828434
+        },
+        {
+          "round": 3,
+          "order": "index → off → brute",
+          "brute_gpu_average_ms": 42.626,
+          "index_gpu_average_ms": 30.566,
+          "gpu_average_improvement": 0.282925913761554,
+          "brute_gpu_p99_ms": 60.48,
+          "index_gpu_p99_ms": 44.785,
+          "gpu_p99_improvement": 0.259507275132275
+        }
+      ],
+      "quality": [
+        {
+          "ordinal": 1,
+          "check": "Process, timing, and production gate",
+          "result": "9/9 processes; 900/900 samples; exact production signature",
+          "confidence": "High"
+        },
+        {
+          "ordinal": 2,
+          "check": "GPU query-count equivalence",
+          "result": "6/6 workload runs had zero per-query mismatch; CPU-oracle hash 17954676537386309527",
+          "confidence": "High"
+        },
+        {
+          "ordinal": 3,
+          "check": "Indexed structure invariants",
+          "result": "3/3 indexed runs passed sort, cell-range, bounds, XOR, sum, and unique-count gates",
+          "confidence": "High"
+        },
+        {
+          "ordinal": 4,
+          "check": "Measurement readback",
+          "result": "0 bytes/frame; warmup validation read back 32 bytes",
+          "confidence": "High"
+        },
+        {
+          "ordinal": 5,
+          "check": "1,024-query performance direction",
+          "result": "GPU average and P99 improved in 3/3 pairs",
+          "confidence": "Medium"
+        },
+        {
+          "ordinal": 6,
+          "check": "Scheduled update delivery",
+          "result": "Raw reports contain nonzero drops, up to 321",
+          "confidence": "Guardrail"
+        },
+        {
+          "ordinal": 7,
+          "check": "Exact whole-frame effect size",
+          "result": "Off-baseline drift 86.448%",
+          "confidence": "Low-to-medium"
+        },
+        {
+          "ordinal": 8,
+          "check": "q256/q1024 operating boundary",
+          "result": "Successive Player builds; q256 binary hash not retained",
+          "confidence": "Low"
+        },
+        {
+          "ordinal": 9,
+          "check": "NVIDIA validation",
+          "result": "Not tested",
+          "confidence": "Unverified"
+        }
+      ]
+    }
+  },
+  "sources": [
+    {
+      "id": "report_data_sql",
+      "label": "Frozen portable-report presentation dataset",
+      "path": "Docs/GpuSpatialIndexReport/report-data.sql",
+      "query": {
+        "engine": "SQLite-compatible SQL",
+        "description": "Reviewed values frozen for presentation. This SQL does not import or recompute the raw benchmark CSV files."
+      }
+    },
+    {
+      "id": "formal_crossover",
+      "label": "Derived 256-versus-1,024 query-volume contrast",
+      "path": "Docs/GPU_RESIDENT_SPATIAL_INDEX_RESULTS_2026-07-30.md",
+      "query": {
+        "engine": "Reviewed benchmark synthesis",
+        "description": "Paired medians from successive q256 and q1024 Player builds; this is not a strict same-binary crossover.",
+        "tables_used": [
+          "Reports/GpuSpatialIndex/formal-wave-amd-r9700-1280x720-30hz-3x900/quality-summary.txt",
+          "Reports/GpuSpatialIndex/formal-wave-q1024-amd-r9700-1280x720-30hz-3x900/quality-summary.txt"
+        ]
+      }
+    },
+    {
+      "id": "formal_q1024",
+      "label": "Formal 1,024-query run summary",
+      "path": "Reports/GpuSpatialIndex/formal-wave-q1024-amd-r9700-1280x720-30hz-3x900/summary.csv",
+      "query": {
+        "engine": "Unity batchmode player",
+        "description": "Nine formal run rows containing timing, candidate, correctness, and production-signature fields.",
+        "executed_at": "2026-07-30T00:00:00+08:00"
+      }
+    },
+    {
+      "id": "formal_q1024_pairs",
+      "label": "Formal 1,024-query paired deltas",
+      "path": "Reports/GpuSpatialIndex/formal-wave-q1024-amd-r9700-1280x720-30hz-3x900/paired-deltas.csv",
+      "query": {
+        "engine": "PowerShell benchmark summarizer",
+        "description": "Exact per-round paired metrics parsed from Unity player reports.",
+        "executed_at": "2026-07-30T00:00:00+08:00"
+      }
+    },
+    {
+      "id": "formal_q256",
+      "label": "Formal 256-query quality summary",
+      "path": "Reports/GpuSpatialIndex/formal-wave-amd-r9700-1280x720-30hz-3x900/quality-summary.txt",
+      "query": {
+        "engine": "Unity batchmode player",
+        "description": "Three-round crossover test showing no reproducible index benefit at 256 queries.",
+        "executed_at": "2026-07-30T00:00:00+08:00"
+      }
+    },
+    {
+      "id": "cpu_reference",
+      "label": "Selectable CPU reference",
+      "path": "Reports/GpuSpatialIndex/resident-cpu-reference-q1024.txt",
+      "query": {
+        "engine": "Unity player CPU reference",
+        "description": "Burst and NativeArray.Sort oracle for expected 1,024-query counts; not an automatic unsupported-GPU fallback.",
+        "executed_at": "2026-07-30T00:00:00+08:00"
+      }
+    },
+    {
+      "id": "implementation",
+      "label": "GPU spatial-index implementation",
+      "path": "Assets/Resources/NYCGISDemo/NYCGISGpuSpatialIndex.compute",
+      "query": {
+        "engine": "repository source",
+        "description": "Morton encoding, wave radix sorting, cell-range construction, and query kernels."
+      }
+    },
+    {
+      "id": "formal_q1024_raw_brute_r3",
+      "label": "Formal 1,024-query brute round 3 raw report",
+      "path": "Reports/GpuSpatialIndex/formal-wave-q1024-amd-r9700-1280x720-30hz-3x900/device-0-cameras-1-gpu-spatial-brute-r3.txt",
+      "query": {
+        "engine": "Unity batchmode player",
+        "description": "Raw report preserving scheduled-update drops, measurement readback, timing-sample count, and production residency.",
+        "executed_at": "2026-07-30T00:00:00+08:00"
+      }
+    }
+  ]
+}

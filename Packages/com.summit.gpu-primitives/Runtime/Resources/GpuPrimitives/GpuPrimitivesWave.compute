@@ -1,0 +1,216 @@
+#pragma kernel ScanBlocksWave
+#pragma kernel HistogramWave16
+#pragma kernel AppendCompactWave
+#pragma kernel RadixHistogramWave
+#pragma kernel RadixScatterWave
+#pragma target 6.0
+#pragma use_dxc
+
+StructuredBuffer<uint> _ScanInput;
+RWStructuredBuffer<uint> _ScanOutput;
+RWStructuredBuffer<uint> _BlockSums;
+
+StructuredBuffer<uint> _Keys;
+RWStructuredBuffer<uint> _Histogram;
+
+StructuredBuffer<uint> _Values;
+StructuredBuffer<uint> _Predicates;
+RWStructuredBuffer<uint> _Output;
+RWStructuredBuffer<uint> _OutputCount;
+
+StructuredBuffer<uint> _RadixKeysIn;
+StructuredBuffer<uint> _RadixValuesIn;
+RWStructuredBuffer<uint> _RadixKeysOut;
+RWStructuredBuffer<uint> _RadixValuesOut;
+RWStructuredBuffer<uint> _RadixGroupHistograms;
+StructuredBuffer<uint> _RadixGroupOffsets;
+
+int _Count;
+int _BinCount;
+int _KeyShift;
+int _RadixShift;
+
+// Shader Model 6 permits a minimum wave width of four lanes. Size for the
+// corresponding worst case of 64 waves in a 256-thread group.
+groupshared uint _WaveTotals[64];
+groupshared uint _WaveBinCounts[1024];
+groupshared uint _RadixHistogramShared[16];
+
+[numthreads(256, 1, 1)]
+void ScanBlocksWave(
+    uint3 groupId : SV_GroupID,
+    uint3 groupThreadId : SV_GroupThreadID,
+    uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint localIndex = groupThreadId.x;
+    uint globalIndex = dispatchThreadId.x;
+    uint value = globalIndex < (uint)_Count
+        ? _ScanInput[globalIndex]
+        : 0u;
+    uint laneCount = WaveGetLaneCount();
+    uint waveIndex = localIndex / laneCount;
+    uint wavePrefix = WavePrefixSum(value);
+    uint waveTotal = WaveActiveSum(value);
+
+    if (WaveIsFirstLane())
+    {
+        _WaveTotals[waveIndex] = waveTotal;
+    }
+    GroupMemoryBarrierWithGroupSync();
+
+    if (localIndex == 0u)
+    {
+        uint running = 0u;
+        uint waveCount = (256u + laneCount - 1u) / laneCount;
+        for (uint wave = 0u; wave < waveCount; wave++)
+        {
+            uint total = _WaveTotals[wave];
+            _WaveTotals[wave] = running;
+            running += total;
+        }
+        _BlockSums[groupId.x] = running;
+    }
+    GroupMemoryBarrierWithGroupSync();
+
+    if (globalIndex < (uint)_Count)
+    {
+        _ScanOutput[globalIndex] = wavePrefix + _WaveTotals[waveIndex];
+    }
+}
+
+// One global reservation per non-empty wave/bin instead of one atomic per key.
+[numthreads(256, 1, 1)]
+void HistogramWave16(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint index = dispatchThreadId.x;
+    bool valid = index < (uint)_Count;
+    uint digit = valid
+        ? ((_Keys[index] >> (uint)_KeyShift) & ((uint)_BinCount - 1u))
+        : 0xffffffffu;
+
+    [unroll]
+    for (uint bin = 0u; bin < 16u; bin++)
+    {
+        uint matches = WaveActiveCountBits(
+            valid && bin < (uint)_BinCount && digit == bin);
+        if (WaveIsFirstLane() && matches > 0u)
+        {
+            uint ignored;
+            InterlockedAdd(_Histogram[bin], matches, ignored);
+        }
+    }
+}
+
+// Membership is deterministic but ordering is deliberately unspecified.
+[numthreads(256, 1, 1)]
+void AppendCompactWave(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint index = dispatchThreadId.x;
+    bool selected =
+        index < (uint)_Count && _Predicates[index] != 0u;
+    uint rank = WavePrefixSum(selected ? 1u : 0u);
+    uint selectedCount = WaveActiveCountBits(selected);
+    uint waveBase = 0u;
+    if (WaveIsFirstLane() && selectedCount > 0u)
+    {
+        InterlockedAdd(_OutputCount[0], selectedCount, waveBase);
+    }
+    waveBase = WaveReadLaneFirst(waveBase);
+
+    if (selected)
+    {
+        _Output[waveBase + rank] = _Values[index];
+    }
+}
+
+[numthreads(256, 1, 1)]
+void RadixHistogramWave(
+    uint3 groupId : SV_GroupID,
+    uint3 groupThreadId : SV_GroupThreadID,
+    uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint localIndex = groupThreadId.x;
+    if (localIndex < 16u)
+    {
+        _RadixHistogramShared[localIndex] = 0u;
+    }
+    GroupMemoryBarrierWithGroupSync();
+
+    uint index = dispatchThreadId.x;
+    bool valid = index < (uint)_Count;
+    uint digit = valid
+        ? ((_RadixKeysIn[index] >> (uint)_RadixShift) & 15u)
+        : 0xffffffffu;
+    [unroll]
+    for (uint bin = 0u; bin < 16u; bin++)
+    {
+        uint matches = WaveActiveCountBits(valid && digit == bin);
+        if (WaveIsFirstLane() && matches > 0u)
+        {
+            uint ignored;
+            InterlockedAdd(_RadixHistogramShared[bin], matches, ignored);
+        }
+    }
+    GroupMemoryBarrierWithGroupSync();
+
+    if (localIndex < 16u)
+    {
+        _RadixGroupHistograms[groupId.x * 16u + localIndex] =
+            _RadixHistogramShared[localIndex];
+    }
+}
+
+[numthreads(256, 1, 1)]
+void RadixScatterWave(
+    uint3 groupId : SV_GroupID,
+    uint3 groupThreadId : SV_GroupThreadID,
+    uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint localIndex = groupThreadId.x;
+    uint globalIndex = dispatchThreadId.x;
+    bool valid = globalIndex < (uint)_Count;
+    uint key = valid ? _RadixKeysIn[globalIndex] : 0u;
+    uint digit = valid
+        ? ((key >> (uint)_RadixShift) & 15u)
+        : 0xffffffffu;
+    uint laneCount = WaveGetLaneCount();
+    uint waveIndex = localIndex / laneCount;
+    uint localRank = 0u;
+
+    [unroll]
+    for (uint bin = 0u; bin < 16u; bin++)
+    {
+        bool matches = valid && digit == bin;
+        uint waveRank = WavePrefixSum(matches ? 1u : 0u);
+        uint waveCount = WaveActiveCountBits(matches);
+        if (WaveIsFirstLane())
+        {
+            _WaveBinCounts[waveIndex * 16u + bin] = waveCount;
+        }
+        if (matches)
+        {
+            localRank = waveRank;
+        }
+    }
+    GroupMemoryBarrierWithGroupSync();
+
+    if (!valid)
+    {
+        return;
+    }
+
+    uint precedingWaveCount = 0u;
+    for (uint precedingWave = 0u;
+         precedingWave < waveIndex;
+         precedingWave++)
+    {
+        precedingWaveCount +=
+            _WaveBinCounts[precedingWave * 16u + digit];
+    }
+    uint destination =
+        _RadixGroupOffsets[groupId.x * 16u + digit] +
+        precedingWaveCount +
+        localRank;
+    _RadixKeysOut[destination] = key;
+    _RadixValuesOut[destination] = _RadixValuesIn[globalIndex];
+}

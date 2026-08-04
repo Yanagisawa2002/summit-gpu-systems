@@ -1,0 +1,21 @@
+{
+  "name": "com.summit.gpu-sensor-pipeline",
+  "version": "0.1.0",
+  "displayName": "SUMMIT GPU Sensor Pipeline",
+  "description": "Deterministic CPU-upload and GPU-resident sensor producers feeding a shared GPU CSR spatial index and payload-consuming range queries.",
+  "unity": "6000.0",
+  "dependencies": {
+    "com.summit.gpu-direct-binning": "0.1.0",
+    "com.summit.gpu-primitives": "0.1.0"
+  },
+  "keywords": [
+    "gpu",
+    "sensor",
+    "spatial-index",
+    "csr",
+    "range-query"
+  ],
+  "author": {
+    "name": "SUMMIT"
+  }
+}

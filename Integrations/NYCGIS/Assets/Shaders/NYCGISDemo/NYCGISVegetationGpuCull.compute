@@ -1,0 +1,186 @@
+#pragma kernel ClearVegetationArgs
+#pragma kernel CullVegetationClusters
+
+StructuredBuffer<uint> _VegetationTreeWords;
+StructuredBuffer<uint> _VegetationClusterWords;
+
+RWStructuredBuffer<uint> _VegetationNearIndices;
+RWStructuredBuffer<uint> _VegetationFarIndices;
+RWStructuredBuffer<uint> _VegetationDrawArgs;
+RWStructuredBuffer<uint> _VegetationStats;
+
+uint _VegetationRecordCount;
+uint _VegetationClusterCount;
+float4 _VegetationFrustumPlanes[6];
+float3 _VegetationCameraPositionWS;
+float _VegetationNearDistance;
+float _VegetationMaxDistance;
+float _VegetationMinimumScreenRatio;
+float4x4 _VegetationDataToWorld;
+
+groupshared uint VegetationClusterVisible;
+
+float3 TransformVegetationPoint(float3 position)
+{
+    return mul(_VegetationDataToWorld, float4(position, 1.0)).xyz;
+}
+
+float3 TransformVegetationExtents(float3 extents)
+{
+    float3x3 basis = (float3x3)_VegetationDataToWorld;
+    float3 x = abs(mul(basis, float3(extents.x, 0.0, 0.0)));
+    float3 y = abs(mul(basis, float3(0.0, extents.y, 0.0)));
+    float3 z = abs(mul(basis, float3(0.0, 0.0, extents.z)));
+    return x + y + z;
+}
+
+bool VegetationAabbOutsideFrustum(float3 center, float3 extents)
+{
+    [unroll]
+    for (uint planeIndex = 0u; planeIndex < 6u; planeIndex++)
+    {
+        float4 plane = _VegetationFrustumPlanes[planeIndex];
+        float radius = dot(abs(plane.xyz), extents);
+        if (dot(plane.xyz, center) + plane.w < -radius)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool VegetationSphereOutsideFrustum(float3 center, float radius)
+{
+    [unroll]
+    for (uint planeIndex = 0u; planeIndex < 6u; planeIndex++)
+    {
+        float4 plane = _VegetationFrustumPlanes[planeIndex];
+        if (dot(plane.xyz, center) + plane.w < -radius)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+[numthreads(1, 1, 1)]
+void ClearVegetationArgs(uint3 id : SV_DispatchThreadID)
+{
+    _VegetationDrawArgs[0] = 48u;
+    _VegetationDrawArgs[1] = 0u;
+    _VegetationDrawArgs[2] = 0u;
+    _VegetationDrawArgs[3] = 0u;
+
+    _VegetationDrawArgs[4] = 300u;
+    _VegetationDrawArgs[5] = 0u;
+    _VegetationDrawArgs[6] = 0u;
+    _VegetationDrawArgs[7] = 0u;
+
+    _VegetationDrawArgs[8] = 24u;
+    _VegetationDrawArgs[9] = 0u;
+    _VegetationDrawArgs[10] = 0u;
+    _VegetationDrawArgs[11] = 0u;
+
+    _VegetationStats[0] = 0u;
+    _VegetationStats[1] = 0u;
+    _VegetationStats[2] = 0u;
+    _VegetationStats[3] = 0u;
+}
+
+[numthreads(128, 1, 1)]
+void CullVegetationClusters(
+    uint3 groupId : SV_GroupID,
+    uint3 groupThreadId : SV_GroupThreadID)
+{
+    uint clusterIndex = groupId.x;
+    if (clusterIndex >= _VegetationClusterCount)
+    {
+        return;
+    }
+
+    uint clusterWord = clusterIndex * 8u;
+    uint firstTree = _VegetationClusterWords[clusterWord + 0u];
+    uint treeCount = _VegetationClusterWords[clusterWord + 1u];
+    float3 clusterCenter = float3(
+        asfloat(_VegetationClusterWords[clusterWord + 2u]),
+        asfloat(_VegetationClusterWords[clusterWord + 3u]),
+        asfloat(_VegetationClusterWords[clusterWord + 4u]));
+    float3 clusterExtents = float3(
+        asfloat(_VegetationClusterWords[clusterWord + 5u]),
+        asfloat(_VegetationClusterWords[clusterWord + 6u]),
+        asfloat(_VegetationClusterWords[clusterWord + 7u]));
+
+    if (groupThreadId.x == 0u)
+    {
+        float3 centerWS = TransformVegetationPoint(clusterCenter);
+        float3 extentsWS = TransformVegetationExtents(clusterExtents);
+        float distance = length(centerWS - _VegetationCameraPositionWS);
+        float radius = length(extentsWS);
+        bool beyondDistance =
+            _VegetationMaxDistance > 0.0 &&
+            distance - radius > _VegetationMaxDistance;
+        VegetationClusterVisible =
+            !beyondDistance && !VegetationAabbOutsideFrustum(centerWS, extentsWS) ? 1u : 0u;
+        if (VegetationClusterVisible != 0u)
+        {
+            InterlockedAdd(_VegetationStats[0], 1u);
+        }
+    }
+    GroupMemoryBarrierWithGroupSync();
+    if (VegetationClusterVisible == 0u)
+    {
+        return;
+    }
+
+    for (uint localIndex = groupThreadId.x;
+         localIndex < treeCount;
+         localIndex += 128u)
+    {
+        uint treeIndex = firstTree + localIndex;
+        if (treeIndex >= _VegetationRecordCount)
+        {
+            continue;
+        }
+        uint treeWord = treeIndex * 8u;
+        float3 basePosition = float3(
+            asfloat(_VegetationTreeWords[treeWord + 0u]),
+            asfloat(_VegetationTreeWords[treeWord + 1u]),
+            asfloat(_VegetationTreeWords[treeWord + 2u]));
+        float height = asfloat(_VegetationTreeWords[treeWord + 3u]);
+        float crownRadius = asfloat(_VegetationTreeWords[treeWord + 4u]);
+        float3 crownCenter = basePosition + float3(0.0, height * 0.68, 0.0);
+        float3 crownCenterWS = TransformVegetationPoint(crownCenter);
+        float3 crownAxisWS = TransformVegetationExtents(
+            float3(crownRadius, max(1.0, height * 0.34), crownRadius));
+        float worldRadius = length(crownAxisWS);
+        float distance = length(crownCenterWS - _VegetationCameraPositionWS);
+
+        if ((_VegetationMaxDistance > 0.0 && distance - worldRadius > _VegetationMaxDistance) ||
+            VegetationSphereOutsideFrustum(crownCenterWS, worldRadius))
+        {
+            continue;
+        }
+        if (_VegetationMinimumScreenRatio > 0.0 &&
+            worldRadius / max(distance, 0.001) < _VegetationMinimumScreenRatio)
+        {
+            continue;
+        }
+
+        if (distance <= _VegetationNearDistance)
+        {
+            uint destination;
+            InterlockedAdd(_VegetationDrawArgs[1], 1u, destination);
+            _VegetationNearIndices[destination] = treeIndex;
+            InterlockedAdd(_VegetationDrawArgs[5], 1u);
+            InterlockedAdd(_VegetationStats[1], 1u);
+        }
+        else
+        {
+            uint destination;
+            InterlockedAdd(_VegetationDrawArgs[9], 1u, destination);
+            _VegetationFarIndices[destination] = treeIndex;
+            InterlockedAdd(_VegetationStats[2], 1u);
+        }
+        InterlockedAdd(_VegetationStats[3], 1u);
+    }
+}

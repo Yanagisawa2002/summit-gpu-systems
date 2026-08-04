@@ -1,0 +1,10 @@
+{
+  "name": "com.summit.gpu-autotuning",
+  "version": "0.1.0",
+  "displayName": "SUMMIT GPU Autotuning",
+  "description": "Device-keyed GPU backend calibration and persistent runtime profiles.",
+  "unity": "6000.0",
+  "dependencies": {
+    "com.summit.gpu-primitives": "0.1.0"
+  }
+}

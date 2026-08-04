@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "generatedUtc": "2026-07-31T14:05:38.9055339Z",
+  "sourceCommit": "bd60f3e83ca6960d8e5974ccd2f94af67884c8ec",
+  "calibrationProtocol": "rounds-1-2-calibration;rounds-3-6-evaluation",
+  "device": {
+    "schemaVersion": 1,
+    "vendorId": 4098,
+    "deviceId": 30033,
+    "vendor": "ATI",
+    "deviceName": "AMD Radeon AI PRO R9700",
+    "graphicsApi": "Direct3D12",
+    "graphicsVersion": "Direct3D 12 [level 12.2]",
+    "shaderLevel": 50
+  },
+  "workloads": [
+    {
+      "workloadId": "exclusive-scan",
+      "baselineBackend": "Portable",
+      "selectedBackend": "WaveOps",
+      "accepted": true,
+      "calibrationSamplesPerCandidate": 1800,
+      "baselineMedianMs": 0.04484,
+      "selectedMedianMs": 0.03076,
+      "baselineP99Ms": 0.1244,
+      "selectedP99Ms": 0.10948,
+      "calibrationImprovementPercent": 31.40053523639607
+    },
+    {
+      "workloadId": "radix-sort-32",
+      "baselineBackend": "Portable",
+      "selectedBackend": "WaveOps",
+      "accepted": true,
+      "calibrationSamplesPerCandidate": 1800,
+      "baselineMedianMs": 6.15276,
+      "selectedMedianMs": 5.17116,
+      "baselineP99Ms": 7.69556,
+      "selectedP99Ms": 6.82944,
+      "calibrationImprovementPercent": 15.95381584849725
+    },
+    {
+      "workloadId": "stable-compaction",
+      "baselineBackend": "Portable",
+      "selectedBackend": "WaveOps",
+      "accepted": true,
+      "calibrationSamplesPerCandidate": 1800,
+      "baselineMedianMs": 0.06588,
+      "selectedMedianMs": 0.04896,
+      "baselineP99Ms": 0.07516,
+      "selectedP99Ms": 0.05548,
+      "calibrationImprovementPercent": 25.683060109289617
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "name": "com.summit.gpu-residency-manager",
+  "version": "0.1.0",
+  "displayName": "SUMMIT GPU Residency Manager",
+  "description": "Application-level virtual page to physical GPU slot residency management for large maps and point clouds.",
+  "unity": "6000.0",
+  "keywords": [
+    "gpu",
+    "residency",
+    "streaming",
+    "point-cloud",
+    "virtual-memory"
+  ],
+  "author": {
+    "name": "SUMMIT"
+  }
+}

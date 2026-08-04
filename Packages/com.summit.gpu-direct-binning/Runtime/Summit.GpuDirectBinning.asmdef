@@ -1,0 +1,16 @@
+{
+  "name": "Summit.GpuDirectBinning",
+  "rootNamespace": "Summit.GpuDirectBinning",
+  "references": [
+    "Summit.GpuPrimitives"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

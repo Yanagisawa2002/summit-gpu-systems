@@ -1,0 +1,28 @@
+{
+  "dependencies": {
+    "com.summit.gpu-adaptive-binning": "file:com.summit.gpu-adaptive-binning",
+    "com.summit.gpu-autotuning": "file:com.summit.gpu-autotuning",
+    "com.summit.gpu-deadline-scheduler": "file:com.summit.gpu-deadline-scheduler",
+    "com.summit.gpu-direct-binning": "file:com.summit.gpu-direct-binning",
+    "com.summit.gpu-primitives": "file:com.summit.gpu-primitives",
+    "com.summit.gpu-residency-manager": "file:com.summit.gpu-residency-manager",
+    "com.summit.gpu-sensor-pipeline": "file:com.summit.gpu-sensor-pipeline",
+    "com.summit.gpu-timestamps": "file:com.summit.gpu-timestamps",
+    "com.unity.collections": "6.5.0",
+    "com.unity.test-framework": "1.7.0",
+    "com.unity.modules.audio": "1.0.0",
+    "com.unity.modules.imgui": "1.0.0",
+    "com.unity.modules.jsonserialize": "1.0.0",
+    "com.unity.modules.screencapture": "1.0.0"
+  },
+  "testables": [
+    "com.summit.gpu-adaptive-binning",
+    "com.summit.gpu-autotuning",
+    "com.summit.gpu-deadline-scheduler",
+    "com.summit.gpu-direct-binning",
+    "com.summit.gpu-primitives",
+    "com.summit.gpu-residency-manager",
+    "com.summit.gpu-sensor-pipeline",
+    "com.summit.gpu-timestamps"
+  ]
+}

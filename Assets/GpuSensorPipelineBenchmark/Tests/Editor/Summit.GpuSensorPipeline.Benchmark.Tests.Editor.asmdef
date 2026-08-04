@@ -1,0 +1,21 @@
+{
+  "name": "Summit.GpuSensorPipeline.Benchmark.Tests.Editor",
+  "rootNamespace": "Summit.GpuSensorPipeline.Benchmark.Tests",
+  "references": [
+    "Summit.GpuSensorPipeline.Benchmark"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": false,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false,
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ]
+}
