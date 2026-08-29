@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "suite": "summit.gpu-driven-instance",
+  "gitCommit": "36d92e6dee55033ec0ea13caa00edf4db7468736",
+  "gitBranch": "codex/gpu-driven-instances-benchmark-20260829",
+  "unityVersion": "6000.5.2f1",
+  "matrixPreset": "visibility-sweep-v1",
+  "formalAcceptanceMode": true,
+  "formalContractSatisfied": true,
+  "sourceHashesStableAcrossBuild": true,
+  "playerPayloadStableThroughRun": true,
+  "visibilityLayout": "seeded-coprime-permutation-v1",
+  "sourceSnapshotSha256": "14B37B4AD7FF9EC024B32F338569C9651D673DD8598006B5BAE69E65B00EAA87",
+  "runtimeShaderSha256": "C8F365BC2883FD85C6F9DEE94AD738DA7D2DFD061B785E935FCF2E41421B278D",
+  "binningShaderSha256": "E17C6071926F4459AB02FBCF46442CD585FF3AAC93FE427B1FBF8172138BBD2A",
+  "runtimeApiSha256": "E676DC51F5CEE6B720F904964F8AB987D3497D1B86BFA9B18E161E4660CD8844",
+  "timestampNativeDllSha256": "BE42A0E925F8BFEC28F8096C841940F8B559C11AF99EA83B9BF5FDE83DF5D503",
+  "editModeResults": {
+    "sha256": "6BA6E0715BDD0B18CE799D4AC99258A44BCA4EE09D6695D6E02D9921C404FBB4",
+    "result": "Passed",
+    "total": 544,
+    "passed": 544,
+    "failed": 0,
+    "skipped": 0,
+    "inconclusive": 0
+  },
+  "playerPayload": {
+    "sha256": "9FEAF16D4670AAFEEA2454786E1BD2A0F0508D209FF8040DA500233A0EC2309B",
+    "fileCount": 282,
+    "lengthBytes": 155830815
+  },
+  "nativeTimestampRows": 36000,
+  "validationRows": 16,
+  "validationFailures": 0
+}

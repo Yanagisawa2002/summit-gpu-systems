@@ -1,18 +1,20 @@
 using System;
 using System.Collections.Generic;
+using Summit.GpuDrivenInstances;
 using UnityEngine;
 
-namespace Summit.GpuDrivenInstances.Tests
+namespace Summit.GpuDrivenInstanceBenchmark
 {
-    internal sealed class CpuGpuDrivenInstanceResult
+    internal sealed class GpuDrivenInstanceExpectedResult
     {
-        internal CpuGpuDrivenInstanceResult(
+        internal GpuDrivenInstanceExpectedResult(
             uint[] counts,
             uint[] offsets,
             uint[] groupedInstanceIndices,
             uint[] indirectArguments,
             uint contractViolationCount,
-            uint errorFlags)
+            uint errorFlags,
+            string resultHash)
         {
             Counts = counts;
             Offsets = offsets;
@@ -20,6 +22,7 @@ namespace Summit.GpuDrivenInstances.Tests
             IndirectArguments = indirectArguments;
             ContractViolationCount = contractViolationCount;
             ErrorFlags = errorFlags;
+            ResultHash = resultHash;
         }
 
         internal uint[] Counts { get; }
@@ -33,14 +36,16 @@ namespace Summit.GpuDrivenInstances.Tests
         internal uint ContractViolationCount { get; }
 
         internal uint ErrorFlags { get; }
+
+        internal string ResultHash { get; }
     }
 
     /// <summary>
     /// Independent CPU model of the public classification contract.
     /// </summary>
-    internal static class CpuGpuDrivenInstanceOracle
+    internal static class GpuDrivenInstanceBenchmarkCpuOracle
     {
-        internal static CpuGpuDrivenInstanceResult Build(
+        internal static GpuDrivenInstanceExpectedResult Build(
             GpuInstanceState[] instances,
             Vector4[] viewPlanes,
             Vector4[] viewParameters,
@@ -224,13 +229,134 @@ namespace Summit.GpuDrivenInstances.Tests
                 indirect[argumentBase + 4] = offsets[bin];
             }
 
-            return new CpuGpuDrivenInstanceResult(
+            return new GpuDrivenInstanceExpectedResult(
                 counts,
                 offsets,
                 grouped,
                 indirect,
                 violationCount,
-                errorFlags);
+                errorFlags,
+                ComputeHash(
+                    counts,
+                    offsets,
+                    CanonicalizeBins(grouped, offsets, counts),
+                    indirect,
+                    new[] { violationCount, errorFlags }));
+        }
+
+        internal static bool Validate(
+            GpuDrivenInstanceExpectedResult expected,
+            uint[] actualCounts,
+            uint[] actualOffsets,
+            uint[] actualGrouped,
+            uint[] actualArguments,
+            uint[] actualDiagnostics,
+            out string message,
+            out string actualHash)
+        {
+            actualHash = "unavailable";
+            if (expected == null ||
+                actualCounts == null ||
+                actualOffsets == null ||
+                actualGrouped == null ||
+                actualArguments == null ||
+                actualDiagnostics == null)
+            {
+                message = "Validation contains a null input.";
+                return false;
+            }
+            if (actualCounts.Length < expected.Counts.Length ||
+                actualOffsets.Length < expected.Offsets.Length ||
+                actualGrouped.Length <
+                    expected.GroupedInstanceIndices.Length ||
+                actualArguments.Length <
+                    expected.IndirectArguments.Length ||
+                actualDiagnostics.Length <
+                    GpuDrivenInstancePipeline.DiagnosticWordCount)
+            {
+                message = "Validation readback has an unexpected length.";
+                return false;
+            }
+
+            int mismatch = FindMismatch(
+                actualCounts,
+                expected.Counts,
+                expected.Counts.Length);
+            if (mismatch >= 0)
+            {
+                message = $"Count mismatch at bin {mismatch}.";
+                return false;
+            }
+            mismatch = FindMismatch(
+                actualOffsets,
+                expected.Offsets,
+                expected.Offsets.Length);
+            if (mismatch >= 0)
+            {
+                message = $"Offset mismatch at slot {mismatch}.";
+                return false;
+            }
+            mismatch = FindMismatch(
+                actualArguments,
+                expected.IndirectArguments,
+                expected.IndirectArguments.Length);
+            if (mismatch >= 0)
+            {
+                message = $"Indirect argument mismatch at word {mismatch}.";
+                return false;
+            }
+            if (actualDiagnostics[0] != expected.ContractViolationCount ||
+                actualDiagnostics[1] != expected.ErrorFlags)
+            {
+                message = "Diagnostic words differ from the CPU oracle.";
+                return false;
+            }
+
+            var activeGrouped = new uint[
+                expected.GroupedInstanceIndices.Length];
+            Array.Copy(
+                actualGrouped,
+                activeGrouped,
+                activeGrouped.Length);
+            uint[] canonicalActual = CanonicalizeBins(
+                activeGrouped,
+                expected.Offsets,
+                expected.Counts);
+            uint[] canonicalExpected = CanonicalizeBins(
+                expected.GroupedInstanceIndices,
+                expected.Offsets,
+                expected.Counts);
+            mismatch = FindMismatch(
+                canonicalActual,
+                canonicalExpected,
+                canonicalExpected.Length);
+            actualHash = ComputeHash(
+                Prefix(actualCounts, expected.Counts.Length),
+                Prefix(actualOffsets, expected.Offsets.Length),
+                canonicalActual,
+                Prefix(
+                    actualArguments,
+                    expected.IndirectArguments.Length),
+                new[] { actualDiagnostics[0], actualDiagnostics[1] });
+            if (mismatch >= 0)
+            {
+                message =
+                    $"Canonical membership mismatch at slot {mismatch}.";
+                return false;
+            }
+            if (!string.Equals(
+                    actualHash,
+                    expected.ResultHash,
+                    StringComparison.Ordinal))
+            {
+                message = "Canonical result hash differs from the oracle.";
+                return false;
+            }
+
+            message =
+                "Counts, offsets, canonical membership, indirect arguments, " +
+                "and diagnostics match the CPU oracle.";
+            return true;
         }
 
         internal static uint[] CanonicalizeBins(
@@ -295,6 +421,47 @@ namespace Summit.GpuDrivenInstances.Tests
                 planes[offset + 5] = new Vector4(0f, 0f, -1f, extent);
             }
             return planes;
+        }
+
+        private static int FindMismatch(
+            uint[] left,
+            uint[] right,
+            int length)
+        {
+            for (int index = 0; index < length; index++)
+            {
+                if (left[index] != right[index])
+                {
+                    return index;
+                }
+            }
+            return -1;
+        }
+
+        private static uint[] Prefix(uint[] values, int length)
+        {
+            var result = new uint[length];
+            Array.Copy(values, result, length);
+            return result;
+        }
+
+        private static string ComputeHash(params uint[][] arrays)
+        {
+            const uint offset = 2166136261u;
+            const uint prime = 16777619u;
+            uint hash = offset;
+            foreach (uint[] values in arrays)
+            {
+                for (int index = 0; index < values.Length; index++)
+                {
+                    uint value = values[index];
+                    hash = (hash ^ (byte)value) * prime;
+                    hash = (hash ^ (byte)(value >> 8)) * prime;
+                    hash = (hash ^ (byte)(value >> 16)) * prime;
+                    hash = (hash ^ (byte)(value >> 24)) * prime;
+                }
+            }
+            return hash.ToString("X8");
         }
 
         private static uint ValidateInstance(

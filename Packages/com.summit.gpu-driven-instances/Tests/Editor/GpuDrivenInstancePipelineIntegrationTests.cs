@@ -70,6 +70,46 @@ namespace Summit.GpuDrivenInstances.Tests
                 draws);
         }
 
+        [Test]
+        public void VisibleOnlyModeDiscardsRejectedPayloads()
+        {
+            var instances = new[]
+            {
+                CreateInstance(
+                    Vector3.zero,
+                    1f,
+                    new Vector4(20f, 0f, 0f, 0f),
+                    0u,
+                    1u,
+                    0b11u),
+                CreateInstance(
+                    new Vector3(100f, 0f, 0f),
+                    1f,
+                    new Vector4(200f, 0f, 0f, 0f),
+                    0u,
+                    1u,
+                    0b11u),
+            };
+            Vector4[] views =
+            {
+                new Vector4(0f, 0f, 0f, 1f),
+                new Vector4(1f, 0f, 0f, 1f),
+            };
+            CpuGpuDrivenInstanceResult result = AssertGpuMatchesOracle(
+                instances,
+                CpuGpuDrivenInstanceOracle.CreateBoxPlanes(2, 10f),
+                views,
+                CreateDrawTemplates(1),
+                GpuDrivenInstanceOutputMode.VisibleOnly);
+
+            Assert.That(result.Counts, Has.Length.EqualTo(2));
+            Assert.That(result.Offsets[result.Offsets.Length - 1],
+                Is.EqualTo(2u));
+            Assert.That(
+                result.GroupedInstanceIndices,
+                Has.Length.LessThan(instances.Length * views.Length));
+        }
+
         [TestCase(1)]
         [TestCase(255)]
         [TestCase(256)]
@@ -302,19 +342,23 @@ namespace Summit.GpuDrivenInstances.Tests
             GpuInstanceState[] instances,
             Vector4[] planes,
             Vector4[] views,
-            GpuDrawTemplate[] draws)
+            GpuDrawTemplate[] draws,
+            GpuDrivenInstanceOutputMode outputMode =
+                GpuDrivenInstanceOutputMode.CulledTail)
         {
             CpuGpuDrivenInstanceResult expected =
                 CpuGpuDrivenInstanceOracle.Build(
                     instances,
                     planes,
                     views,
-                    draws);
+                    draws,
+                    outputMode);
             using (var buffers = new BufferSet(
                        instances,
                        planes,
                        views,
-                       draws))
+                       draws,
+                       outputMode))
             using (var pipeline = new GpuDrivenInstancePipeline(
                        Math.Max(1, instances.Length),
                        views.Length,
@@ -328,7 +372,8 @@ namespace Summit.GpuDrivenInstances.Tests
                     buffers,
                     instances.Length,
                     views.Length,
-                    draws.Length);
+                    draws.Length,
+                    outputMode);
                 Graphics.ExecuteCommandBuffer(commands);
 
                 uint[] actualCounts = ReadUint(
@@ -380,7 +425,9 @@ namespace Summit.GpuDrivenInstances.Tests
             BufferSet buffers,
             int instanceCount,
             int viewCount,
-            int drawGroupCount)
+            int drawGroupCount,
+            GpuDrivenInstanceOutputMode outputMode =
+                GpuDrivenInstanceOutputMode.CulledTail)
         {
             pipeline.Record(
                 commands,
@@ -396,7 +443,8 @@ namespace Summit.GpuDrivenInstances.Tests
                 instanceCount,
                 viewCount,
                 drawGroupCount,
-                GpuPrimitiveBackend.Portable);
+                GpuPrimitiveBackend.Portable,
+                outputMode);
         }
 
         private static GpuInstanceState CreateInstance(
@@ -446,11 +494,17 @@ namespace Summit.GpuDrivenInstances.Tests
                 GpuInstanceState[] instances,
                 Vector4[] planes,
                 Vector4[] views,
-                GpuDrawTemplate[] draws)
+                GpuDrawTemplate[] draws,
+                GpuDrivenInstanceOutputMode outputMode =
+                    GpuDrivenInstanceOutputMode.CulledTail)
             {
                 int pairCount = checked(instances.Length * views.Length);
                 int visibleBinCount = checked(views.Length * draws.Length);
-                int totalBinCount = checked(visibleBinCount + 1);
+                int totalBinCount =
+                    GpuDrivenInstancePipeline.GetOutputBinCount(
+                        views.Length,
+                        draws.Length,
+                        outputMode);
                 Instances = CreateStructured(
                     Math.Max(1, instances.Length),
                     GpuInstanceState.Stride);

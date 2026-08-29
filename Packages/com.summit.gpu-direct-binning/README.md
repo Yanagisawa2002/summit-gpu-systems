@@ -30,6 +30,12 @@ Atomic scatter does not define ordering within a bin. Correctness means exact
 counts, offsets, membership, key association, and invalid-key accounting, not
 input-order preservation.
 
+`RecordWithDiscardKey` adds an explicit non-error sentinel outside `[0, C)`.
+Matching elements contribute no count, offset, diagnostic, or output write;
+other out-of-range keys remain errors. This is intended for visibility,
+filtering, and sparse producer pipelines that should not materialize rejected
+payloads.
+
 The diagnostic words are:
 
 | Word | Meaning |
@@ -90,6 +96,10 @@ allocation alignment and shader assets are excluded.
 
 `Record` allocates no managed arrays or GPU buffers and performs no readback.
 Do not overlap executions that share one binner's write-head scratch.
+
+`RecordWithDiscardKeyWithoutDiagnosticClear` exists for a producer that owns
+and clears the same diagnostic buffer before classification. The ordinary
+discard-key method retains the safe self-clearing behavior.
 
 ## Zero elements and profiling
 

@@ -39,6 +39,8 @@ namespace Summit.GpuDrivenInstances
             Shader.PropertyToID("_DrawGroupCount");
         private static readonly int VisibleBinCountId =
             Shader.PropertyToID("_VisibleBinCount");
+        private static readonly int CulledKeyId =
+            Shader.PropertyToID("_CulledKey");
         private static readonly int ClearBufferId =
             Shader.PropertyToID("_ClearBuffer");
         private static readonly int InstancesId =
@@ -212,15 +214,37 @@ namespace Summit.GpuDrivenInstances
             return GetVisibleBinCount(viewCount, drawGroupCount);
         }
 
+        public static int GetOutputBinCount(
+            int viewCount,
+            int drawGroupCount,
+            GpuDrivenInstanceOutputMode outputMode)
+        {
+            int visibleBinCount = GetVisibleBinCount(
+                viewCount,
+                drawGroupCount);
+            switch (outputMode)
+            {
+                case GpuDrivenInstanceOutputMode.CulledTail:
+                    return checked(visibleBinCount + 1);
+                case GpuDrivenInstanceOutputMode.VisibleOnly:
+                    return visibleBinCount;
+                default:
+                    throw new ArgumentOutOfRangeException(
+                        nameof(outputMode));
+            }
+        }
+
         /// <summary>
         /// Records the complete GPU classification and argument pipeline.
         /// </summary>
         /// <remarks>
-        /// <paramref name="groupCounts"/> contains VisibleBinCount + 1
-        /// entries; the final entry is the culled-bin count.
-        /// <paramref name="groupOffsets"/> contains one terminal offset after
-        /// those bins. The grouped output therefore contains all active
-        /// view/instance pairs; consumers draw only the visible prefix.
+        /// In <see cref="GpuDrivenInstanceOutputMode.CulledTail"/> mode,
+        /// <paramref name="groupCounts"/> contains VisibleBinCount + 1 entries
+        /// and the final bin receives rejected pairs. In
+        /// <see cref="GpuDrivenInstanceOutputMode.VisibleOnly"/> mode, rejected
+        /// pairs are discarded before scatter and outputs contain visible bins
+        /// only. <paramref name="groupOffsets"/> always contains one terminal
+        /// offset after the active output bins.
         /// </remarks>
         public void Record(
             CommandBuffer commands,
@@ -236,7 +260,9 @@ namespace Summit.GpuDrivenInstances
             int instanceCount,
             int viewCount,
             int drawGroupCount,
-            GpuPrimitiveBackend scanBackend = GpuPrimitiveBackend.Auto)
+            GpuPrimitiveBackend scanBackend = GpuPrimitiveBackend.Auto,
+            GpuDrivenInstanceOutputMode outputMode =
+                GpuDrivenInstanceOutputMode.CulledTail)
         {
             ValidateRecordArguments(
                 commands,
@@ -252,11 +278,19 @@ namespace Summit.GpuDrivenInstances
                 instanceCount,
                 viewCount,
                 drawGroupCount,
-                scanBackend);
+                scanBackend,
+                outputMode);
 
             int pairCount = checked(instanceCount * viewCount);
             int visibleBinCount = checked(viewCount * drawGroupCount);
-            int totalBinCount = checked(visibleBinCount + 1);
+            bool visibleOnly =
+                outputMode == GpuDrivenInstanceOutputMode.VisibleOnly;
+            int totalBinCount = visibleOnly
+                ? visibleBinCount
+                : checked(visibleBinCount + 1);
+            uint culledKey = visibleOnly
+                ? uint.MaxValue
+                : checked((uint)visibleBinCount);
 
             BeginSample(commands, PipelineSample);
             RecordClearDiagnostics(commands, diagnostics);
@@ -277,6 +311,10 @@ namespace Summit.GpuDrivenInstances
                     shader,
                     VisibleBinCountId,
                     visibleBinCount);
+                commands.SetComputeIntParam(
+                    shader,
+                    CulledKeyId,
+                    unchecked((int)culledKey));
                 commands.SetComputeBufferParam(
                     shader,
                     classifyInstancesKernel,
@@ -316,17 +354,35 @@ namespace Summit.GpuDrivenInstances
             }
             EndSample(commands, ClassifySample);
 
-            binner.RecordGuaranteedInRangeWithoutDiagnosticClear(
-                commands,
-                keys,
-                values,
-                groupCounts,
-                groupOffsets,
-                groupedInstanceIndices,
-                diagnostics,
-                pairCount,
-                totalBinCount,
-                scanBackend);
+            if (visibleOnly)
+            {
+                binner.RecordWithDiscardKeyWithoutDiagnosticClear(
+                    commands,
+                    keys,
+                    values,
+                    groupCounts,
+                    groupOffsets,
+                    groupedInstanceIndices,
+                    diagnostics,
+                    pairCount,
+                    totalBinCount,
+                    culledKey,
+                    scanBackend);
+            }
+            else
+            {
+                binner.RecordGuaranteedInRangeWithoutDiagnosticClear(
+                    commands,
+                    keys,
+                    values,
+                    groupCounts,
+                    groupOffsets,
+                    groupedInstanceIndices,
+                    diagnostics,
+                    pairCount,
+                    totalBinCount,
+                    scanBackend);
+            }
 
             BeginSample(commands, ArgumentsSample);
             commands.SetComputeIntParam(
@@ -410,7 +466,8 @@ namespace Summit.GpuDrivenInstances
             int instanceCount,
             int viewCount,
             int drawGroupCount,
-            GpuPrimitiveBackend scanBackend)
+            GpuPrimitiveBackend scanBackend,
+            GpuDrivenInstanceOutputMode outputMode)
         {
             ThrowIfDisposed();
             if (commands == null)
@@ -442,10 +499,18 @@ namespace Summit.GpuDrivenInstances
             {
                 throw new ArgumentOutOfRangeException(nameof(scanBackend));
             }
+            if (outputMode != GpuDrivenInstanceOutputMode.CulledTail &&
+                outputMode != GpuDrivenInstanceOutputMode.VisibleOnly)
+            {
+                throw new ArgumentOutOfRangeException(nameof(outputMode));
+            }
 
             int pairCount = checked(instanceCount * viewCount);
             int visibleBinCount = checked(viewCount * drawGroupCount);
-            int totalBinCount = checked(visibleBinCount + 1);
+            int totalBinCount = outputMode ==
+                GpuDrivenInstanceOutputMode.VisibleOnly
+                    ? visibleBinCount
+                    : checked(visibleBinCount + 1);
             ValidateStructuredBuffer(
                 instances,
                 instanceCount,

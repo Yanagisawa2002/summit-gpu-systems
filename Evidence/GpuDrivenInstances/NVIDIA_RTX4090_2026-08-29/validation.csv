@@ -1,0 +1,17 @@
+scenario,phase,variant,passed,resultHash,validCount,invalidKeyCount,diagnosticFlags
+visible5-n1048576-v4,warmup,culled-tail-portable,1,BC777B2F,209712,0,0
+visible5-n1048576-v4,warmup,visible-only-discard-key-portable,1,94AD5517,209712,0,0
+visible5-n1048576-v4,final,culled-tail-portable,1,BC777B2F,209712,0,0
+visible5-n1048576-v4,final,visible-only-discard-key-portable,1,94AD5517,209712,0,0
+visible25-n1048576-v4,warmup,culled-tail-portable,1,84892E65,1048576,0,0
+visible25-n1048576-v4,warmup,visible-only-discard-key-portable,1,AE5E7915,1048576,0,0
+visible25-n1048576-v4,final,culled-tail-portable,1,84892E65,1048576,0,0
+visible25-n1048576-v4,final,visible-only-discard-key-portable,1,AE5E7915,1048576,0,0
+visible75-n1048576-v4,warmup,culled-tail-portable,1,7C17D4CD,3145728,0,0
+visible75-n1048576-v4,warmup,visible-only-discard-key-portable,1,EBA557CD,3145728,0,0
+visible75-n1048576-v4,final,culled-tail-portable,1,7C17D4CD,3145728,0,0
+visible75-n1048576-v4,final,visible-only-discard-key-portable,1,EBA557CD,3145728,0,0
+visible100-n1048576-v4,warmup,culled-tail-portable,1,AFF8B6F5,4194304,0,0
+visible100-n1048576-v4,warmup,visible-only-discard-key-portable,1,2CEF2F15,4194304,0,0
+visible100-n1048576-v4,final,culled-tail-portable,1,AFF8B6F5,4194304,0,0
+visible100-n1048576-v4,final,visible-only-discard-key-portable,1,2CEF2F15,4194304,0,0

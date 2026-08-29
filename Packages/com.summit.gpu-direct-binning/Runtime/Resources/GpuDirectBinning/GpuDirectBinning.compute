@@ -1,9 +1,11 @@
 #pragma kernel ClearUint
 #pragma kernel CountBins
 #pragma kernel CountBinsGuaranteedInRange
+#pragma kernel CountBinsWithDiscardKey
 #pragma kernel PrepareOffsetsAndWriteHeads
 #pragma kernel ScatterValues
 #pragma kernel ScatterValuesGuaranteedInRange
+#pragma kernel ScatterValuesWithDiscardKey
 #pragma target 5.0
 
 StructuredBuffer<uint> _Keys;
@@ -19,6 +21,7 @@ RWStructuredBuffer<uint> _Diagnostics;
 int _ClearCount;
 int _ElementCount;
 int _BinCount;
+uint _DiscardKey;
 
 static const uint InvalidKeyCountWord = 0u;
 static const uint ErrorFlagsWord = 1u;
@@ -77,6 +80,40 @@ void CountBinsGuaranteedInRange(
 
     uint ignored;
     InterlockedAdd(_BinCounts[_Keys[index]], 1u, ignored);
+}
+
+[numthreads(256, 1, 1)]
+void CountBinsWithDiscardKey(
+    uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint index = dispatchThreadId.x;
+    if (index >= (uint)_ElementCount)
+    {
+        return;
+    }
+
+    uint key = _Keys[index];
+    if (key == _DiscardKey)
+    {
+        return;
+    }
+    if (key < (uint)_BinCount)
+    {
+        uint ignored;
+        InterlockedAdd(_BinCounts[key], 1u, ignored);
+        return;
+    }
+
+    uint ignoredCount;
+    uint ignoredFlags;
+    InterlockedAdd(
+        _Diagnostics[InvalidKeyCountWord],
+        1u,
+        ignoredCount);
+    InterlockedOr(
+        _Diagnostics[ErrorFlagsWord],
+        InvalidKeyEncountered,
+        ignoredFlags);
 }
 
 [numthreads(256, 1, 1)]
@@ -144,4 +181,35 @@ void ScatterValuesGuaranteedInRange(
     uint destination;
     InterlockedAdd(_WriteHeads[key], 1u, destination);
     _BinnedValues[destination] = _Values[source];
+}
+
+[numthreads(256, 1, 1)]
+void ScatterValuesWithDiscardKey(
+    uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint source = dispatchThreadId.x;
+    if (source >= (uint)_ElementCount)
+    {
+        return;
+    }
+
+    uint key = _Keys[source];
+    if (key == _DiscardKey || key >= (uint)_BinCount)
+    {
+        return;
+    }
+
+    uint destination;
+    InterlockedAdd(_WriteHeads[key], 1u, destination);
+    if (destination < (uint)_ElementCount)
+    {
+        _BinnedValues[destination] = _Values[source];
+        return;
+    }
+
+    uint ignoredFlags;
+    InterlockedOr(
+        _Diagnostics[ErrorFlagsWord],
+        ScatterDestinationOutOfRange,
+        ignoredFlags);
 }
