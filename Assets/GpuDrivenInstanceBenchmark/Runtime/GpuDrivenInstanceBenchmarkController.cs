@@ -946,6 +946,8 @@ public sealed class GpuDrivenInstanceBenchmarkController : MonoBehaviour
             startedUtc = DateTime.UtcNow.ToString("O"),
             scenarioId = scenarioId,
             visibility = visibility,
+            visibilityLayout =
+                GpuDrivenInstanceInputGenerator.VisibilityLayoutId,
             superRounds = superRounds,
             warmupFrames = warmupFrames,
             sampleFrames = sampleFrames,
@@ -1545,6 +1547,7 @@ public sealed class GpuDrivenInstanceBenchmarkController : MonoBehaviour
         public string startedUtc;
         public string scenarioId;
         public string visibility;
+        public string visibilityLayout;
         public int superRounds;
         public int warmupFrames;
         public int sampleFrames;

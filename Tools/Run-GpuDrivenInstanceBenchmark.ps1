@@ -620,6 +620,8 @@ foreach ($scenario in $scenarios) {
     $config = Get-Content -LiteralPath $configPath -Raw |
         ConvertFrom-Json
     if ([string]$config.buildCommit -cne $gitCommit -or
+        [string]$config.visibilityLayout -cne
+            'seeded-coprime-permutation-v1' -or
         [string]$config.runtimeShaderSha256 -cne
             $runtimeShaderSha256 -or
         [string]$config.referenceShaderSha256 -cne

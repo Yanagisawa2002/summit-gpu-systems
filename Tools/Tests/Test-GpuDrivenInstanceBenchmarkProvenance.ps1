@@ -45,6 +45,8 @@ foreach ($requirement in @(
         @('visible25-n1048576-v4', 'Twenty-five-percent cell'),
         @('visible75-n1048576-v4', 'Seventy-five-percent cell'),
         @('visible100-n1048576-v4', 'Full-visibility control cell'),
+        @('seeded-coprime-permutation-v1',
+            'Dispersed visibility layout gate'),
         @('sampleFrames = 900', 'Formal sample count'),
         @('same-process paired ABBA/BAAB', 'Paired protocol report'),
         @('pairedMedianSpeedupPercent', 'Paired effect estimate'),
