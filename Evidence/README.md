@@ -4,10 +4,10 @@ This directory is the compact evidence entry point. Detailed experiment designs 
 
 ## Portable systems
 
-- GPU primitives: `../Docs/GPU_PRIMITIVES_AMD_R9700_FORMAL_RESULTS_2026-07-30.md`
+- GPU primitives: `../Docs/GPU_PRIMITIVES_AMD_R9700_FORMAL_RESULTS_2026-07-30.md`, `../Docs/GPU_PRIMITIVES_NVIDIA_RTX4090_FORMAL_RESULTS_2026-08-29.md`
 - Direct spatial binning: `../Docs/GPU_DIRECT_BINNING_AMD_R9700_RESULTS.md`
 - Adaptive spatial backend: `../Docs/GPU_ADAPTIVE_BINNING_AMD_R9700_FORMAL_2026-07-31.md`
-- Device-keyed autotuning: `../Docs/GPU_CROSS_VENDOR_AUTOTUNING_AMD_R9700_REPORT.md`
+- Device-keyed autotuning: `../Docs/GPU_CROSS_VENDOR_AUTOTUNING_AMD_R9700_REPORT.md`, `../Docs/GPU_CROSS_VENDOR_AUTOTUNING_NVIDIA_RTX4090_REPORT_2026-08-29.md`
 - GPU-resident sensor pipeline: `../Docs/GPU_DYNAMIC_SENSOR_PIPELINE_AMD_R9700_FORMAL_2026-07-31.md`
 - Packed SoA and fusion: `../Docs/GPU_SENSOR_DATA_PACKING_FUSION_V2_AMD_R9700_REPORT.md`
 - Shared multi-sensor index: `../Docs/GPU_MULTI_SENSOR_SHARED_INDEX_AMD_R9700_REPORT.md`
@@ -23,4 +23,4 @@ This directory is the compact evidence entry point. Detailed experiment designs 
 
 ## Claim boundary
 
-All retained hardware results are AMD Radeon AI PRO R9700 / Direct3D 12 unless a report explicitly says otherwise. The autotuning architecture is vendor-neutral, but no NVIDIA performance result is claimed yet. Percentages describe the exact workloads, scopes, sample counts, and baselines in their reports; they are not generalized product-wide speedups.
+Retained hardware results cover only the device named in each report. GPU primitives and device-keyed autotuning now include AMD Radeon AI PRO R9700 and NVIDIA GeForce RTX 4090 Direct3D 12 evidence; other systems remain AMD-only unless stated otherwise. Percentages describe the exact workloads, scopes, sample counts, and baselines in their reports; they are not generalized product-wide speedups.

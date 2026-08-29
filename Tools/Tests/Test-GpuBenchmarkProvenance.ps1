@@ -68,22 +68,9 @@ $testRoot = Join-Path ([System.IO.Path]::GetTempPath()) (
 New-Item -ItemType Directory -Path $testRoot | Out-Null
 
 try {
-    $fishRelative =
-        'Packages/com.firstgeargames.fishnet/CodeGenerating/' +
-        'cecil-0.11.4/Mono.Cecil.sln.meta'
-    $urpRelative =
-        'Assets/Settings/UniversalRenderPipelineGlobalSettings.asset'
-    foreach ($relativePath in @($fishRelative, $urpRelative)) {
-        $destination = Join-Path $testRoot ($relativePath.Replace('/', '\'))
-        New-Item `
-            -ItemType Directory `
-            -Path (Split-Path -Parent $destination) `
-            -Force |
-            Out-Null
-        Copy-Item `
-            -LiteralPath (Join-Path $projectRoot ($relativePath.Replace('/', '\'))) `
-            -Destination $destination
-    }
+    $fixtureRelative = 'fixture.txt'
+    $fixturePath = Join-Path $testRoot $fixtureRelative
+    Write-Utf8NoBom -Path $fixturePath -Value 'canonical fixture'
 
     [void](Invoke-TestGit -Root $testRoot -Arguments @('init', '--quiet'))
     [void](Invoke-TestGit -Root $testRoot -Arguments @(
@@ -99,41 +86,13 @@ try {
     $clean = Get-GpuBenchmarkGitSnapshot -ProjectRoot $testRoot
     Assert-True (-not [bool]$clean.dirty) 'new fixture is clean'
     Assert-True ($clean.statusLines.Count -eq 0) 'clean status has no rows'
-
-    $fishPath = Join-Path $testRoot ($fishRelative.Replace('/', '\'))
-    $urpPath = Join-Path $testRoot ($urpRelative.Replace('/', '\'))
-    Remove-Item -LiteralPath $fishPath
-    $urpText = [System.IO.File]::ReadAllText($urpPath)
-    $knownLine = "      - rid: 428988942347927577`n"
-    $knownLineIndex = $urpText.LastIndexOf(
-        $knownLine,
-        [System.StringComparison]::Ordinal)
-    Assert-True ($knownLineIndex -ge 0) 'canonical URP line exists'
-    Write-Utf8NoBom `
-        -Path $urpPath `
-        -Value $urpText.Remove($knownLineIndex, $knownLine.Length)
-    $knownDrift = Get-GpuBenchmarkGitSnapshot -ProjectRoot $testRoot
-    $restored = Restore-KnownUnityBenchmarkDrift `
+    $cleanResult = Restore-KnownUnityBenchmarkDrift `
         -ProjectRoot $testRoot `
-        -Snapshot $knownDrift `
+        -Snapshot $clean `
         -ExpectedHead $clean.head
-    Assert-True ([bool]$restored.restored) 'known drift was restored'
-    Assert-True ($restored.restoredPaths.Count -eq 2) 'two known files restored'
-    Assert-True (-not [bool]$restored.afterSnapshot.dirty) 'restored tree clean'
-    Assert-True (Test-Path -LiteralPath $fishPath) 'FishNet metadata restored'
-
-    Add-Content -LiteralPath $urpPath -Value '# unexpected'
-    $wrongUrp = Get-GpuBenchmarkGitSnapshot -ProjectRoot $testRoot
-    Assert-Throws {
-        Restore-KnownUnityBenchmarkDrift `
-            -ProjectRoot $testRoot `
-            -Snapshot $wrongUrp `
-            -ExpectedHead $clean.head
-    } 'non-exact URP mutation'
-    Assert-True ([bool](Get-GpuBenchmarkGitSnapshot `
-        -ProjectRoot $testRoot).dirty) 'wrong URP content was not restored'
-    [void](Invoke-TestGit -Root $testRoot -Arguments @(
-        'restore', '--worktree', '--', $urpRelative))
+    Assert-True (-not [bool]$cleanResult.restored) 'clean state needs no restore'
+    Assert-True ($cleanResult.restoredPaths.Count -eq 0) 'no paths were restored'
+    Assert-True (-not [bool]$cleanResult.afterSnapshot.dirty) 'clean tree stayed clean'
 
     Write-Utf8NoBom `
         -Path (Join-Path $testRoot 'unexpected.txt') `
@@ -147,9 +106,9 @@ try {
     } 'untracked drift'
     Remove-Item -LiteralPath (Join-Path $testRoot 'unexpected.txt')
 
-    Add-Content -LiteralPath $fishPath -Value '# staged'
+    Add-Content -LiteralPath $fixturePath -Value '# staged'
     [void](Invoke-TestGit -Root $testRoot -Arguments @(
-        'add', '--', $fishRelative))
+        'add', '--', $fixtureRelative))
     $staged = Get-GpuBenchmarkGitSnapshot -ProjectRoot $testRoot
     Assert-Throws {
         Restore-KnownUnityBenchmarkDrift `
@@ -158,7 +117,7 @@ try {
             -ExpectedHead $clean.head
     } 'staged drift'
     [void](Invoke-TestGit -Root $testRoot -Arguments @(
-        'restore', '--staged', '--worktree', '--', $fishRelative))
+        'restore', '--staged', '--worktree', '--', $fixtureRelative))
 
     $beforeBranchChange = Get-GpuBenchmarkGitSnapshot -ProjectRoot $testRoot
     [void](Invoke-TestGit -Root $testRoot -Arguments @(

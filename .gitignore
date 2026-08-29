@@ -9,6 +9,7 @@
 
 # Generated benchmark scenes and players
 Assets/**/Generated/
+Assets/**/Generated.meta
 [Bb]uild/
 [Bb]uilds/
 [Tt]est[Rr]esults/

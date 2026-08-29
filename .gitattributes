@@ -16,3 +16,7 @@
 *.psm1 text eol=crlf
 *.dll binary
 *.png binary
+
+# Retained benchmark evidence is hashed as measured; never rewrite its bytes.
+Evidence/GpuPrimitives/NVIDIA_RTX4090_2026-08-29/* -text -eol -diff
+Evidence/GpuAutotuning/NVIDIA_RTX4090_2026-08-29/* -text -eol -diff

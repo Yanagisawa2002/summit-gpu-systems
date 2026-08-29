@@ -116,6 +116,9 @@ if ($MatrixPreset -eq 'formal') { $selectorArgs.FormalAcceptance = $true }
 & (Join-Path $PSScriptRoot 'Select-GpuAutotuningProfile.ps1') @selectorArgs
 if ($LASTEXITCODE -ne 0) { throw 'GPU autotuning profile selection failed.' }
 
+$measuredDevice = Get-Content -LiteralPath (
+    Join-Path $output 'device.json') -Raw | ConvertFrom-Json
+
 [ordered]@{
     suite = 'summit.gpu-cross-vendor-autotuning'
     matrixPreset = $MatrixPreset
@@ -128,7 +131,16 @@ if ($LASTEXITCODE -ne 0) { throw 'GPU autotuning profile selection failed.' }
     elementCount = $elementCount
     operations = $primitiveArgs.Operations
     backends = $primitiveArgs.Backends
-    nvidiaValidated = $false
+    hardwareValidationCompleted = $true
+    measuredDevice = [ordered]@{
+        vendorId = [int]$measuredDevice.graphicsDeviceVendorId
+        deviceId = [int]$measuredDevice.graphicsDeviceId
+        vendor = [string]$measuredDevice.graphicsDeviceVendor
+        name = [string]$measuredDevice.graphicsDeviceName
+        graphicsApi = [string]$measuredDevice.graphicsDeviceType
+    }
+    amdValidated = [int]$measuredDevice.graphicsDeviceVendorId -eq 0x1002
+    nvidiaValidated = [int]$measuredDevice.graphicsDeviceVendorId -eq 0x10DE
 } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (
     Join-Path $output 'autotune-runner-config.json')
 Write-Output "Completed GPU autotuning benchmark: $output"
