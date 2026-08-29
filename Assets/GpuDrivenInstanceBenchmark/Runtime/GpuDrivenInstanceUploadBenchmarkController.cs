@@ -376,17 +376,26 @@ public sealed class GpuDrivenInstanceUploadBenchmarkController : MonoBehaviour
             yield return WaitForAllCompletionFences(
                 value => fencesPassed = value);
             allCompletionFencesPassed &= fencesPassed;
-            ValidationResult validation = ValidateGpuState(
+            ValidationResult? validation = null;
+            yield return ValidateGpuState(
                 plan,
                 finalLogicalOrdinal,
                 finalExpectedHash,
-                fencesPassed);
-            validationResults[validationResultCount++] = validation;
+                fencesPassed,
+                value => validation = value);
+            if (!validation.HasValue)
+            {
+                throw new InvalidOperationException(
+                    "GPU state validation did not return a result.");
+            }
+            ValidationResult completedValidation = validation.Value;
+            validationResults[validationResultCount++] =
+                completedValidation;
             blockSummaries[blockSummaryCount++] = SummarizeBlock(
                 plan,
                 sampleStart,
                 sampleFrames,
-                validation);
+                completedValidation);
         }
 
         bool passed =
@@ -544,11 +553,12 @@ public sealed class GpuDrivenInstanceUploadBenchmarkController : MonoBehaviour
         completion(adapter.AllCompletionFencesPassed);
     }
 
-    private ValidationResult ValidateGpuState(
+    private IEnumerator ValidateGpuState(
         BlockPlan plan,
         uint logicalOrdinal,
         ulong expectedHash,
-        bool fencesPassed)
+        bool fencesPassed,
+        Action<ValidationResult> completion)
     {
         ulong actualHash = 0UL;
         bool hashPassed = false;
@@ -558,17 +568,35 @@ public sealed class GpuDrivenInstanceUploadBenchmarkController : MonoBehaviour
         {
             status = "completion-fence-timeout";
         }
+        else if (!SystemInfo.supportsAsyncGPUReadback)
+        {
+            status = "async-readback-unsupported";
+        }
         else
         {
-            readbackBytes = checked(
-                (long)instanceCount * GpuInstanceState.Stride);
-            GpuInstanceState[] managed =
-                new GpuInstanceState[instanceCount];
-            adapter.InstanceStateBuffer.GetData(managed);
-            using (var native = new NativeArray<GpuInstanceState>(
-                managed,
-                Allocator.Temp))
+            AsyncGPUReadbackRequest request =
+                AsyncGPUReadback.Request(adapter.InstanceStateBuffer);
+            double deadline =
+                Time.realtimeSinceStartupAsDouble + FenceTimeoutSeconds;
+            while (!request.done &&
+                Time.realtimeSinceStartupAsDouble < deadline)
             {
+                yield return null;
+            }
+            if (!request.done)
+            {
+                status = "readback-timeout";
+            }
+            else if (request.hasError)
+            {
+                status = "readback-error";
+            }
+            else
+            {
+                NativeArray<GpuInstanceState> native =
+                    request.GetData<GpuInstanceState>();
+                readbackBytes = checked(
+                    (long)native.Length * GpuInstanceState.Stride);
                 hashPassed =
                     GpuDrivenInstanceUploadBenchmarkAdapter
                         .ValidateStateHash(
@@ -576,11 +604,11 @@ public sealed class GpuDrivenInstanceUploadBenchmarkController : MonoBehaviour
                             instanceCount,
                             expectedHash,
                             out actualHash);
+                status = hashPassed ? "passed" : "state-hash-mismatch";
             }
-            status = hashPassed ? "passed" : "state-hash-mismatch";
         }
 
-        return new ValidationResult
+        completion(new ValidationResult
         {
             BlockIndex = plan.BlockIndex,
             SuperRound = plan.SuperRound,
@@ -596,7 +624,7 @@ public sealed class GpuDrivenInstanceUploadBenchmarkController : MonoBehaviour
             Passed = fencesPassed && hashPassed,
             Status = status,
             ReadbackBytes = readbackBytes
-        };
+        });
     }
 
     private RawSample CreateRawSample(
