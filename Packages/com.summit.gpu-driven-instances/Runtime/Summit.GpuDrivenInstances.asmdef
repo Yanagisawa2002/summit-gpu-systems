@@ -1,0 +1,17 @@
+{
+  "name": "Summit.GpuDrivenInstances",
+  "rootNamespace": "Summit.GpuDrivenInstances",
+  "references": [
+    "Summit.GpuDirectBinning",
+    "Summit.GpuPrimitives"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

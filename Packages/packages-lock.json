@@ -31,6 +31,15 @@
         "com.summit.gpu-primitives": "0.1.0"
       }
     },
+    "com.summit.gpu-driven-instances": {
+      "version": "file:com.summit.gpu-driven-instances",
+      "depth": 0,
+      "source": "embedded",
+      "dependencies": {
+        "com.summit.gpu-direct-binning": "0.1.0",
+        "com.summit.gpu-primitives": "0.1.0"
+      }
+    },
     "com.summit.gpu-primitives": {
       "version": "file:com.summit.gpu-primitives",
       "depth": 0,
