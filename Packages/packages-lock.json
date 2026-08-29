@@ -37,7 +37,8 @@
       "source": "embedded",
       "dependencies": {
         "com.summit.gpu-direct-binning": "0.1.0",
-        "com.summit.gpu-primitives": "0.1.0"
+        "com.summit.gpu-primitives": "0.1.0",
+        "com.unity.collections": "6.5.0"
       }
     },
     "com.summit.gpu-primitives": {
