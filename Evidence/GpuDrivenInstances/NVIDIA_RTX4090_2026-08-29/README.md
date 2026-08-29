@@ -1,7 +1,7 @@
 # GPU-driven visible-only retained evidence
 
 This directory retains the compact, reviewed evidence for the formal RTX 4090
-visibility sweep at commit `f9f1f56d332c2642a2b916e6267b1f2e1c16d1bb`.
+visibility sweep at commit `36d92e6dee55033ec0ea13caa00edf4db7468736`.
 
 - `matrix-summary.csv`: accepted timing metrics and paired decision ranges.
 - `scenario-quality.csv`: per-process completion and sample counts.
@@ -11,7 +11,8 @@ visibility sweep at commit `f9f1f56d332c2642a2b916e6267b1f2e1c16d1bb`.
 
 The baseline is `CulledTail`; the candidate is
 `VisibleOnly` with explicit discard-key count/scatter. Timed scopes contain no
-benchmark-output readback. See
+benchmark-output readback. Visible membership uses the exact-count,
+seeded-coprime permutation recorded in each scenario config. See
 `Docs/GPU_DRIVEN_VISIBLE_ONLY_NVIDIA_RTX4090_FORMAL_2026-08-29.md` for the
 protocol, interpretation, limitations, and reproduction command.
 

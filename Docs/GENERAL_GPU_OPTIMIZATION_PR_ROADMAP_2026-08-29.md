@@ -23,7 +23,8 @@ does not silently become the default.
 The core intentionally exposed a measurable culled-tail baseline. Inspection
 showed that rejected pairs contended on one bin and still wrote a full payload,
 so the filtered-scatter ablation moved ahead of the broader CPU macrobenchmark.
-The formal result isolated that mechanism: `34.78%–95.20%` mean GPU-region
+The formal dispersed-input result isolated that mechanism: `44.84%–93.13%`
+mean GPU-region
 reduction at `5%–75%` visibility and parity at `100%` visibility. The next PR
 returns to the stronger CPU/engine-native comparison. Dirty-range mirroring
 must remain separate so upload savings are not confused with culling gains.

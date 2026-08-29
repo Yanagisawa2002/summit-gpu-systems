@@ -2,7 +2,7 @@
 
 ## Outcome
 
-Commit `f9f1f56d332c2642a2b916e6267b1f2e1c16d1bb` adds and measures a
+Commit `36d92e6dee55033ec0ea13caa00edf4db7468736` adds and measures a
 general discard-key path for GPU count/scan/scatter. The optimized
 `VisibleOnly` mode does not reserve a shared culled bin or scatter rejected
 instance/view pairs. The original `CulledTail` mode remains available and is
@@ -14,15 +14,15 @@ region results:
 
 | Visible instances | Culled-tail mean | Visible-only mean | Mean reduction | Paired-median reduction | Pair range | Decision |
 |---:|---:|---:|---:|---:|---:|:---|
-| 5% | 4.0160 ms | 0.1927 ms | 95.20% | 95.21% | 95.18% to 95.22% | material improvement |
-| 25% | 3.6797 ms | 0.6617 ms | 82.02% | 82.01% | 82.00% to 82.05% | material improvement |
-| 75% | 2.8277 ms | 1.8441 ms | 34.78% | 34.77% | 34.64% to 34.95% | material improvement |
-| 100% | 2.4124 ms | 2.4109 ms | 0.06% | 0.04% | -0.03% to 0.19% | parity |
+| 5% | 4.2259 ms | 0.2903 ms | 93.13% | 93.13% | 93.12% to 93.14% | material improvement |
+| 25% | 4.3669 ms | 1.0419 ms | 76.14% | 76.14% | 76.12% to 76.16% | material improvement |
+| 75% | 3.5242 ms | 1.9438 ms | 44.84% | 44.86% | 44.77% to 44.89% | material improvement |
+| 100% | 2.4162 ms | 2.4079 ms | 0.34% | 0.05% | -0.08% to 1.34% | parity |
 
 The accepted interpretation is therefore narrow: visible-only scatter removed
 a large low-visibility contention/write bottleneck and remained effectively
-neutral when nothing could be rejected. The `0.06%` all-visible difference is
-noise, not a performance claim.
+neutral when nothing could be rejected. The sub-1% all-visible paired result
+is noise, not a performance claim.
 
 ## General mechanism
 
@@ -50,6 +50,10 @@ result proves reduced atomic/scatter work, not lower reserved VRAM.
 - NVIDIA GeForce RTX 4090, 24,138 MiB reported graphics memory, driver
   `32.0.15.9186`.
 - Four visibility cells: `5%`, `25%`, `75%`, and `100%`.
+- Visible membership uses the exact-count,
+  `seeded-coprime-permutation-v1` layout. This disperses visible and rejected
+  records across the input instead of placing either class in one contiguous
+  block.
 - Two super-rounds with `ABBA;BAAB` ordering, giving four matched A/B pairs.
 - `60` case-local warm-up frames and `900` measured frames per block.
 - `3,600` measured samples per variant per cell; `36,000/36,000` total native
@@ -64,11 +68,11 @@ all-visible cell as parity.
 
 ## Correctness and provenance
 
-- Full D3D12 EditMode suite: `543/543` passed, zero skipped.
+- Full D3D12 EditMode suite: `544/544` passed, zero skipped.
 - Formal matrix: `4/4` scenarios completed.
 - Oracle checks: `16/16` passed; invalid-key and diagnostic flags were zero.
 - Source hashes stayed stable across the build.
-- The 281-file, 155,790,607-byte Player payload stayed stable through the
+- The 282-file, 155,830,815-byte Player payload stayed stable through the
   matrix.
 - Runtime shader SHA-256:
   `C8F365BC2883FD85C6F9DEE94AD738DA7D2DFD061B785E935FCF2E41421B278D`.
@@ -77,13 +81,14 @@ all-visible cell as parity.
 - Combined runtime API SHA-256:
   `E676DC51F5CEE6B720F904964F8AB987D3497D1B86BFA9B18E161E4660CD8844`.
 - Player payload SHA-256:
-  `8F032FB309C2746E3E78DFD2029EE03BA0F5C265D03A2B191B7DE7FAF8B5DE44`.
+  `9FEAF16D4670AAFEEA2454786E1BD2A0F0508D209FF8040DA500233A0EC2309B`.
 
-Three complete matrices were executed while only runner reporting changed;
-the runtime shader and API hashes remained identical. Mean-reduction ranges
-across those runs were `95.20%–95.22%`, `81.99%–82.02%`, and
-`34.76%–34.81%` for the 5%, 25%, and 75% cells. The 100% cell ranged from
-`-0.02%` to `0.06%`, reinforcing the parity decision.
+Two complete matrices used the dispersed layout and identical runtime shader
+and API hashes. Mean reduction was `93.13%` in both 5% runs, `76.14%` in both
+25% runs, and `44.84%–44.90%` in the 75% runs. The 100% paired median stayed
+below `0.08%` in both runs and included negative pairs, reinforcing the parity
+decision. Earlier contiguous-layout discovery runs are not used for the
+retained claim.
 
 Compact retained evidence is under
 `Evidence/GpuDrivenInstances/NVIDIA_RTX4090_2026-08-29`. Raw per-frame rows and
@@ -123,7 +128,7 @@ rather than widening this claim.
 > Built an asset-independent Unity/D3D12 GPU-driven visibility and indirect
 > draw pipeline, then eliminated rejected-pair atomic/scatter work with a
 > reusable discard-key primitive; reduced the measured GPU region by
-> `34.8%–95.2%` at `5%–75%` visibility for `1.05M` instances across four
+> `44.8%–93.1%` at `5%–75%` visibility for `1.05M` instances across four
 > views on an RTX 4090, while an all-visible control remained at parity and
 > `36,000/36,000` native timestamp samples passed fail-closed provenance and
 > CPU-oracle gates.
