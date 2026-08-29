@@ -1,0 +1,23 @@
+{
+  "suite": "summit.gpu-cross-vendor-autotuning",
+  "matrixPreset": "formal",
+  "deviceIndex": 0,
+  "rounds": 6,
+  "calibrationRounds": 2,
+  "evaluationRounds": 4,
+  "warmupFrames": 60,
+  "sampleFrames": 900,
+  "elementCount": 1048576,
+  "operations": "exclusive-scan,stable-compaction,radix-sort-32",
+  "backends": "portable,wave-ops",
+  "hardwareValidationCompleted": true,
+  "measuredDevice": {
+    "vendorId": 4318,
+    "deviceId": 9860,
+    "vendor": "NVIDIA",
+    "name": "NVIDIA GeForce RTX 4090",
+    "graphicsApi": "Direct3D12"
+  },
+  "amdValidated": false,
+  "nvidiaValidated": true
+}

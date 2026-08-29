@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "generatedUtc": "2026-08-29T04:12:43.9375673Z",
+  "sourceCommit": "43ffac93ff549afd39675b34efb958991a8f2da9",
+  "calibrationProtocol": "rounds-1-2-calibration;rounds-3-6-evaluation",
+  "device": {
+    "schemaVersion": 1,
+    "vendorId": 4318,
+    "deviceId": 9860,
+    "vendor": "NVIDIA",
+    "deviceName": "NVIDIA GeForce RTX 4090",
+    "graphicsApi": "Direct3D12",
+    "graphicsVersion": "Direct3D 12 [level 12.2]",
+    "shaderLevel": 50
+  },
+  "workloads": [
+    {
+      "workloadId": "exclusive-scan",
+      "baselineBackend": "Portable",
+      "selectedBackend": "WaveOps",
+      "accepted": true,
+      "calibrationSamplesPerCandidate": 1800,
+      "baselineMedianMs": 0.036864,
+      "selectedMedianMs": 0.024576,
+      "baselineP99Ms": 0.083968,
+      "selectedP99Ms": 0.031744,
+      "calibrationImprovementPercent": 33.33333333333333,
+      "calibrationAbsoluteReductionMs": 0.012288,
+      "calibrationP99ImprovementPercent": 62.19512195121951,
+      "calibrationMeetsUpgradeGate": true
+    },
+    {
+      "workloadId": "radix-sort-32",
+      "baselineBackend": "Portable",
+      "selectedBackend": "Portable",
+      "accepted": true,
+      "calibrationSamplesPerCandidate": 1800,
+      "baselineMedianMs": 2.921472,
+      "selectedMedianMs": 2.921472,
+      "baselineP99Ms": 3.38944,
+      "selectedP99Ms": 3.38944,
+      "calibrationImprovementPercent": 0.9463722397476381,
+      "calibrationAbsoluteReductionMs": 0.027648000000000117,
+      "calibrationP99ImprovementPercent": 1.057401812688818,
+      "calibrationMeetsUpgradeGate": false
+    },
+    {
+      "workloadId": "stable-compaction",
+      "baselineBackend": "Portable",
+      "selectedBackend": "WaveOps",
+      "accepted": true,
+      "calibrationSamplesPerCandidate": 1800,
+      "baselineMedianMs": 0.041984,
+      "selectedMedianMs": 0.029696,
+      "baselineP99Ms": 0.044032,
+      "selectedP99Ms": 0.033792,
+      "calibrationImprovementPercent": 29.268292682926827,
+      "calibrationAbsoluteReductionMs": 0.012288,
+      "calibrationP99ImprovementPercent": 23.25581395348837,
+      "calibrationMeetsUpgradeGate": true
+    }
+  ]
+}

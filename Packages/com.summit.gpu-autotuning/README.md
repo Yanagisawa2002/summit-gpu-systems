@@ -7,5 +7,7 @@ while matching profiles may select a measured portable or WaveOps backend per
 workload.
 
 Profiles are keyed by vendor ID, device ID, graphics API, GPU name, and shader
-level. NVIDIA support is implemented by the same generic schema and benchmark
-runner, but no NVIDIA result is claimed until that hardware is measured.
+level. Formal measurements now cover AMD Radeon AI PRO R9700 and NVIDIA GeForce
+RTX 4090. The NVIDIA profile deliberately mixes backends: WaveOps for exclusive
+scan and stable compaction, and Portable for radix sort because the measured
+WaveOps delta did not clear the frozen upgrade gate.

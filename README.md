@@ -23,9 +23,10 @@ This repository is a Unity 6 benchmark host and a monorepo of reusable UPM packa
 
 ## Validated results
 
-The retained measurements were collected on AMD Radeon AI PRO R9700, Direct3D 12, and Unity `6000.5.2f1`. NVIDIA validation has not been performed and is not claimed.
+The retained measurements were collected on AMD Radeon AI PRO R9700 and NVIDIA GeForce RTX 4090 with Direct3D 12 and Unity `6000.5.2f1`. Results remain device- and workload-specific.
 
-- Native GPU primitives: wave exclusive scan `+29.70%`, radix sort `+16.82%`, stable compaction `+26.57%`; `29,700/29,700` native timestamp samples valid.
+- Native GPU primitives: wave exclusive scan improved GPU average by `29.70%` on AMD and `38.81%` on NVIDIA; stable compaction improved `26.57%` and `29.35%`. Wave radix sort improved `16.82%` on AMD but only `1.42%` on NVIDIA and was neutral under the frozen gate.
+- Device-keyed autotuning on RTX 4090 selected WaveOps for scan and stable compaction, but retained the portable radix backend. Independent rounds confirmed `38.86%` and `29.38%` GPU-average improvements for the selected WaveOps workloads; `37,800/37,800` native timestamp samples were valid.
 - GPU-resident sensor pipeline: GPU average improved `85.99%–89.66%` and GPU P99 improved `82.85%–87.81%` across the two retained workloads, with `8/8` wins.
 - NYCGIS wave64 cluster compaction: returned atomic reservations reduced by at least `98.19%`; four-camera GPU average improved `2.28%` and GPU P99 improved `6.69%`.
 - NYCGIS no-copy visible tiles: compact output reduced from approximately `385.7 MiB` of visible indices to `8.04 MiB` of descriptors. The dedicated single-camera comparison improved GPU average/P99 by `52.5%/51.9%` relative to WaveCompact.

@@ -1,5 +1,10 @@
 # GPU Performance Engineering Portfolio Index
 
+> Historical AMD snapshot dated 2026-07-31. NVIDIA RTX 4090 primitive and
+> device-keyed autotuning follow-up completed on 2026-08-29; see
+> `GPU_PRIMITIVES_NVIDIA_RTX4090_FORMAL_RESULTS_2026-08-29.md` and
+> `GPU_CROSS_VENDOR_AUTOTUNING_NVIDIA_RTX4090_REPORT_2026-08-29.md`.
+
 ## Overall status
 
 The planned AMD phase is complete. Every implementation lives in an independent

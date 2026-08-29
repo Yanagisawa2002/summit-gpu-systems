@@ -1,0 +1,13 @@
+phase,caseId,operation,variant,passed,message,readbackBytes,resultHash
+"warmup","exclusive-scan/portable","exclusive-scan","portable",1,"Exclusive scan matches the CPU oracle.",4194304,"006D5365"
+"warmup","exclusive-scan/wave-ops","exclusive-scan","wave-ops",1,"Exclusive scan matches the CPU oracle.",4194304,"006D5365"
+"warmup","radix-sort-32/portable","radix-sort-32","portable",1,"Radix-sort keys and associated values match the CPU oracle.",8388608,"EB2C3400"
+"warmup","radix-sort-32/wave-ops","radix-sort-32","wave-ops",1,"Radix-sort keys and associated values match the CPU oracle.",8388608,"EB2C3400"
+"warmup","stable-compaction/portable","stable-compaction","portable",1,"Stable compaction count and order match the CPU oracle.",4194308,"69406C24"
+"warmup","stable-compaction/wave-ops","stable-compaction","wave-ops",1,"Stable compaction count and order match the CPU oracle.",4194308,"69406C24"
+"final","exclusive-scan/portable","exclusive-scan","portable",1,"Exclusive scan matches the CPU oracle.",4194304,"006D5365"
+"final","exclusive-scan/wave-ops","exclusive-scan","wave-ops",1,"Exclusive scan matches the CPU oracle.",4194304,"006D5365"
+"final","radix-sort-32/portable","radix-sort-32","portable",1,"Radix-sort keys and associated values match the CPU oracle.",8388608,"EB2C3400"
+"final","radix-sort-32/wave-ops","radix-sort-32","wave-ops",1,"Radix-sort keys and associated values match the CPU oracle.",8388608,"EB2C3400"
+"final","stable-compaction/portable","stable-compaction","portable",1,"Stable compaction count and order match the CPU oracle.",4194308,"69406C24"
+"final","stable-compaction/wave-ops","stable-compaction","wave-ops",1,"Stable compaction count and order match the CPU oracle.",4194308,"69406C24"
