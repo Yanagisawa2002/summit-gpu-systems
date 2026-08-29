@@ -20,19 +20,22 @@ public sealed class GpuDrivenInstanceBenchmarkController : MonoBehaviour
     private static readonly WaitForEndOfFrame EndOfFrame =
         new WaitForEndOfFrame();
 
-    private readonly List<RawSample> rawSamples = new List<RawSample>(12000);
+    private readonly List<RawSample> rawSamples = new List<RawSample>();
     private readonly List<BlockSummary> blockSummaries =
         new List<BlockSummary>(16);
     private readonly List<GpuDrivenInstanceValidationResult> validationResults =
         new List<GpuDrivenInstanceValidationResult>(4);
     private readonly List<PendingTimestamp> pendingTimestamps =
-        new List<PendingTimestamp>(256);
+        new List<PendingTimestamp>(MaxPreparedTimestampScopes);
 
     private GpuDrivenInstanceBenchmarkAdapter adapter;
     private GpuDrivenInstanceNativeTimestampBackend timestampBackend;
     private GpuTimestampSupport timestampSupport;
     private CommandBuffer[] measurementCommands;
     private CommandBuffer[,] timestampCommands;
+    private RawSample[] rawSamplePool;
+    private PendingTimestamp[] pendingTimestampPool;
+    private int plannedMeasurementRows;
     private int preparedTimestampScopes;
     private bool timestampOperational;
     private bool timestampWarmupPassed;
@@ -51,6 +54,8 @@ public sealed class GpuDrivenInstanceBenchmarkController : MonoBehaviour
     private string reportDirectory;
     private string scenarioId = "custom";
     private string visibility = "visible25";
+    private string benchmarkMode =
+        GpuDrivenInstanceBenchmarkModes.FilteredBinningId;
     private int superRounds = 2;
     private int warmupFrames = 60;
     private int sampleFrames = 240;
@@ -122,6 +127,10 @@ public sealed class GpuDrivenInstanceBenchmarkController : MonoBehaviour
             args,
             "-gpu-driven-instance-visibility",
             visibility);
+        benchmarkMode = ReadString(
+            args,
+            "-gpu-driven-instance-benchmark-mode",
+            benchmarkMode);
         superRounds = Mathf.Clamp(
             ReadInt(
                 args,
@@ -287,10 +296,12 @@ public sealed class GpuDrivenInstanceBenchmarkController : MonoBehaviour
                 viewCount,
                 visibility,
                 seed,
-                dispatchesPerFrame);
+                dispatchesPerFrame,
+                benchmarkMode);
             InitializeTimestampBackend();
             BuildMeasurementCommands();
             BuildTimestampCommands();
+            PrepareMeasurementStorage();
             WriteConfiguration();
             WriteDeviceMetadata();
         }
@@ -354,6 +365,8 @@ public sealed class GpuDrivenInstanceBenchmarkController : MonoBehaviour
             int sampleStart = rawSamples.Count;
             for (int sample = 1; sample <= sampleFrames; sample++)
             {
+                long allocationStart =
+                    GC.GetAllocatedBytesForCurrentThread();
                 int sourceFrame = Time.frameCount;
                 ulong userTag = checked((ulong)rawSamples.Count + 1UL);
                 GpuTimestampSampleFlags flags =
@@ -403,49 +416,69 @@ public sealed class GpuDrivenInstanceBenchmarkController : MonoBehaviour
                 long enqueueStart = Stopwatch.GetTimestamp();
                 Graphics.ExecuteCommandBuffer(submittedCommands);
                 long enqueueEnd = Stopwatch.GetTimestamp();
-                RawSample row = new RawSample
+                int sourceRowIndex = rawSamples.Count;
+                if (rawSamplePool == null ||
+                    sourceRowIndex >= rawSamplePool.Length)
                 {
-                    SourceRowIndex = rawSamples.Count,
-                    ProcessId = processId,
-                    ScenarioId = scenarioId,
-                    SuperRound = entry.SuperRound,
-                    SequencePosition = entry.SequencePosition,
-                    PairIndex = entry.PairIndex,
-                    PairOrder = entry.PairOrder,
-                    WithinPairPosition = entry.WithinPairPosition,
-                    BlockIndex = entry.BlockIndex,
-                    BlockType = entry.BlockType,
-                    CaseId = adapter.CaseId(entry.Variant),
-                    Variant = adapter.VariantName(entry.Variant),
-                    Marker = adapter.Marker(entry.Variant),
-                    SampleIndex = sample,
-                    SourceUnityFrame = sourceFrame,
-                    ElapsedSeconds =
-                        Time.realtimeSinceStartupAsDouble - benchmarkStart,
-                    EnqueueCpuMs = TicksToMilliseconds(
-                        enqueueEnd - enqueueStart),
-                    NativeTimestampToken = token.Value,
-                    NativeTimestampUserTag = userTag,
-                    NativeTimestampFlags = (uint)flags,
-                    NativeTimestampStatus = submitted
-                        ? "pending"
-                        : StatusName(status),
-                    MeasurementReadbackBytes = 0
-                };
+                    throw new InvalidOperationException(
+                        "The preallocated raw-sample pool is exhausted.");
+                }
+                RawSample row = rawSamplePool[sourceRowIndex];
+                row.SourceRowIndex = sourceRowIndex;
+                row.ProcessId = processId;
+                row.ScenarioId = scenarioId;
+                row.SuperRound = entry.SuperRound;
+                row.SequencePosition = entry.SequencePosition;
+                row.PairIndex = entry.PairIndex;
+                row.PairOrder = entry.PairOrder;
+                row.WithinPairPosition = entry.WithinPairPosition;
+                row.BlockIndex = entry.BlockIndex;
+                row.BlockType = entry.BlockType;
+                row.CaseId = adapter.CaseId(entry.Variant);
+                row.Variant = adapter.VariantName(entry.Variant);
+                row.Marker = adapter.Marker(entry.Variant);
+                row.SampleIndex = sample;
+                row.SourceUnityFrame = sourceFrame;
+                row.ElapsedSeconds =
+                    Time.realtimeSinceStartupAsDouble - benchmarkStart;
+                row.EnqueueCpuMs = TicksToMilliseconds(
+                    enqueueEnd - enqueueStart);
+                row.NativeTimestampToken = token.Value;
+                row.NativeTimestampUserTag = userTag;
+                row.NativeTimestampFlags = (uint)flags;
+                row.NativeTimestampStatus = submitted
+                    ? "pending"
+                    : StatusName(status);
+                row.MeasurementReadbackBytes = 0;
                 rawSamples.Add(row);
                 if (submitted)
                 {
-                    pendingTimestamps.Add(new PendingTimestamp
+                    PendingTimestamp pending =
+                        pendingTimestampPool[token.ScopeIndex];
+                    if (pending.InUse)
                     {
-                        Token = token,
-                        Row = row,
-                        ExpectedFlags = flags
-                    });
+                        throw new InvalidOperationException(
+                            "A timestamp scope was reused while pending.");
+                    }
+                    pending.Token = token;
+                    pending.Row = row;
+                    pending.ExpectedFlags = flags;
+                    pending.InUse = true;
+                    pendingTimestamps.Add(pending);
                 }
+                row.MainThreadAllocatedBytes = Math.Max(
+                    0L,
+                    GC.GetAllocatedBytesForCurrentThread() - allocationStart);
 
                 yield return EndOfFrame;
+                long postYieldAllocationStart =
+                    GC.GetAllocatedBytesForCurrentThread();
                 row.FrameMs = Time.unscaledDeltaTime * 1000.0;
                 PollTimestampResults();
+                row.MainThreadAllocatedBytes += Math.Max(
+                    0L,
+                    GC.GetAllocatedBytesForCurrentThread() -
+                    postYieldAllocationStart);
             }
 
             yield return DrainTimestamps(sampleStart, sampleFrames);
@@ -539,6 +572,40 @@ public sealed class GpuDrivenInstanceBenchmarkController : MonoBehaviour
                 timestampCommands[scope, caseIndex] = commands;
             }
         }
+    }
+
+    private void PrepareMeasurementStorage()
+    {
+        if (rawSamples.Count != 0 || pendingTimestamps.Count != 0)
+        {
+            throw new InvalidOperationException(
+                "Measurement storage must be prepared before sampling.");
+        }
+
+        int blockCount =
+            GpuDrivenInstanceBenchmarkSchedule.Build(superRounds).Count;
+        plannedMeasurementRows = checked(blockCount * sampleFrames);
+        rawSamplePool = new RawSample[plannedMeasurementRows];
+        for (int index = 0; index < rawSamplePool.Length; index++)
+        {
+            rawSamplePool[index] = new RawSample();
+        }
+        if (rawSamples.Capacity < plannedMeasurementRows)
+        {
+            rawSamples.Capacity = plannedMeasurementRows;
+        }
+
+        pendingTimestampPool =
+            new PendingTimestamp[MaxPreparedTimestampScopes];
+        for (int index = 0; index < pendingTimestampPool.Length; index++)
+        {
+            pendingTimestampPool[index] = new PendingTimestamp();
+        }
+        if (pendingTimestamps.Capacity < pendingTimestampPool.Length)
+        {
+            pendingTimestamps.Capacity = pendingTimestampPool.Length;
+        }
+        GC.GetAllocatedBytesForCurrentThread();
     }
 
     private IEnumerator WarmupTimestampBackend()
@@ -714,6 +781,7 @@ public sealed class GpuDrivenInstanceBenchmarkController : MonoBehaviour
                 timestampOperational = false;
             }
             pendingTimestamps.RemoveAt(i);
+            ReleasePendingTimestamp(pending);
         }
     }
 
@@ -779,7 +847,16 @@ public sealed class GpuDrivenInstanceBenchmarkController : MonoBehaviour
             pending.Row.NativeTimestampStatus = "timeout";
             timestampTimeouts++;
             pendingTimestamps.RemoveAt(i);
+            ReleasePendingTimestamp(pending);
         }
+    }
+
+    private static void ReleasePendingTimestamp(PendingTimestamp pending)
+    {
+        pending.InUse = false;
+        pending.Token = default;
+        pending.Row = null;
+        pending.ExpectedFlags = default;
     }
 
     private IEnumerator CompleteWithGraphicsFence(Action<bool> completion)
@@ -818,6 +895,8 @@ public sealed class GpuDrivenInstanceBenchmarkController : MonoBehaviour
         double[] frame = new double[count];
         double[] enqueue = new double[count];
         int gpuCount = 0;
+        int mainThreadAllocationRows = 0;
+        long mainThreadAllocatedBytes = 0L;
         long measurementReadback = 0;
         long instrumentationReadback = 0;
         for (int i = 0; i < count; i++)
@@ -825,6 +904,11 @@ public sealed class GpuDrivenInstanceBenchmarkController : MonoBehaviour
             RawSample row = rawSamples[sampleStart + i];
             frame[i] = row.FrameMs;
             enqueue[i] = row.EnqueueCpuMs;
+            mainThreadAllocatedBytes += row.MainThreadAllocatedBytes;
+            if (row.MainThreadAllocatedBytes != 0L)
+            {
+                mainThreadAllocationRows++;
+            }
             if (row.NativeTimestampStatus == "ready")
             {
                 gpu[gpuCount++] = row.GpuRegionElapsedMs;
@@ -879,6 +963,8 @@ public sealed class GpuDrivenInstanceBenchmarkController : MonoBehaviour
             Enqueue = MetricStats.Compute(enqueue, enqueue.Length),
             FenceSupported = SystemInfo.supportsGraphicsFence,
             FencePassed = fencePassed,
+            MainThreadAllocationRows = mainThreadAllocationRows,
+            MainThreadAllocatedBytes = mainThreadAllocatedBytes,
             MeasurementReadbackBytes = measurementReadback,
             TimestampInstrumentationReadbackBytes =
                 instrumentationReadback
@@ -922,6 +1008,61 @@ public sealed class GpuDrivenInstanceBenchmarkController : MonoBehaviour
         WriteRunSummary(passed, status);
     }
 
+    private void GetMainThreadAllocationTotals(
+        out int allocationRows,
+        out long allocatedBytes)
+    {
+        allocationRows = 0;
+        allocatedBytes = 0L;
+        for (int index = 0; index < rawSamples.Count; index++)
+        {
+            long rowBytes = rawSamples[index].MainThreadAllocatedBytes;
+            allocatedBytes += rowBytes;
+            if (rowBytes != 0L)
+            {
+                allocationRows++;
+            }
+        }
+    }
+
+    private bool TryGetObservedHierarchyStatistics(
+        out uint coarseVisibleClusterViewCount,
+        out uint candidateInstanceViewCount,
+        out uint hierarchicalVisiblePairCount)
+    {
+        coarseVisibleClusterViewCount = 0u;
+        candidateInstanceViewCount = 0u;
+        hierarchicalVisiblePairCount = 0u;
+        if (adapter == null || adapter.ClusterCount == 0)
+        {
+            return false;
+        }
+
+        string directCaseId = adapter.CaseId(
+            GpuDrivenInstanceBenchmarkVariant.Direct);
+        for (int index = validationResults.Count - 1; index >= 0; index--)
+        {
+            GpuDrivenInstanceValidationResult result =
+                validationResults[index];
+            if (!string.Equals(
+                    result.CaseId,
+                    directCaseId,
+                    StringComparison.Ordinal) ||
+                !result.HierarchyStatisticsAvailable)
+            {
+                continue;
+            }
+            coarseVisibleClusterViewCount =
+                result.CoarseVisibleClusterViewCount;
+            candidateInstanceViewCount =
+                result.CandidateInstanceViewCount;
+            hierarchicalVisiblePairCount =
+                result.HierarchicalVisiblePairCount;
+            return true;
+        }
+        return false;
+    }
+
     private void WriteConfiguration()
     {
         if (string.IsNullOrWhiteSpace(reportDirectory) || adapter == null)
@@ -937,6 +1078,13 @@ public sealed class GpuDrivenInstanceBenchmarkController : MonoBehaviour
                 schedule[i].BlockType + ":" +
                 adapter.VariantName(schedule[i].Variant);
         }
+        GetMainThreadAllocationTotals(
+            out int mainThreadAllocationRows,
+            out long mainThreadAllocatedBytes);
+        bool observedHierarchyStatistics = TryGetObservedHierarchyStatistics(
+            out uint observedCoarseVisibleClusterViewCount,
+            out uint observedCandidateInstanceViewCount,
+            out uint observedHierarchicalVisiblePairCount);
         BenchmarkConfiguration config = new BenchmarkConfiguration
         {
             schemaVersion = 1,
@@ -945,26 +1093,81 @@ public sealed class GpuDrivenInstanceBenchmarkController : MonoBehaviour
             unityVersion = Application.unityVersion,
             startedUtc = DateTime.UtcNow.ToString("O"),
             scenarioId = scenarioId,
+            benchmarkMode = adapter.BenchmarkMode,
             visibility = visibility,
-            visibilityLayout =
-                GpuDrivenInstanceInputGenerator.VisibilityLayoutId,
+            visibilityLayout = adapter.VisibilityLayout,
             superRounds = superRounds,
             warmupFrames = warmupFrames,
             sampleFrames = sampleFrames,
             cooldownFrames = cooldownFrames,
             instanceCount = instanceCount,
             viewCount = viewCount,
+            visibleInstanceCount = adapter.VisibleInstanceCount,
+            visiblePairCount = adapter.VisiblePairCount,
             drawGroupCount = adapter.DrawGroupCount,
             seed = seed,
             dispatchesPerFrame = dispatchesPerFrame,
             scanBackend = "portable",
-            baselineId = "culled-tail-portable-v1",
-            directId = "visible-only-discard-key-portable-v1",
+            baselineId = adapter.BaselineId,
+            directId = adapter.OptimizedId,
             schedule = order,
             scheduleContract = "control-pre;ABBA;BAAB;control-post",
             caseLocalWarmup = true,
             sameProcessPaired = true,
+            statisticsSemantics =
+                "native GPU region milliseconds; row percentiles are " +
+                "descriptive; decisions use same-process ABBA/BAAB " +
+                "pair-mean speedups",
             informationalPlayerLogsSuppressed = true,
+            clusterCount = adapter.ClusterCount,
+            instancesPerCluster = adapter.InstancesPerCluster,
+            clusterBytes = adapter.ClusterBytes,
+            hierarchyStatisticsBytes = adapter.HierarchyStatisticsBytes,
+            clusterDescriptorSemantics =
+                adapter.ClusterCount == 0
+                    ? "not-applicable"
+                    : "immutable contiguous active-prefix ranges; " +
+                      "conservative sphere; union view mask",
+            hierarchyStatisticsSemantics =
+                adapter.ClusterCount == 0
+                    ? "not-applicable"
+                    : "uint[3]: coarse-visible cluster-view count; " +
+                      "candidate instance-view count; final visible-pair " +
+                      "count; all three are validated for exact equality " +
+                      "against independent frozen-input CPU oracles",
+            expectedCoarseVisibleClusterViewCount =
+                adapter.ExpectedCoarseVisibleClusterViewCount,
+            expectedCandidateInstanceViewCount =
+                adapter.ExpectedCandidateInstanceViewCount,
+            expectedHierarchicalVisiblePairCount =
+                adapter.ClusterCount == 0
+                    ? 0u
+                    : checked((uint)adapter.VisiblePairCount),
+            observedHierarchyStatisticsAvailable =
+                observedHierarchyStatistics,
+            observedCoarseVisibleClusterViewCount =
+                observedCoarseVisibleClusterViewCount,
+            observedCandidateInstanceViewCount =
+                observedCandidateInstanceViewCount,
+            observedHierarchicalVisiblePairCount =
+                observedHierarchicalVisiblePairCount,
+            plannedMeasurementRows = plannedMeasurementRows,
+            rawSamplePoolCapacity =
+                rawSamplePool == null ? 0 : rawSamplePool.Length,
+            pendingTimestampPoolCapacity =
+                pendingTimestampPool == null
+                    ? 0
+                    : pendingTimestampPool.Length,
+            rawSampleListCapacity = rawSamples.Capacity,
+            pendingTimestampListCapacity = pendingTimestamps.Capacity,
+            measurementStoragePreallocatedBeforeSampling =
+                rawSamplePool != null && pendingTimestampPool != null,
+            mainThreadAllocationMeasurementSemantics =
+                "GC.GetAllocatedBytesForCurrentThread around submission " +
+                "and sampling bookkeeping; no interval crosses a yield",
+            mainThreadAllocationRows = mainThreadAllocationRows,
+            mainThreadAllocatedBytes = mainThreadAllocatedBytes,
+            timedAllocationFree = mainThreadAllocationRows == 0,
             logicalProblemBytesPerDispatch =
                 adapter.LogicalProblemBytesPerDispatch,
             sharedInputBytes = adapter.SharedInputBytes,
@@ -1056,7 +1259,8 @@ public sealed class GpuDrivenInstanceBenchmarkController : MonoBehaviour
                 "nativeTimestampElapsedTicks,nativeTimestampFrequency," +
                 "nativeTimestampElapsedNanoseconds,nativeTimestampFenceValue," +
                 "nativeTimestampDeviceGeneration,gpuRegionElapsedMs,frameMs," +
-                "measurementReadbackBytes,timestampInstrumentationReadbackBytes");
+                "mainThreadAllocatedBytes,measurementReadbackBytes," +
+                "timestampInstrumentationReadbackBytes");
             foreach (RawSample row in rawSamples)
             {
                 writer.WriteLine(string.Join(",",
@@ -1088,9 +1292,11 @@ public sealed class GpuDrivenInstanceBenchmarkController : MonoBehaviour
                     row.NativeTimestampElapsedNanoseconds.ToString(CultureInfo.InvariantCulture),
                     row.NativeTimestampFenceValue.ToString(CultureInfo.InvariantCulture),
                     row.NativeTimestampDeviceGeneration.ToString(CultureInfo.InvariantCulture),
-                    Number(row.GpuRegionElapsedMs),
-                    Number(row.FrameMs),
-                    row.MeasurementReadbackBytes.ToString(CultureInfo.InvariantCulture),
+                     Number(row.GpuRegionElapsedMs),
+                     Number(row.FrameMs),
+                     row.MainThreadAllocatedBytes.ToString(
+                         CultureInfo.InvariantCulture),
+                     row.MeasurementReadbackBytes.ToString(CultureInfo.InvariantCulture),
                     row.TimestampInstrumentationReadbackBytes.ToString(
                         CultureInfo.InvariantCulture)));
             }
@@ -1109,6 +1315,7 @@ public sealed class GpuDrivenInstanceBenchmarkController : MonoBehaviour
                 "caseResidentBytes,actualBenchmarkBufferResidentBytes,gpuRegionAverageMs," +
                 "gpuRegionP50Ms,gpuRegionP95Ms,gpuRegionP99Ms,frameAverageMs,frameP99Ms," +
                 "enqueueAverageMs,enqueueP99Ms,fenceSupported,fencePassed," +
+                "mainThreadAllocationRows,mainThreadAllocatedBytes," +
                 "measurementReadbackBytes,timestampInstrumentationReadbackBytes");
             foreach (BlockSummary row in blockSummaries)
             {
@@ -1144,9 +1351,13 @@ public sealed class GpuDrivenInstanceBenchmarkController : MonoBehaviour
                     Number(row.Frame.P99),
                     Number(row.Enqueue.Average),
                     Number(row.Enqueue.P99),
-                    row.FenceSupported ? "1" : "0",
-                    row.FencePassed ? "1" : "0",
-                    row.MeasurementReadbackBytes.ToString(CultureInfo.InvariantCulture),
+                     row.FenceSupported ? "1" : "0",
+                     row.FencePassed ? "1" : "0",
+                     row.MainThreadAllocationRows.ToString(
+                         CultureInfo.InvariantCulture),
+                     row.MainThreadAllocatedBytes.ToString(
+                         CultureInfo.InvariantCulture),
+                     row.MeasurementReadbackBytes.ToString(CultureInfo.InvariantCulture),
                     row.TimestampInstrumentationReadbackBytes.ToString(
                         CultureInfo.InvariantCulture)));
             }
@@ -1159,7 +1370,12 @@ public sealed class GpuDrivenInstanceBenchmarkController : MonoBehaviour
         {
             writer.WriteLine(
                 "phase,caseId,variant,passed,message,readbackBytes,resultHash," +
-                "validCount,invalidKeyCount,diagnosticFlags");
+                "validCount,invalidKeyCount,diagnosticFlags," +
+                "expectedCoarseVisibleClusterViewCount," +
+                "expectedCandidateInstanceViewCount," +
+                "hierarchyStatisticsAvailable," +
+                "coarseVisibleClusterViewCount,candidateInstanceViewCount," +
+                "hierarchicalVisiblePairCount");
             foreach (GpuDrivenInstanceValidationResult row in validationResults)
             {
                 writer.WriteLine(string.Join(",",
@@ -1172,7 +1388,18 @@ public sealed class GpuDrivenInstanceBenchmarkController : MonoBehaviour
                     Csv(row.ResultHash),
                     row.ValidCount.ToString(CultureInfo.InvariantCulture),
                     row.InvalidKeyCount.ToString(CultureInfo.InvariantCulture),
-                    row.DiagnosticFlags.ToString(CultureInfo.InvariantCulture)));
+                     row.DiagnosticFlags.ToString(CultureInfo.InvariantCulture),
+                     row.ExpectedCoarseVisibleClusterViewCount.ToString(
+                         CultureInfo.InvariantCulture),
+                     row.ExpectedCandidateInstanceViewCount.ToString(
+                         CultureInfo.InvariantCulture),
+                     row.HierarchyStatisticsAvailable ? "1" : "0",
+                     row.CoarseVisibleClusterViewCount.ToString(
+                        CultureInfo.InvariantCulture),
+                    row.CandidateInstanceViewCount.ToString(
+                        CultureInfo.InvariantCulture),
+                    row.HierarchicalVisiblePairCount.ToString(
+                        CultureInfo.InvariantCulture)));
             }
         }
     }
@@ -1206,6 +1433,13 @@ public sealed class GpuDrivenInstanceBenchmarkController : MonoBehaviour
                 validationFailures++;
             }
         }
+        GetMainThreadAllocationTotals(
+            out int mainThreadAllocationRows,
+            out long mainThreadAllocatedBytes);
+        bool observedHierarchyStatistics = TryGetObservedHierarchyStatistics(
+            out uint observedCoarseVisibleClusterViewCount,
+            out uint observedCandidateInstanceViewCount,
+            out uint observedHierarchicalVisiblePairCount);
         string[] lines =
         {
             "GPU driven instance benchmark",
@@ -1215,12 +1449,84 @@ public sealed class GpuDrivenInstanceBenchmarkController : MonoBehaviour
             "status=" + status,
             "processId=" + processId.ToString(CultureInfo.InvariantCulture),
             "scenarioId=" + scenarioId,
+            "benchmarkMode=" +
+                (adapter == null ? benchmarkMode : adapter.BenchmarkMode),
+            "visibilityLayout=" +
+                (adapter == null ? "unavailable" : adapter.VisibilityLayout),
+            "clusterCount=" +
+                (adapter == null
+                    ? "unavailable"
+                    : adapter.ClusterCount.ToString(
+                        CultureInfo.InvariantCulture)),
+            "clusterBytes=" +
+                (adapter == null
+                    ? "unavailable"
+                    : adapter.ClusterBytes.ToString(
+                        CultureInfo.InvariantCulture)),
+            "visibleInstanceCount=" +
+                (adapter == null
+                    ? "unavailable"
+                    : adapter.VisibleInstanceCount.ToString(
+                        CultureInfo.InvariantCulture)),
+            "visiblePairCount=" +
+                (adapter == null
+                    ? "unavailable"
+                    : adapter.VisiblePairCount.ToString(
+                        CultureInfo.InvariantCulture)),
+            "expectedCoarseVisibleClusterViewCount=" +
+                (adapter == null
+                    ? "unavailable"
+                    : adapter.ExpectedCoarseVisibleClusterViewCount.ToString(
+                        CultureInfo.InvariantCulture)),
+            "expectedCandidateInstanceViewCount=" +
+                (adapter == null
+                    ? "unavailable"
+                    : adapter.ExpectedCandidateInstanceViewCount.ToString(
+                        CultureInfo.InvariantCulture)),
+            "expectedHierarchicalVisiblePairCount=" +
+                (adapter == null || adapter.ClusterCount == 0
+                    ? adapter == null ? "unavailable" : "0"
+                    : adapter.VisiblePairCount.ToString(
+                        CultureInfo.InvariantCulture)),
+            "observedCoarseVisibleClusterViewCount=" +
+                (observedHierarchyStatistics
+                    ? observedCoarseVisibleClusterViewCount.ToString(
+                        CultureInfo.InvariantCulture)
+                    : "unavailable"),
+            "observedCandidateInstanceViewCount=" +
+                (observedHierarchyStatistics
+                    ? observedCandidateInstanceViewCount.ToString(
+                        CultureInfo.InvariantCulture)
+                    : "unavailable"),
+            "observedHierarchicalVisiblePairCount=" +
+                (observedHierarchyStatistics
+                    ? observedHierarchicalVisiblePairCount.ToString(
+                        CultureInfo.InvariantCulture)
+                    : "unavailable"),
+            "plannedMeasurementRows=" +
+                plannedMeasurementRows.ToString(CultureInfo.InvariantCulture),
+            "rawSamplePoolCapacity=" +
+                (rawSamplePool == null ? 0 : rawSamplePool.Length).ToString(
+                    CultureInfo.InvariantCulture),
+            "pendingTimestampPoolCapacity=" +
+                (pendingTimestampPool == null
+                    ? 0
+                    : pendingTimestampPool.Length).ToString(
+                    CultureInfo.InvariantCulture),
             "rawSampleCount=" + rawSamples.Count.ToString(CultureInfo.InvariantCulture),
             "blockCount=" + blockSummaries.Count.ToString(CultureInfo.InvariantCulture),
             "validationRows=" + validationResults.Count.ToString(CultureInfo.InvariantCulture),
             "validationFailures=" + validationFailures.ToString(CultureInfo.InvariantCulture),
             "validationReadbackBytes=" + validationReadback.ToString(CultureInfo.InvariantCulture),
             "measurementReadbackBytes=" + measurementReadback.ToString(CultureInfo.InvariantCulture),
+            "mainThreadAllocationRows=" +
+                mainThreadAllocationRows.ToString(
+                    CultureInfo.InvariantCulture),
+            "mainThreadAllocatedBytes=" +
+                mainThreadAllocatedBytes.ToString(
+                    CultureInfo.InvariantCulture),
+            "timedAllocationFree=" +
+                (mainThreadAllocationRows == 0 ? "1" : "0"),
             "timestampInstrumentationReadbackBytes=" +
                 instrumentationReadback.ToString(CultureInfo.InvariantCulture),
             "nativeTimestampReadyRows=" + readyRows.ToString(CultureInfo.InvariantCulture),
@@ -1324,7 +1630,37 @@ public sealed class GpuDrivenInstanceBenchmarkController : MonoBehaviour
 
     private static string StatusName(GpuTimestampStatus status)
     {
-        return status.ToString().Replace('_', '-').ToLowerInvariant();
+        switch (status)
+        {
+            case GpuTimestampStatus.Ready:
+                return "ready";
+            case GpuTimestampStatus.Pending:
+                return "pending";
+            case GpuTimestampStatus.Error:
+                return "error";
+            case GpuTimestampStatus.InvalidArgument:
+                return "invalid-argument";
+            case GpuTimestampStatus.InvalidToken:
+                return "invalid-token";
+            case GpuTimestampStatus.RingFull:
+                return "ring-full";
+            case GpuTimestampStatus.NotInitialized:
+                return "not-initialized";
+            case GpuTimestampStatus.Unsupported:
+                return "unsupported";
+            case GpuTimestampStatus.DeviceLost:
+                return "device-lost";
+            case GpuTimestampStatus.CallbackError:
+                return "callback-error";
+            case GpuTimestampStatus.FrequencyUnavailable:
+                return "frequency-unavailable";
+            case GpuTimestampStatus.StaleManagedToken:
+                return "stale-managed-token";
+            case GpuTimestampStatus.MalformedNativeResult:
+                return "malformed-native-result";
+            default:
+                return "unknown";
+        }
     }
 
     private static double TicksToMilliseconds(long ticks)
@@ -1418,6 +1754,7 @@ public sealed class GpuDrivenInstanceBenchmarkController : MonoBehaviour
         public GpuTimestampToken Token;
         public RawSample Row;
         public GpuTimestampSampleFlags ExpectedFlags;
+        public bool InUse;
     }
 
     private sealed class RawSample
@@ -1453,6 +1790,7 @@ public sealed class GpuDrivenInstanceBenchmarkController : MonoBehaviour
         public uint NativeTimestampDeviceGeneration;
         public double GpuRegionElapsedMs;
         public double FrameMs;
+        public long MainThreadAllocatedBytes;
         public long MeasurementReadbackBytes;
         public long TimestampInstrumentationReadbackBytes;
     }
@@ -1533,6 +1871,8 @@ public sealed class GpuDrivenInstanceBenchmarkController : MonoBehaviour
         public MetricStats Enqueue;
         public bool FenceSupported;
         public bool FencePassed;
+        public int MainThreadAllocationRows;
+        public long MainThreadAllocatedBytes;
         public long MeasurementReadbackBytes;
         public long TimestampInstrumentationReadbackBytes;
     }
@@ -1546,6 +1886,7 @@ public sealed class GpuDrivenInstanceBenchmarkController : MonoBehaviour
         public string unityVersion;
         public string startedUtc;
         public string scenarioId;
+        public string benchmarkMode;
         public string visibility;
         public string visibilityLayout;
         public int superRounds;
@@ -1554,6 +1895,8 @@ public sealed class GpuDrivenInstanceBenchmarkController : MonoBehaviour
         public int cooldownFrames;
         public int instanceCount;
         public int viewCount;
+        public int visibleInstanceCount;
+        public int visiblePairCount;
         public int drawGroupCount;
         public int seed;
         public int dispatchesPerFrame;
@@ -1564,7 +1907,31 @@ public sealed class GpuDrivenInstanceBenchmarkController : MonoBehaviour
         public string scheduleContract;
         public bool caseLocalWarmup;
         public bool sameProcessPaired;
+        public string statisticsSemantics;
         public bool informationalPlayerLogsSuppressed;
+        public int clusterCount;
+        public int instancesPerCluster;
+        public long clusterBytes;
+        public long hierarchyStatisticsBytes;
+        public string clusterDescriptorSemantics;
+        public string hierarchyStatisticsSemantics;
+        public uint expectedCoarseVisibleClusterViewCount;
+        public uint expectedCandidateInstanceViewCount;
+        public uint expectedHierarchicalVisiblePairCount;
+        public bool observedHierarchyStatisticsAvailable;
+        public uint observedCoarseVisibleClusterViewCount;
+        public uint observedCandidateInstanceViewCount;
+        public uint observedHierarchicalVisiblePairCount;
+        public int plannedMeasurementRows;
+        public int rawSamplePoolCapacity;
+        public int pendingTimestampPoolCapacity;
+        public int rawSampleListCapacity;
+        public int pendingTimestampListCapacity;
+        public bool measurementStoragePreallocatedBeforeSampling;
+        public string mainThreadAllocationMeasurementSemantics;
+        public int mainThreadAllocationRows;
+        public long mainThreadAllocatedBytes;
+        public bool timedAllocationFree;
         public long logicalProblemBytesPerDispatch;
         public long sharedInputBytes;
         public long sharedOutputBytes;

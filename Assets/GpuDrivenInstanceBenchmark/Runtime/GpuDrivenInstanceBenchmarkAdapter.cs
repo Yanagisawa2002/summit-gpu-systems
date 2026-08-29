@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using Summit.GpuDrivenInstanceBenchmark;
 using Summit.GpuDrivenInstances;
 using Summit.GpuPrimitives;
@@ -19,6 +18,12 @@ internal sealed class GpuDrivenInstanceValidationResult
     public int ValidCount;
     public uint InvalidKeyCount;
     public uint DiagnosticFlags;
+    public uint ExpectedCoarseVisibleClusterViewCount;
+    public uint ExpectedCandidateInstanceViewCount;
+    public bool HierarchyStatisticsAvailable;
+    public uint CoarseVisibleClusterViewCount;
+    public uint CandidateInstanceViewCount;
+    public uint HierarchicalVisiblePairCount;
 }
 
 internal sealed class GpuDrivenInstanceBenchmarkAdapter : IDisposable
@@ -32,13 +37,23 @@ internal sealed class GpuDrivenInstanceBenchmarkAdapter : IDisposable
         "GPU.DrivenInstance/CulledTail/Portable";
     public const string VisibleOnlyMarker =
         "GPU.DrivenInstance/VisibleOnlyDiscardKey/Portable";
+    public const string FlatVisibleOnlyCaseId =
+        "gpu-driven-instances/flat-visible-only-portable";
+    public const string HierarchicalVisibleOnlyCaseId =
+        "gpu-driven-instances/hierarchical-visible-only-portable";
+    public const string FlatVisibleOnlyMarker =
+        "GPU.DrivenInstance/FlatVisibleOnly/Portable";
+    public const string HierarchicalVisibleOnlyMarker =
+        "GPU.DrivenInstance/HierarchicalVisibleOnly/Portable";
 
     private readonly int instanceCount;
     private readonly int viewCount;
     private readonly int dispatchesPerFrame;
     private readonly int visibleBinCount;
+    private readonly GpuDrivenInstanceBenchmarkMode benchmarkMode;
     private readonly GpuDrivenInstancePipeline pipeline;
     private readonly GraphicsBuffer instances;
+    private readonly GraphicsBuffer clusters;
     private readonly GraphicsBuffer viewPlanes;
     private readonly GraphicsBuffer viewParameters;
     private readonly GraphicsBuffer drawTemplates;
@@ -46,6 +61,7 @@ internal sealed class GpuDrivenInstanceBenchmarkAdapter : IDisposable
     private readonly GraphicsBuffer groupOffsets;
     private readonly GraphicsBuffer groupedInstanceIndices;
     private readonly GraphicsBuffer indirectArguments;
+    private readonly GraphicsBuffer hierarchyStatistics;
     private readonly GraphicsBuffer diagnostics;
     private readonly GpuDrivenInstanceExpectedResult culledTailExpected;
     private readonly GpuDrivenInstanceExpectedResult visibleOnlyExpected;
@@ -58,6 +74,23 @@ internal sealed class GpuDrivenInstanceBenchmarkAdapter : IDisposable
         string visibility,
         int seed,
         int dispatchesPerFrame)
+        : this(
+            instanceCount,
+            viewCount,
+            visibility,
+            seed,
+            dispatchesPerFrame,
+            GpuDrivenInstanceBenchmarkModes.FilteredBinningId)
+    {
+    }
+
+    public GpuDrivenInstanceBenchmarkAdapter(
+        int instanceCount,
+        int viewCount,
+        string visibility,
+        int seed,
+        int dispatchesPerFrame,
+        string benchmarkMode)
     {
         if (instanceCount < 1 ||
             instanceCount >
@@ -86,20 +119,38 @@ internal sealed class GpuDrivenInstanceBenchmarkAdapter : IDisposable
         this.instanceCount = instanceCount;
         this.viewCount = viewCount;
         this.dispatchesPerFrame = dispatchesPerFrame;
+        this.benchmarkMode =
+            GpuDrivenInstanceBenchmarkModes.Parse(benchmarkMode);
         visibleBinCount = checked(viewCount * FixedDrawGroupCount);
         var instanceData = new GpuInstanceState[instanceCount];
         var planeData = new Vector4[
             viewCount * GpuDrivenInstancePipeline.FrustumPlaneCount];
         var viewData = new Vector4[viewCount];
         var drawData = new GpuDrawTemplate[FixedDrawGroupCount];
-        VisibleInstanceCount = GpuDrivenInstanceInputGenerator.Populate(
-            instanceData,
-            planeData,
-            viewData,
-            drawData,
-            visibility,
-            seed);
-        VisiblePairCount = checked(VisibleInstanceCount * viewCount);
+        int generatedVisibleInstanceCount;
+        if (this.benchmarkMode ==
+            GpuDrivenInstanceBenchmarkMode.HierarchicalCulling)
+        {
+            generatedVisibleInstanceCount =
+                GpuDrivenInstanceHierarchicalInputGenerator.Populate(
+                    instanceData,
+                    planeData,
+                    viewData,
+                    drawData,
+                    visibility,
+                    seed);
+        }
+        else
+        {
+            generatedVisibleInstanceCount =
+                GpuDrivenInstanceInputGenerator.Populate(
+                instanceData,
+                planeData,
+                viewData,
+                drawData,
+                visibility,
+                seed);
+        }
         culledTailExpected = GpuDrivenInstanceBenchmarkCpuOracle.Build(
             instanceData,
             planeData,
@@ -112,6 +163,94 @@ internal sealed class GpuDrivenInstanceBenchmarkAdapter : IDisposable
             viewData,
             drawData,
             GpuDrivenInstanceOutputMode.VisibleOnly);
+        VisiblePairCount = visibleOnlyExpected.GroupedInstanceIndices.Length;
+        VisibleInstanceCount = CountDistinctVisibleInstances(
+            visibleOnlyExpected.GroupedInstanceIndices,
+            instanceCount);
+        if (VisibleInstanceCount != generatedVisibleInstanceCount)
+        {
+            throw new InvalidOperationException(
+                "The input generator's visible-instance count disagrees " +
+                "with the independent visible-only CPU oracle.");
+        }
+
+        if (this.benchmarkMode ==
+            GpuDrivenInstanceBenchmarkMode.HierarchicalCulling)
+        {
+            ClusterCount = GpuInstanceClusterBuilder.GetRequiredClusterCount(
+                instanceCount,
+                GpuDrivenInstanceHierarchicalInputGenerator
+                    .InstancesPerCluster);
+            NativeArray<GpuInstanceState> nativeInstances = default;
+            NativeArray<GpuInstanceCluster> nativeClusters = default;
+            try
+            {
+                nativeInstances = new NativeArray<GpuInstanceState>(
+                    instanceData,
+                    Allocator.TempJob);
+                nativeClusters = new NativeArray<GpuInstanceCluster>(
+                    ClusterCount,
+                    Allocator.TempJob,
+                    NativeArrayOptions.UninitializedMemory);
+                int builtClusterCount =
+                    GpuInstanceClusterBuilder.BuildContiguous(
+                        nativeInstances,
+                        instanceCount,
+                        GpuDrivenInstanceHierarchicalInputGenerator
+                            .InstancesPerCluster,
+                        nativeClusters);
+                if (builtClusterCount != ClusterCount)
+                {
+                    throw new InvalidOperationException(
+                        "Cluster builder returned an unexpected count.");
+                }
+                var clusterData = new GpuInstanceCluster[ClusterCount];
+                nativeClusters.CopyTo(clusterData);
+                GpuDrivenInstanceHierarchyExpectedStatistics statistics =
+                    GpuDrivenInstanceHierarchicalInputGenerator
+                        .ComputeExpectedHierarchyStatistics(
+                            instanceData,
+                            clusterData,
+                            planeData,
+                            viewCount);
+                ExpectedCoarseVisibleClusterViewCount =
+                    statistics.CoarseVisibleClusterViewCount;
+                ExpectedCandidateInstanceViewCount =
+                    statistics.CandidateInstanceViewCount;
+                GraphicsBuffer selectedClusters = CreateStructured(
+                    ClusterCount,
+                    GpuInstanceCluster.Stride,
+                    "GPU Driven Instance Benchmark Clusters");
+                try
+                {
+                    selectedClusters.SetData(clusterData);
+                    clusters = selectedClusters;
+                }
+                catch
+                {
+                    selectedClusters.Dispose();
+                    throw;
+                }
+            }
+            finally
+            {
+                if (nativeClusters.IsCreated)
+                {
+                    nativeClusters.Dispose();
+                }
+                if (nativeInstances.IsCreated)
+                {
+                    nativeInstances.Dispose();
+                }
+            }
+        }
+        else
+        {
+            ClusterCount = 0;
+            clusters = null;
+            ExpectedCoarseVisibleClusterViewCount = 0u;
+            ExpectedCandidateInstanceViewCount = 0u;
+        }
 
         instances = CreateStructured(
             instanceCount,
@@ -151,6 +290,13 @@ internal sealed class GpuDrivenInstanceBenchmarkAdapter : IDisposable
         {
             name = "GPU Driven Instance Benchmark Indirect Arguments",
         };
+        hierarchyStatistics = this.benchmarkMode ==
+            GpuDrivenInstanceBenchmarkMode.HierarchicalCulling
+                ? CreateStructured(
+                    GpuDrivenInstancePipeline.HierarchyStatisticWordCount,
+                    sizeof(uint),
+                    "GPU Driven Instance Benchmark Hierarchy Statistics")
+                : null;
         diagnostics = CreateStructured(
             GpuDrivenInstancePipeline.DiagnosticWordCount,
             sizeof(uint),
@@ -159,11 +305,19 @@ internal sealed class GpuDrivenInstanceBenchmarkAdapter : IDisposable
         viewPlanes.SetData(planeData);
         viewParameters.SetData(viewData);
         drawTemplates.SetData(drawData);
-        pipeline = new GpuDrivenInstancePipeline(
-            instanceCount,
-            viewCount,
-            FixedDrawGroupCount,
-            emitProfilerMarkers: false);
+        pipeline = this.benchmarkMode ==
+            GpuDrivenInstanceBenchmarkMode.HierarchicalCulling
+                ? new GpuDrivenInstancePipeline(
+                    instanceCount,
+                    viewCount,
+                    FixedDrawGroupCount,
+                    ClusterCount,
+                    emitProfilerMarkers: false)
+                : new GpuDrivenInstancePipeline(
+                    instanceCount,
+                    viewCount,
+                    FixedDrawGroupCount,
+                    emitProfilerMarkers: false);
     }
 
     public int InstanceCount => instanceCount;
@@ -178,16 +332,59 @@ internal sealed class GpuDrivenInstanceBenchmarkAdapter : IDisposable
 
     public int DispatchesPerFrame => dispatchesPerFrame;
 
+    public string BenchmarkMode =>
+        GpuDrivenInstanceBenchmarkModes.ToId(benchmarkMode);
+
+    public string VisibilityLayout =>
+        benchmarkMode == GpuDrivenInstanceBenchmarkMode.HierarchicalCulling
+            ? GpuDrivenInstanceHierarchicalInputGenerator.VisibilityLayoutId
+            : GpuDrivenInstanceInputGenerator.VisibilityLayoutId;
+
+    public int ClusterCount { get; }
+
+    public uint ExpectedCoarseVisibleClusterViewCount { get; }
+
+    public uint ExpectedCandidateInstanceViewCount { get; }
+
+    public int InstancesPerCluster =>
+        benchmarkMode == GpuDrivenInstanceBenchmarkMode.HierarchicalCulling
+            ? GpuDrivenInstanceHierarchicalInputGenerator.InstancesPerCluster
+            : 0;
+
+    public long ClusterBytes =>
+        checked((long)ClusterCount * GpuInstanceCluster.Stride);
+
+    public long HierarchyStatisticsBytes =>
+        hierarchyStatistics == null
+            ? 0L
+            : checked(
+                (long)GpuDrivenInstancePipeline.HierarchyStatisticWordCount *
+                sizeof(uint));
+
+    public string BaselineId =>
+        benchmarkMode == GpuDrivenInstanceBenchmarkMode.HierarchicalCulling
+            ? "flat-visible-only-portable-v1"
+            : "culled-tail-portable-v1";
+
+    public string OptimizedId =>
+        benchmarkMode == GpuDrivenInstanceBenchmarkMode.HierarchicalCulling
+            ? "hierarchical-visible-only-portable-v1"
+            : "visible-only-discard-key-portable-v1";
+
     public string ExpectedResultHash =>
-        culledTailExpected.ResultHash + "/" +
-        visibleOnlyExpected.ResultHash;
+        benchmarkMode == GpuDrivenInstanceBenchmarkMode.HierarchicalCulling
+            ? visibleOnlyExpected.ResultHash + "/" +
+              visibleOnlyExpected.ResultHash
+            : culledTailExpected.ResultHash + "/" +
+              visibleOnlyExpected.ResultHash;
 
     public long SharedInputBytes => checked(
         (long)instanceCount * GpuInstanceState.Stride +
         (long)viewCount *
         GpuDrivenInstancePipeline.FrustumPlaneCount * sizeof(float) * 4L +
         (long)viewCount * sizeof(float) * 4L +
-        (long)FixedDrawGroupCount * GpuDrawTemplate.Stride);
+        (long)FixedDrawGroupCount * GpuDrawTemplate.Stride +
+        ClusterBytes);
 
     public long SharedOutputBytes => checked(
         (long)(visibleBinCount + 1) * sizeof(uint) +
@@ -195,7 +392,8 @@ internal sealed class GpuDrivenInstanceBenchmarkAdapter : IDisposable
         (long)instanceCount * viewCount * sizeof(uint) +
         (long)visibleBinCount *
         GpuDrivenInstancePipeline.IndirectArgumentWordCount * sizeof(uint) +
-        GpuDrivenInstancePipeline.DiagnosticWordCount * sizeof(uint));
+        GpuDrivenInstancePipeline.DiagnosticWordCount * sizeof(uint) +
+        HierarchyStatisticsBytes);
 
     public long LogicalProblemBytesPerDispatch => checked(
         SharedInputBytes + SharedOutputBytes);
@@ -203,19 +401,30 @@ internal sealed class GpuDrivenInstanceBenchmarkAdapter : IDisposable
     public long PrimitiveScratchBytes => pipeline.BinningScratchBytes;
 
     public long DirectInternalScratchBytes =>
-        pipeline.ClassificationScratchBytes;
+        checked(
+            pipeline.ClassificationScratchBytes +
+            (benchmarkMode ==
+                GpuDrivenInstanceBenchmarkMode.HierarchicalCulling
+                    ? pipeline.HierarchicalScratchBytes
+                    : 0L));
 
     public long ReferenceInternalScratchBytes =>
         pipeline.ClassificationScratchBytes;
 
     public long DirectCaseScratchBytes => pipeline.ScratchBytes;
 
-    public long ReferenceCaseScratchBytes => pipeline.ScratchBytes;
+    public long ReferenceCaseScratchBytes =>
+        benchmarkMode == GpuDrivenInstanceBenchmarkMode.HierarchicalCulling
+            ? checked(
+                pipeline.ClassificationScratchBytes +
+                pipeline.BinningScratchBytes)
+            : pipeline.ScratchBytes;
 
     public long DirectCaseResidentBytes => checked(
         SharedInputBytes + SharedOutputBytes + pipeline.ScratchBytes);
 
-    public long ReferenceCaseResidentBytes => DirectCaseResidentBytes;
+    public long ReferenceCaseResidentBytes => checked(
+        SharedInputBytes + SharedOutputBytes + ReferenceCaseScratchBytes);
 
     public long ActualBenchmarkBufferResidentBytes =>
         DirectCaseResidentBytes;
@@ -225,9 +434,15 @@ internal sealed class GpuDrivenInstanceBenchmarkAdapter : IDisposable
         switch (variant)
         {
             case GpuDrivenInstanceBenchmarkVariant.Reference:
-                return CulledTailCaseId;
+                return benchmarkMode ==
+                    GpuDrivenInstanceBenchmarkMode.HierarchicalCulling
+                        ? FlatVisibleOnlyCaseId
+                        : CulledTailCaseId;
             case GpuDrivenInstanceBenchmarkVariant.Direct:
-                return VisibleOnlyCaseId;
+                return benchmarkMode ==
+                    GpuDrivenInstanceBenchmarkMode.HierarchicalCulling
+                        ? HierarchicalVisibleOnlyCaseId
+                        : VisibleOnlyCaseId;
             case GpuDrivenInstanceBenchmarkVariant.Control:
                 return "control/empty-command-buffer";
             default:
@@ -240,9 +455,15 @@ internal sealed class GpuDrivenInstanceBenchmarkAdapter : IDisposable
         switch (variant)
         {
             case GpuDrivenInstanceBenchmarkVariant.Reference:
-                return "culled-tail-portable";
+                return benchmarkMode ==
+                    GpuDrivenInstanceBenchmarkMode.HierarchicalCulling
+                        ? "flat-visible-only-portable"
+                        : "culled-tail-portable";
             case GpuDrivenInstanceBenchmarkVariant.Direct:
-                return "visible-only-discard-key-portable";
+                return benchmarkMode ==
+                    GpuDrivenInstanceBenchmarkMode.HierarchicalCulling
+                        ? "hierarchical-visible-only-portable"
+                        : "visible-only-discard-key-portable";
             case GpuDrivenInstanceBenchmarkVariant.Control:
                 return "empty-command-buffer";
             default:
@@ -255,9 +476,15 @@ internal sealed class GpuDrivenInstanceBenchmarkAdapter : IDisposable
         switch (variant)
         {
             case GpuDrivenInstanceBenchmarkVariant.Reference:
-                return CulledTailMarker;
+                return benchmarkMode ==
+                    GpuDrivenInstanceBenchmarkMode.HierarchicalCulling
+                        ? FlatVisibleOnlyMarker
+                        : CulledTailMarker;
             case GpuDrivenInstanceBenchmarkVariant.Direct:
-                return VisibleOnlyMarker;
+                return benchmarkMode ==
+                    GpuDrivenInstanceBenchmarkMode.HierarchicalCulling
+                        ? HierarchicalVisibleOnlyMarker
+                        : VisibleOnlyMarker;
             case GpuDrivenInstanceBenchmarkVariant.Control:
                 return "GPU.DrivenInstance/Control/EmptyCommandBuffer";
             default:
@@ -269,14 +496,18 @@ internal sealed class GpuDrivenInstanceBenchmarkAdapter : IDisposable
     {
         return variant == GpuDrivenInstanceBenchmarkVariant.Control
             ? 0L
-            : pipeline.ScratchBytes;
+            : variant == GpuDrivenInstanceBenchmarkVariant.Reference
+                ? ReferenceCaseScratchBytes
+                : DirectCaseScratchBytes;
     }
 
     public long CaseResidentBytes(GpuDrivenInstanceBenchmarkVariant variant)
     {
         return variant == GpuDrivenInstanceBenchmarkVariant.Control
             ? 0L
-            : DirectCaseResidentBytes;
+            : variant == GpuDrivenInstanceBenchmarkVariant.Reference
+                ? ReferenceCaseResidentBytes
+                : DirectCaseResidentBytes;
     }
 
     public CommandBuffer CreateMeasurementCommandBuffer(
@@ -342,20 +573,22 @@ internal sealed class GpuDrivenInstanceBenchmarkAdapter : IDisposable
             Graphics.ExecuteCommandBuffer(commands);
         }
 
-        pendingValidation = new PendingValidation
+        bool readHierarchyStatistics =
+            benchmarkMode ==
+                GpuDrivenInstanceBenchmarkMode.HierarchicalCulling &&
+            variant == GpuDrivenInstanceBenchmarkVariant.Direct;
+        int requestCount = readHierarchyStatistics ? 6 : 5;
+        PendingValidation validation = new PendingValidation
         {
             Variant = variant,
             Phase = phase,
-            Requests = new List<AsyncGPUReadbackRequest>
-            {
-                AsyncGPUReadback.Request(groupCounts),
-                AsyncGPUReadback.Request(groupOffsets),
-                AsyncGPUReadback.Request(groupedInstanceIndices),
-                AsyncGPUReadback.Request(indirectArguments),
-                AsyncGPUReadback.Request(diagnostics),
-            },
-            ReadbackBytes = SharedOutputBytes,
+            ReadbackData = new uint[requestCount][],
+            ReadbackBytes = readHierarchyStatistics
+                ? SharedOutputBytes
+                : SharedOutputBytes - HierarchyStatisticsBytes,
         };
+        pendingValidation = validation;
+        IssueNextValidationReadback(validation);
     }
 
     public bool TryCompleteValidation(
@@ -366,50 +599,52 @@ internal sealed class GpuDrivenInstanceBenchmarkAdapter : IDisposable
         {
             return false;
         }
-        foreach (AsyncGPUReadbackRequest request in
-                 pendingValidation.Requests)
+        PendingValidation active = pendingValidation;
+        if (!active.HasInFlightRequest || !active.InFlightRequest.done)
         {
-            if (!request.done)
-            {
-                return false;
-            }
+            return false;
         }
 
-        PendingValidation completed = pendingValidation;
+        AsyncGPUReadbackRequest request = active.InFlightRequest;
+        string requestName = active.InFlightRequestName;
+        active.HasInFlightRequest = false;
+        if (request.hasError)
+        {
+            pendingValidation = null;
+            result = CreateValidationResult(active);
+            result.Passed = false;
+            result.Message =
+                "Async GPU readback failed for " + requestName + ".";
+            result.ResultHash = "unavailable";
+            return true;
+        }
+
+        active.ReadbackData[active.NextRequestIndex] =
+            ToArray(request.GetData<uint>());
+        active.NextRequestIndex++;
+        if (active.NextRequestIndex < active.ReadbackData.Length)
+        {
+            IssueNextValidationReadback(active);
+            return false;
+        }
+
+        PendingValidation completed = active;
         pendingValidation = null;
         GpuDrivenInstanceExpectedResult expected =
-            completed.Variant == GpuDrivenInstanceBenchmarkVariant.Reference
-                ? culledTailExpected
-                : visibleOnlyExpected;
-        result = new GpuDrivenInstanceValidationResult
-        {
-            Phase = completed.Phase,
-            CaseId = CaseId(completed.Variant),
-            Variant = VariantName(completed.Variant),
-            ReadbackBytes = completed.ReadbackBytes,
-            ValidCount = VisiblePairCount,
-        };
-        foreach (AsyncGPUReadbackRequest request in completed.Requests)
-        {
-            if (request.hasError)
-            {
-                result.Passed = false;
-                result.Message = "Async GPU readback failed.";
-                result.ResultHash = "unavailable";
-                return true;
-            }
-        }
+            benchmarkMode ==
+                GpuDrivenInstanceBenchmarkMode.HierarchicalCulling
+                ? visibleOnlyExpected
+                : completed.Variant ==
+                    GpuDrivenInstanceBenchmarkVariant.Reference
+                    ? culledTailExpected
+                    : visibleOnlyExpected;
+        result = CreateValidationResult(completed);
 
-        uint[] actualCounts = ToArray(
-            completed.Requests[0].GetData<uint>());
-        uint[] actualOffsets = ToArray(
-            completed.Requests[1].GetData<uint>());
-        uint[] actualGrouped = ToArray(
-            completed.Requests[2].GetData<uint>());
-        uint[] actualArguments = ToArray(
-            completed.Requests[3].GetData<uint>());
-        uint[] actualDiagnostics = ToArray(
-            completed.Requests[4].GetData<uint>());
+        uint[] actualCounts = completed.ReadbackData[0];
+        uint[] actualOffsets = completed.ReadbackData[1];
+        uint[] actualGrouped = completed.ReadbackData[2];
+        uint[] actualArguments = completed.ReadbackData[3];
+        uint[] actualDiagnostics = completed.ReadbackData[4];
         result.InvalidKeyCount = actualDiagnostics[0];
         result.DiagnosticFlags = actualDiagnostics[1];
         result.Passed = GpuDrivenInstanceBenchmarkCpuOracle.Validate(
@@ -423,6 +658,38 @@ internal sealed class GpuDrivenInstanceBenchmarkAdapter : IDisposable
             out string resultHash);
         result.Message = message;
         result.ResultHash = resultHash;
+        if (completed.ReadbackData.Length == 6)
+        {
+            uint[] statistics = completed.ReadbackData[5];
+            result.CoarseVisibleClusterViewCount = statistics[
+                GpuDrivenInstancePipeline
+                    .CoarseVisibleClusterViewCountWord];
+            result.CandidateInstanceViewCount = statistics[
+                GpuDrivenInstancePipeline.CandidateInstanceViewCountWord];
+            result.HierarchicalVisiblePairCount = statistics[
+                GpuDrivenInstancePipeline.HierarchicalVisiblePairCountWord];
+            result.HierarchyStatisticsAvailable = true;
+            bool statisticsPassed =
+                result.CoarseVisibleClusterViewCount ==
+                    ExpectedCoarseVisibleClusterViewCount &&
+                result.CandidateInstanceViewCount ==
+                    ExpectedCandidateInstanceViewCount &&
+                result.HierarchicalVisiblePairCount ==
+                    (uint)VisiblePairCount;
+            if (!statisticsPassed)
+            {
+                result.Passed = false;
+                result.Message +=
+                    " Hierarchy statistics disagree with the exact frozen " +
+                    "cluster CPU oracle.";
+            }
+            else
+            {
+                result.Message +=
+                    " Hierarchy statistics exactly match the frozen " +
+                    "cluster CPU oracle.";
+            }
+        }
         return true;
     }
 
@@ -435,6 +702,7 @@ internal sealed class GpuDrivenInstanceBenchmarkAdapter : IDisposable
         disposed = true;
         pipeline.Dispose();
         diagnostics.Dispose();
+        hierarchyStatistics?.Dispose();
         indirectArguments.Dispose();
         groupedInstanceIndices.Dispose();
         groupOffsets.Dispose();
@@ -442,6 +710,7 @@ internal sealed class GpuDrivenInstanceBenchmarkAdapter : IDisposable
         drawTemplates.Dispose();
         viewParameters.Dispose();
         viewPlanes.Dispose();
+        clusters?.Dispose();
         instances.Dispose();
     }
 
@@ -449,6 +718,54 @@ internal sealed class GpuDrivenInstanceBenchmarkAdapter : IDisposable
         CommandBuffer commands,
         GpuDrivenInstanceBenchmarkVariant variant)
     {
+        if (benchmarkMode ==
+            GpuDrivenInstanceBenchmarkMode.HierarchicalCulling)
+        {
+            if (variant == GpuDrivenInstanceBenchmarkVariant.Reference)
+            {
+                pipeline.Record(
+                    commands,
+                    instances,
+                    viewPlanes,
+                    viewParameters,
+                    drawTemplates,
+                    groupCounts,
+                    groupOffsets,
+                    groupedInstanceIndices,
+                    indirectArguments,
+                    diagnostics,
+                    instanceCount,
+                    viewCount,
+                    FixedDrawGroupCount,
+                    GpuPrimitiveBackend.Portable,
+                    GpuDrivenInstanceOutputMode.VisibleOnly);
+                return;
+            }
+            if (variant == GpuDrivenInstanceBenchmarkVariant.Direct)
+            {
+                pipeline.RecordHierarchicalVisibleOnly(
+                    commands,
+                    instances,
+                    clusters,
+                    viewPlanes,
+                    viewParameters,
+                    drawTemplates,
+                    groupCounts,
+                    groupOffsets,
+                    groupedInstanceIndices,
+                    indirectArguments,
+                    hierarchyStatistics,
+                    diagnostics,
+                    instanceCount,
+                    ClusterCount,
+                    viewCount,
+                    FixedDrawGroupCount,
+                    GpuPrimitiveBackend.Portable);
+                return;
+            }
+            throw new ArgumentOutOfRangeException(nameof(variant));
+        }
+
         GpuDrivenInstanceOutputMode outputMode;
         switch (variant)
         {
@@ -500,6 +817,105 @@ internal sealed class GpuDrivenInstanceBenchmarkAdapter : IDisposable
         return result;
     }
 
+    private static string ValidationReadbackName(int requestIndex)
+    {
+        switch (requestIndex)
+        {
+            case 0:
+                return "groupCounts";
+            case 1:
+                return "groupOffsets";
+            case 2:
+                return "groupedInstanceIndices";
+            case 3:
+                return "indirectArguments";
+            case 4:
+                return "diagnostics";
+            case 5:
+                return "hierarchyStatistics";
+            default:
+                return "unknown validation buffer";
+        }
+    }
+
+    private GpuDrivenInstanceValidationResult CreateValidationResult(
+        PendingValidation completed)
+    {
+        return new GpuDrivenInstanceValidationResult
+        {
+            Phase = completed.Phase,
+            CaseId = CaseId(completed.Variant),
+            Variant = VariantName(completed.Variant),
+            ReadbackBytes = completed.ReadbackBytes,
+            ValidCount = VisiblePairCount,
+            ExpectedCoarseVisibleClusterViewCount =
+                ExpectedCoarseVisibleClusterViewCount,
+            ExpectedCandidateInstanceViewCount =
+                ExpectedCandidateInstanceViewCount,
+        };
+    }
+
+    private void IssueNextValidationReadback(PendingValidation validation)
+    {
+        int requestIndex = validation.NextRequestIndex;
+        validation.InFlightRequest =
+            RequestValidationBuffer(requestIndex);
+        validation.InFlightRequestName =
+            ValidationReadbackName(requestIndex);
+        validation.HasInFlightRequest = true;
+    }
+
+    private AsyncGPUReadbackRequest RequestValidationBuffer(int requestIndex)
+    {
+        switch (requestIndex)
+        {
+            case 0:
+                return AsyncGPUReadback.Request(groupCounts);
+            case 1:
+                return AsyncGPUReadback.Request(groupOffsets);
+            case 2:
+                return AsyncGPUReadback.Request(groupedInstanceIndices);
+            case 3:
+                return AsyncGPUReadback.Request(indirectArguments);
+            case 4:
+                return AsyncGPUReadback.Request(diagnostics);
+            case 5:
+                if (hierarchyStatistics == null)
+                {
+                    throw new InvalidOperationException(
+                        "Hierarchy statistics are unavailable for validation.");
+                }
+                return AsyncGPUReadback.Request(hierarchyStatistics);
+            default:
+                throw new ArgumentOutOfRangeException(nameof(requestIndex));
+        }
+    }
+
+    private static int CountDistinctVisibleInstances(
+        uint[] groupedInstanceIndices,
+        int instanceCount)
+    {
+        var seen = new bool[instanceCount];
+        int result = 0;
+        for (int index = 0; index < groupedInstanceIndices.Length; index++)
+        {
+            int instanceIndex = checked((int)groupedInstanceIndices[index]);
+            if (instanceIndex < 0 || instanceIndex >= instanceCount)
+            {
+                throw new InvalidOperationException(
+                    "The visible-only CPU oracle returned an invalid " +
+                    "instance index.");
+            }
+            if (seen[instanceIndex])
+            {
+                continue;
+            }
+            seen[instanceIndex] = true;
+            result++;
+        }
+        return result;
+    }
+
     private void ThrowIfDisposed()
     {
         if (disposed)
@@ -513,7 +929,11 @@ internal sealed class GpuDrivenInstanceBenchmarkAdapter : IDisposable
     {
         public GpuDrivenInstanceBenchmarkVariant Variant;
         public string Phase;
-        public List<AsyncGPUReadbackRequest> Requests;
+        public uint[][] ReadbackData;
+        public int NextRequestIndex;
+        public AsyncGPUReadbackRequest InFlightRequest;
+        public string InFlightRequestName;
+        public bool HasInFlightRequest;
         public long ReadbackBytes;
     }
 }

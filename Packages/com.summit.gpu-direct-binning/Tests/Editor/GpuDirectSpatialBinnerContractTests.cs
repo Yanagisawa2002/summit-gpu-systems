@@ -161,6 +161,48 @@ namespace Summit.GpuDirectBinning.Tests
         }
 
         [Test]
+        public void PrecountedPrefixIndirectRecordHasExplicitShape()
+        {
+            MethodInfo method = typeof(GpuDirectSpatialBinner)
+                .GetMethod("RecordPrecountedPrefixIndirect");
+            Assert.That(method, Is.Not.Null);
+            Assert.That(method.ReturnType, Is.EqualTo(typeof(void)));
+            Assert.That(
+                method.GetParameters()
+                    .Select(parameter => parameter.ParameterType),
+                Is.EqualTo(new[]
+                {
+                    typeof(CommandBuffer),
+                    typeof(GraphicsBuffer),
+                    typeof(GraphicsBuffer),
+                    typeof(GraphicsBuffer),
+                    typeof(GraphicsBuffer),
+                    typeof(GraphicsBuffer),
+                    typeof(GraphicsBuffer),
+                    typeof(GraphicsBuffer),
+                    typeof(int),
+                    typeof(GraphicsBuffer),
+                    typeof(uint),
+                    typeof(GraphicsBuffer),
+                    typeof(uint),
+                    typeof(int),
+                    typeof(GpuPrimitiveBackend),
+                }));
+            ParameterInfo[] parameters = method.GetParameters();
+            Assert.That(
+                parameters.Take(parameters.Length - 1)
+                    .All(parameter => !parameter.IsOptional),
+                Is.True);
+            Assert.That(parameters.Last().IsOptional, Is.True);
+            Assert.That(
+                parameters.Last().DefaultValue,
+                Is.EqualTo(GpuPrimitiveBackend.Auto));
+            Assert.That(
+                GpuDirectSpatialBinner.IndirectDispatchArgumentWordCount,
+                Is.EqualTo(3));
+        }
+
+        [Test]
         public void ProfilerMarkerConstructorOptionDefaultsToEnabled()
         {
             ConstructorInfo constructor = typeof(GpuDirectSpatialBinner)
@@ -205,6 +247,17 @@ namespace Summit.GpuDirectBinning.Tests
                 GpuDirectBinningErrorFlags.InvalidKeyEncountered &
                 GpuDirectBinningErrorFlags.ScatterDestinationOutOfRange,
                 Is.EqualTo(GpuDirectBinningErrorFlags.None));
+            Assert.That(
+                (uint)GpuDirectBinningErrorFlags
+                    .PrecountedElementCountOutOfRange,
+                Is.EqualTo(4u));
+            Assert.That(
+                (uint)GpuDirectBinningErrorFlags.PrecountedCountMismatch,
+                Is.EqualTo(8u));
+            Assert.That(
+                (uint)GpuDirectBinningErrorFlags
+                    .IndirectDispatchDimensionOutOfRange,
+                Is.EqualTo(16u));
         }
 
         [Test]

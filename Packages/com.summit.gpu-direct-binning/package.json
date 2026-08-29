@@ -1,8 +1,8 @@
 {
   "name": "com.summit.gpu-direct-binning",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "displayName": "SUMMIT GPU Direct Binning",
-  "description": "Scene-agnostic GPU count, exclusive-scan, and atomic-scatter binning from uint key/value streams to CSR.",
+  "description": "Scene-agnostic GPU count or producer-precounted indirect-prefix binning from uint key/value streams to CSR.",
   "unity": "6000.0",
   "dependencies": {
     "com.summit.gpu-primitives": "0.1.0"

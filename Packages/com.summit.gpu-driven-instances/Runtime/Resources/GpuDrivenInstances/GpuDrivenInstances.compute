@@ -1,6 +1,11 @@
 #pragma kernel ClearUint
 #pragma kernel ClassifyInstances
+#pragma kernel ValidateHierarchy
+#pragma kernel ClassifyClusters
+#pragma kernel ClassifyClusterInstances
+#pragma kernel MergeHierarchyDiagnostics
 #pragma kernel BuildIndirectArguments
+#pragma kernel BuildHierarchicalIndirectArguments
 #pragma target 5.0
 
 struct GpuInstanceState
@@ -21,22 +26,39 @@ struct GpuDrawTemplate
     uint Reserved;
 };
 
+struct GpuInstanceCluster
+{
+    float4 PositionRadius;
+    uint FirstInstance;
+    uint InstanceCount;
+    uint UnionViewMask;
+    uint Reserved;
+};
+
 StructuredBuffer<GpuInstanceState> _Instances;
+StructuredBuffer<GpuInstanceCluster> _Clusters;
 StructuredBuffer<float4> _ViewPlanes;
 StructuredBuffer<float4> _ViewParameters;
 StructuredBuffer<GpuDrawTemplate> _DrawTemplates;
-StructuredBuffer<uint> _BinCounts;
+RWStructuredBuffer<uint> _BinCounts;
 StructuredBuffer<uint> _BinOffsets;
+StructuredBuffer<uint> _BinningDiagnostics;
 
 RWStructuredBuffer<uint> _ClearBuffer;
 RWStructuredBuffer<uint> _Keys;
 RWStructuredBuffer<uint> _Values;
+RWStructuredBuffer<uint> _ClusterViewMasks;
+RWStructuredBuffer<uint> _HierarchyStatistics;
+RWStructuredBuffer<uint> _HierarchyValidity;
 RWStructuredBuffer<uint> _IndirectArguments;
 RWStructuredBuffer<uint> _Diagnostics;
 
 int _ClearCount;
 int _InstanceCount;
 int _ViewCount;
+int _ClusterCount;
+int _PairCapacity;
+int _FineDispatchGroupsX;
 int _DrawGroupCount;
 int _VisibleBinCount;
 uint _CulledKey;
@@ -47,6 +69,13 @@ static const uint InvalidRadius = 1u << 0u;
 static const uint InvalidLodContract = 1u << 1u;
 static const uint InvalidDrawGroupRange = 1u << 2u;
 static const uint InvalidViewLodScale = 1u << 3u;
+static const uint InvalidClusterContract = 1u << 4u;
+static const uint HierarchicalPairCapacityExceeded = 1u << 5u;
+static const uint HierarchicalBinningInvariantViolation = 1u << 6u;
+static const uint MaximumClusterInstanceCount = 64u;
+static const uint CoarseVisibleClusterViewCountWord = 0u;
+static const uint CandidateInstanceViewCountWord = 1u;
+static const uint HierarchicalVisiblePairCountWord = 2u;
 
 float LodDistance(float4 distances, uint lod)
 {
@@ -218,6 +247,271 @@ void ClassifyInstances(uint3 dispatchThreadId : SV_DispatchThreadID)
 }
 
 [numthreads(256, 1, 1)]
+void ValidateHierarchy(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint clusterIndex = dispatchThreadId.x;
+    if (clusterIndex >= (uint)_ClusterCount)
+    {
+        return;
+    }
+
+    GpuInstanceCluster cluster = _Clusters[clusterIndex];
+    uint activeCount = (uint)_InstanceCount;
+    bool rangeValid =
+        cluster.InstanceCount >= 1u &&
+        cluster.InstanceCount <= MaximumClusterInstanceCount &&
+        cluster.FirstInstance <= activeCount &&
+        cluster.InstanceCount <= activeCount - cluster.FirstInstance;
+    bool boundValid =
+        all(isfinite(cluster.PositionRadius)) &&
+        cluster.PositionRadius.w >= 0.0f;
+
+    if (clusterIndex == 0u)
+    {
+        rangeValid = rangeValid && cluster.FirstInstance == 0u;
+    }
+    else
+    {
+        GpuInstanceCluster previous = _Clusters[clusterIndex - 1u];
+        bool previousRangeValid =
+            previous.InstanceCount >= 1u &&
+            previous.InstanceCount <= MaximumClusterInstanceCount &&
+            previous.FirstInstance <= activeCount &&
+            previous.InstanceCount <= activeCount - previous.FirstInstance;
+        rangeValid =
+            rangeValid &&
+            previousRangeValid &&
+            previous.FirstInstance + previous.InstanceCount ==
+                cluster.FirstInstance;
+    }
+
+    if (clusterIndex + 1u == (uint)_ClusterCount)
+    {
+        rangeValid =
+            rangeValid &&
+            cluster.FirstInstance + cluster.InstanceCount == activeCount;
+    }
+
+    if (!rangeValid || !boundValid)
+    {
+        uint ignoredValidity;
+        InterlockedOr(_HierarchyValidity[0], 1u, ignoredValidity);
+        ReportError(InvalidClusterContract);
+    }
+}
+
+[numthreads(256, 1, 1)]
+void ClassifyClusters(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint pairIndex = dispatchThreadId.x;
+    uint pairCount = (uint)_ClusterCount * (uint)_ViewCount;
+    if (pairIndex >= pairCount || _HierarchyValidity[0] != 0u)
+    {
+        return;
+    }
+
+    uint clusterIndex = pairIndex % (uint)_ClusterCount;
+    uint viewIndex = pairIndex / (uint)_ClusterCount;
+    float4 view = _ViewParameters[viewIndex];
+    if (!(view.w > 0.0f))
+    {
+        if (clusterIndex == 0u)
+        {
+            ReportError(InvalidViewLodScale);
+        }
+        return;
+    }
+
+    GpuInstanceCluster cluster = _Clusters[clusterIndex];
+    uint viewBit = 1u << viewIndex;
+    if ((cluster.UnionViewMask & viewBit) == 0u ||
+        !IsSphereVisible(
+            cluster.PositionRadius.xyz,
+            cluster.PositionRadius.w,
+            viewIndex))
+    {
+        return;
+    }
+
+    uint ignoredMask;
+    InterlockedOr(
+        _ClusterViewMasks[clusterIndex],
+        viewBit,
+        ignoredMask);
+}
+
+groupshared uint HierarchicalGroupCandidateCount;
+
+[numthreads(64, 1, 1)]
+void ClassifyClusterInstances(
+    uint3 groupThreadId : SV_GroupThreadID,
+    uint3 groupId : SV_GroupID)
+{
+    uint lane = groupThreadId.x;
+    if (lane == 0u)
+    {
+        HierarchicalGroupCandidateCount = 0u;
+    }
+    GroupMemoryBarrierWithGroupSync();
+
+    uint clusterIndex =
+        groupId.x + groupId.y * (uint)_FineDispatchGroupsX;
+    bool groupIsActive =
+        clusterIndex < (uint)_ClusterCount &&
+        _HierarchyValidity[0] == 0u;
+    GpuInstanceCluster cluster;
+    cluster.PositionRadius = 0.0f;
+    cluster.FirstInstance = 0u;
+    cluster.InstanceCount = 0u;
+    cluster.UnionViewMask = 0u;
+    cluster.Reserved = 0u;
+    if (groupIsActive)
+    {
+        cluster = _Clusters[clusterIndex];
+    }
+
+    bool laneIsValid = groupIsActive && lane < cluster.InstanceCount;
+    uint instanceIndex = 0u;
+    GpuInstanceState instance;
+    instance.PositionRadius = 0.0f;
+    instance.LodDistances = 0.0f;
+    instance.ApplicationId = 0u;
+    instance.DrawGroupBase = 0u;
+    instance.LodCount = 0u;
+    instance.ViewMask = 0u;
+    uint candidateViews = 0u;
+    if (laneIsValid)
+    {
+        instanceIndex = cluster.FirstInstance + lane;
+        instance = _Instances[instanceIndex];
+        uint instanceErrors = ValidateInstance(instance);
+        if (instanceErrors != 0u)
+        {
+            ReportError(instanceErrors);
+            laneIsValid = false;
+        }
+        else
+        {
+            candidateViews =
+                _ClusterViewMasks[clusterIndex] & instance.ViewMask;
+        }
+    }
+
+    uint ignoredSharedCount;
+    InterlockedAdd(
+        HierarchicalGroupCandidateCount,
+        countbits(candidateViews),
+        ignoredSharedCount);
+    GroupMemoryBarrierWithGroupSync();
+
+    if (lane == 0u && groupIsActive)
+    {
+        uint coarseViewCount =
+            countbits(_ClusterViewMasks[clusterIndex]);
+        uint ignoredStatistic;
+        if (coarseViewCount > 0u)
+        {
+            InterlockedAdd(
+                _HierarchyStatistics[CoarseVisibleClusterViewCountWord],
+                coarseViewCount,
+                ignoredStatistic);
+        }
+        if (HierarchicalGroupCandidateCount > 0u)
+        {
+            InterlockedAdd(
+                _HierarchyStatistics[CandidateInstanceViewCountWord],
+                HierarchicalGroupCandidateCount,
+                ignoredStatistic);
+        }
+    }
+
+    if (!laneIsValid)
+    {
+        return;
+    }
+
+    while (candidateViews != 0u)
+    {
+        uint viewIndex = (uint)firstbitlow(candidateViews);
+        candidateViews &= candidateViews - 1u;
+        if (viewIndex >= (uint)_ViewCount)
+        {
+            continue;
+        }
+
+        float3 center = instance.PositionRadius.xyz;
+        if (!IsSphereVisible(
+            center,
+            instance.PositionRadius.w,
+            viewIndex))
+        {
+            continue;
+        }
+
+        float4 view = _ViewParameters[viewIndex];
+        float scaledDistance = length(center - view.xyz) * view.w;
+        uint selectedLod = instance.LodCount;
+        [unroll]
+        for (uint lod = 0u; lod < 4u; ++lod)
+        {
+            if (lod >= instance.LodCount)
+            {
+                break;
+            }
+            if (scaledDistance <= LodDistance(instance.LodDistances, lod))
+            {
+                selectedLod = lod;
+                break;
+            }
+        }
+        if (selectedLod >= instance.LodCount)
+        {
+            continue;
+        }
+
+        uint destination;
+        InterlockedAdd(
+            _HierarchyStatistics[HierarchicalVisiblePairCountWord],
+            1u,
+            destination);
+        if (destination >= (uint)_PairCapacity)
+        {
+            ReportError(HierarchicalPairCapacityExceeded);
+            continue;
+        }
+
+        uint drawGroup = instance.DrawGroupBase + selectedLod;
+        uint bin = viewIndex * (uint)_DrawGroupCount + drawGroup;
+        _Keys[destination] = bin;
+        _Values[destination] = instanceIndex;
+        uint ignoredCount;
+        InterlockedAdd(_BinCounts[bin], 1u, ignoredCount);
+    }
+}
+
+[numthreads(1, 1, 1)]
+void MergeHierarchyDiagnostics(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint violationCount = _BinningDiagnostics[ContractViolationCountWord];
+    uint errorFlags = _BinningDiagnostics[ErrorFlagsWord];
+    if (violationCount == 0u && errorFlags == 0u)
+    {
+        return;
+    }
+
+    uint ignoredCount;
+    uint ignoredFlags;
+    InterlockedAdd(
+        _Diagnostics[ContractViolationCountWord],
+        max(1u, violationCount),
+        ignoredCount);
+    InterlockedOr(
+        _Diagnostics[ErrorFlagsWord],
+        HierarchicalBinningInvariantViolation,
+        ignoredFlags);
+}
+
+[numthreads(256, 1, 1)]
 void BuildIndirectArguments(uint3 dispatchThreadId : SV_DispatchThreadID)
 {
     uint bin = dispatchThreadId.x;
@@ -234,4 +528,29 @@ void BuildIndirectArguments(uint3 dispatchThreadId : SV_DispatchThreadID)
     _IndirectArguments[argumentBase + 2u] = draw.StartIndex;
     _IndirectArguments[argumentBase + 3u] = draw.BaseVertex;
     _IndirectArguments[argumentBase + 4u] = _BinOffsets[bin];
+}
+
+[numthreads(256, 1, 1)]
+void BuildHierarchicalIndirectArguments(
+    uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint bin = dispatchThreadId.x;
+    if (bin >= (uint)_VisibleBinCount)
+    {
+        return;
+    }
+
+    bool failClosed =
+        _Diagnostics[ContractViolationCountWord] != 0u ||
+        _Diagnostics[ErrorFlagsWord] != 0u;
+    uint drawGroup = bin % (uint)_DrawGroupCount;
+    GpuDrawTemplate draw = _DrawTemplates[drawGroup];
+    uint argumentBase = bin * 5u;
+    _IndirectArguments[argumentBase + 0u] = draw.IndexCountPerInstance;
+    _IndirectArguments[argumentBase + 1u] =
+        failClosed ? 0u : _BinCounts[bin];
+    _IndirectArguments[argumentBase + 2u] = draw.StartIndex;
+    _IndirectArguments[argumentBase + 3u] = draw.BaseVertex;
+    _IndirectArguments[argumentBase + 4u] =
+        failClosed ? 0u : _BinOffsets[bin];
 }
