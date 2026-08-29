@@ -1,5 +1,5 @@
 scenarioId,expectedRows,nativeTimestampReadyRows,validationRows,validationFailures,hierarchyStatisticValidationRows,mainThreadAllocationRows,mainThreadAllocatedBytes,measurementReadbackBytes,nativeGpuP95NonRegression,frameP99Within5Percent,enqueueP99Within5Percent,decision
 hierarchical-visible5-n1048576-v4,9000,9000,4,0,2,0,0,0,True,True,False,regression-or-unstable
-hierarchical-visible25-n1048576-v4,9000,9000,4,0,2,0,0,0,True,True,False,regression-or-unstable
+hierarchical-visible25-n1048576-v4,9000,9000,4,0,2,0,0,0,True,True,True,material-improvement
 hierarchical-visible75-n1048576-v4,9000,9000,4,0,2,0,0,0,True,True,False,regression-or-unstable
-hierarchical-visible100-n1048576-v4,9000,9000,4,0,2,0,0,0,True,True,False,regression-or-unstable
+hierarchical-visible100-n1048576-v4,9000,9000,4,0,2,0,0,0,True,True,True,material-improvement

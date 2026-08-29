@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "receiptType": "summit.gpu-driven-hierarchical-multiview-formal",
-  "gitCommit": "cf5b21b557356b522c920d591844d73ebf4299f5",
+  "gitCommit": "f9812cae015eff640f2d82131c180b52349f1746",
   "gitBranch": "codex/gpu-driven-hierarchical-multiview-culling-20260830",
   "gitStartClean": true,
   "gitFinalClean": true,
@@ -33,11 +33,11 @@
   "sourceHashesStableAcrossBuild": true,
   "playerPayloadStableThroughRun": true,
   "formalContractSatisfied": true,
-  "sourceSnapshotSha256": "2C9174B508AA1F9A8493432F2E98F44E3D97A29C39F2477C389582C37910A1E8",
+  "sourceSnapshotSha256": "85C44017DA4E2043B3D14F8E2EF5E07010EC937576CDF1202C35AA25D1FB1C92",
   "runtimeShaderSha256": "F8FDA97C0D7DD8F7344B8651867AA829606580F91969DD616F9037BF601E4070",
   "binningShaderSha256": "4A7BE834609D2D598DA587B49C2D353034EDE9FFBA128A491EB56E4BA048234C",
   "runtimeApiSha256": "7B0547429FCF67D897732B3BA828BC791C92A10B27A1E68481FB2E25F2EFB411",
   "playerPayloadFileCount": 282,
-  "playerPayloadLengthBytes": 156135376,
-  "playerPayloadSha256": "047B15AEDAA282172941354501A521E13696D0B438120B3C03EA36E902647D40"
+  "playerPayloadLengthBytes": 156135377,
+  "playerPayloadSha256": "D463AD99CFE4B2185A2C745F60DEE340F860725249E726A8AA48EAD278BF40F8"
 }

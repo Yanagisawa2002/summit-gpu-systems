@@ -2,28 +2,30 @@
 
 ## Outcome
 
-Commit `cf5b21b557356b522c920d591844d73ebf4299f5` adds a reusable,
+Commit `f9812cae015eff640f2d82131c180b52349f1746` adds a reusable,
 engine-native hierarchical visible-only path. It validates immutable contiguous
 clusters on GPU, performs coarse cluster/view rejection, expands only surviving
 instance/view candidates, and feeds the existing direct binning and indirect
 draw pipeline. The flat API remains unchanged and is the conservative default.
 
 The hierarchy produced a real GPU-region improvement in every formal 1M x
-four-view cell. It did not pass the frozen end-to-end material gate because
-CPU enqueue P99 regressed by more than 5% in every cell. This is therefore an
-explicit opt-in capability, not a universal-default performance claim.
+four-view cell. The 25% and 100% cells passed every frozen material guardrail;
+the 5% and 75% cells failed only the CPU enqueue-P99 guardrail. The public API
+therefore remains explicit: this matrix proves useful operating points, not a
+universal default or a runtime threshold.
 
 | Visible | Flat / hierarchy GPU mean | Mean speedup | GPU P95 speedup | Frame P99 regression | Enqueue P99 regression | Decision |
 |---:|---:|---:|---:|---:|---:|:---|
-| 5% | 0.3423 / 0.2550 ms | 25.51% | 32.49% | -13.20% | +20.78% | regression-or-unstable |
-| 25% | 1.0696 / 0.8057 ms | 24.67% | 18.71% | -17.41% | +10.05% | regression-or-unstable |
-| 75% | 2.1423 / 2.0364 ms | 4.94% | 3.56% | -3.36% | +8.63% | regression-or-unstable |
-| 100% | 2.6445 / 2.5155 ms | 4.88% | 3.29% | -3.78% | +10.30% | regression-or-unstable |
+| 5% | 0.3431 / 0.2536 ms | 26.08% | 32.13% | -12.83% | +12.20% | regression-or-unstable |
+| 25% | 1.0684 / 0.8048 ms | 24.67% | 18.49% | -16.55% | +1.18% | material-improvement |
+| 75% | 2.1427 / 2.0376 ms | 4.90% | 3.71% | -4.05% | +7.61% | regression-or-unstable |
+| 100% | 2.6438 / 2.5150 ms | 4.87% | 3.33% | -3.43% | +3.17% | material-improvement |
 
 Negative frame-P99 regression means the hierarchy improved that tail. All four
-same-process paired medians were positive (`4.88%–25.28%`), and every one of
-the sixteen paired effects was positive. The failed guardrail is specifically
-CPU command enqueue P99, not GPU timing, correctness, allocation, or frame P99.
+same-process paired medians were positive (`4.86%–26.07%`), and every one of
+the sixteen paired effects was positive. The failed guardrail in the 5% and
+75% cells is specifically CPU command enqueue P99, not GPU timing,
+correctness, allocation, or frame P99.
 
 ## Algorithm and reusable API
 
@@ -62,8 +64,9 @@ negative work-reduction control; it keeps every instance/view candidate.
 
 - Native GPU P95 and frame P99 passed their non-regression guardrails in all
   four cells.
-- Enqueue P99 was `0.2005/0.2343/0.2645/0.2903 ms` for hierarchy versus
-  `0.1660/0.2129/0.2435/0.2632 ms` for flat, causing the formal NO-GO.
+- Enqueue P99 was `0.1839/0.2226/0.2630/0.2775 ms` for hierarchy versus
+  `0.1639/0.2200/0.2444/0.2690 ms` for flat. The 5% and 75% regressions
+  exceeded 5%; the 25% and 100% cells passed.
 - All `36,000/36,000` native timestamp rows were ready.
 - Timed main-thread allocation rows/bytes were `0 / 0`; measurement readback
   bytes were zero. Timestamp instrumentation used its separate, declared
@@ -71,6 +74,10 @@ negative work-reduction control; it keeps every instance/view candidate.
 - The small 65,536-instance smoke cell was also retained as a boundary check:
   at 5% visibility it reduced candidates by 95% but regressed GPU mean by
   16.93%, reinforcing that fixed hierarchy overhead matters below scale.
+- A preceding clean diagnostic matrix on `cf5b21b` used the same runtime,
+  shader, and API hashes but tail-rejected all four cells. Its retained summary
+  shows that enqueue-P99 classification is not stable enough to derive a
+  one-shot automatic threshold; PR7 needs calibration/holdout separation.
 
 ## Frozen protocol and provenance
 
@@ -85,15 +92,15 @@ negative work-reduction control; it keeps every instance/view candidate.
 - Source and freshly built Player hashes stayed stable; Git was clean before
   and after the matrix.
 - Source snapshot SHA-256:
-  `2C9174B508AA1F9A8493432F2E98F44E3D97A29C39F2477C389582C37910A1E8`.
+  `85C44017DA4E2043B3D14F8E2EF5E07010EC937576CDF1202C35AA25D1FB1C92`.
 - Runtime shader SHA-256:
   `F8FDA97C0D7DD8F7344B8651867AA829606580F91969DD616F9037BF601E4070`.
 - Binning shader SHA-256:
   `4A7BE834609D2D598DA587B49C2D353034EDE9FFBA128A491EB56E4BA048234C`.
 - Runtime API SHA-256:
   `7B0547429FCF67D897732B3BA828BC791C92A10B27A1E68481FB2E25F2EFB411`.
-- Player payload: `282` files, `156,135,376` bytes, SHA-256
-  `047B15AEDAA282172941354501A521E13696D0B438120B3C03EA36E902647D40`.
+- Player payload: `282` files, `156,135,377` bytes, SHA-256
+  `D463AD99CFE4B2185A2C745F60DEE340F860725249E726A8AA48EAD278BF40F8`.
 
 Compact evidence is under
 `Evidence/GpuDrivenInstances/NVIDIA_RTX4090_HIERARCHICAL_MULTIVIEW_2026-08-30`.
@@ -113,8 +120,8 @@ enqueue tail as a first-class guardrail.
 
 > Built a reusable Unity/D3D12 hierarchical multi-view culling and GPU-count
 > binning pipeline for 1.05M instances; cut candidate instance/view work by up
-> to 95% and GPU mean time by 24.7%–25.5% in sparse 4-view RTX 4090 workloads,
+> to 95% and GPU mean time by 24.7%–26.1% in sparse 4-view RTX 4090 workloads,
 > with 36,000/36,000 native timestamps, 16/16 exact output validations, 8/8
 > exact hierarchy-statistic validations, and zero timed allocation/readback;
-> retained a conservative default-off decision because CPU enqueue P99 missed
-> the predeclared 5% tail guardrail.
+> kept selection profile-driven because CPU enqueue P99 missed the predeclared
+> 5% tail guardrail in two of four formal cells and varied across repeats.
