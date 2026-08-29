@@ -3,7 +3,8 @@
   "rootNamespace": "Summit.GpuDrivenInstance.Benchmark.Tests",
   "references": [
     "Summit.GpuDrivenInstance.Benchmark",
-    "Summit.GpuDrivenInstances"
+    "Summit.GpuDrivenInstances",
+    "Unity.Collections"
   ],
   "includePlatforms": [
     "Editor"

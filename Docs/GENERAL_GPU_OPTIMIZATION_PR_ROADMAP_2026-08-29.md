@@ -12,7 +12,7 @@ does not silently become the default.
 | 1 | Device-keyed backend selection | Calibrate and independently confirm Portable/WaveOps per device/workload | correctness, P99 guardrail, disjoint holdout | GitHub PR #1 open |
 | 2 | GPU-driven instances core | Multi-view visibility, LOD, grouping, CSR output, indirect args | exact CPU oracle and D3D12 contract suite | GitHub PR #2 open |
 | 3 | Filtered binning / visible-only scatter | Discard invisible keys without writing a culled payload tail; native paired GPU A/B | material win below all-visible; parity guard at 100%; exact oracle | implemented and formally accepted on RTX 4090; PR pending |
-| 4 | CPU-vs-GPU procedural macrobenchmark | Strong CPU/engine-native baseline for 10K/100K/1M instances | CPU submission P95 `>=20%` and `>=0.20 ms`; GPU P99 no worse than `-5%` | next |
+| 4 | CPU-vs-GPU procedural macrobenchmark | Strong CPU/engine-native baseline for 10K/100K instances | CPU submission P95 `>=20%` and `>=0.20 ms`; native GPU-region P99 no worse than `-5%` | implemented; formal run pending |
 | 5 | Dirty-range state mirroring | Merge changed ranges and avoid full-buffer upload | upload bytes and CPU P95 improve at 0/1/10% motion; 100% motion does not regress materially | queued |
 | 6 | Hierarchical multi-view culling | Coarse cluster visibility before per-instance classification | wins at low visibility and many views; all-visible fallback protected | queued |
 | 7 | Device/workload policy integration | Select flat/hierarchical, filtered/full, and primitive backends by measured profile | calibration choice confirmed on untouched rounds | queued |

@@ -4,7 +4,10 @@
   "references": [
     "Summit.GpuDrivenInstances",
     "Summit.GpuPrimitives",
-    "Summit.GpuTimestamps"
+    "Summit.GpuTimestamps",
+    "Unity.Burst",
+    "Unity.Collections",
+    "Unity.Mathematics"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

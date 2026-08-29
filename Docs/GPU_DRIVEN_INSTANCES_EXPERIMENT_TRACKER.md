@@ -7,8 +7,8 @@
 | R003 | M0 | Freeze portable instance data contracts | CPU oracle only | deterministic fixtures | pose/visibility/group hashes | MUST | DONE | Generic 48-byte state, view planes, draw templates, no project symbols |
 | R004 | M0 | GPU correctness smoke | GPU mirror + cull + compact + indirect args | 1/255/256/257/4097 instances, 1–2 views | exact membership/counts/offsets/args, diagnostics | MUST | DONE | Current full D3D12 suite 544/544, zero skipped |
 | R005 | M0.5 | Isolate rejected-pair contention | CulledTail vs VisibleOnly discard-key scatter | 1.05M instances, 4 views, 5/25/75/100% seeded dispersed visibility | native GPU mean/P50/P95, paired range, oracle | MUST | DONE | 93.13%/76.14%/44.84% mean reduction; 100% parity; 36,000/36,000 timestamps |
-| R006 | M1 | Strong CPU baseline | CPU cull + instanced draw | 10K/100K | CPU P95/P99, draws, frame tails | MUST | TODO | Retain identical workload |
-| R007 | M1 | GPU macro baseline | GPU cull + indirect | 10K/100K | CPU/GPU P95/P99, buffers | MUST | TODO | One-PID counterbalanced |
+| R006 | M1 | Strong CPU baseline | Burst/Jobs cull + engine-native instanced draw | 10K/100K, 1V/1G and 4V/8G | CPU submission/frame P95/P99, draws, payload bytes | MUST | IMPLEMENTED | One-PID ABBA/BAAB; formal run pending |
+| R007 | M1 | GPU macro baseline | GPU visible-only cull + engine indirect | 10K/100K, 1V/1G and 4V/8G | CPU/native-GPU P95/P99, buffers, parity | MUST | IMPLEMENTED | Native timestamps and fixed four-frame CPU-tail alignment; formal run pending |
 | R008 | M2 | Frozen RTX macro matrix | Final package | primary 4-cell matrix | all decisive metrics | MUST | TODO | Launch only after CPU baseline freeze |
 | R009 | M3 | Mechanism deletion | no pose/no cache/no batching/append | primary cells | paired deltas | MUST | IN PROGRESS | Visible-only deletion study accepted; remaining axes pending |
 | R010 | M4 | External engine baseline | Unity GraphicsSamples | pinned external commit | CPU/GPU/frame tails, parity | MUST | TODO | Keep external repo separate |
