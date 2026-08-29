@@ -11,6 +11,11 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $root = [System.IO.Path]::GetFullPath($ReportDirectory)
 $culture = [System.Globalization.CultureInfo]::InvariantCulture
+$minimumAverageImprovementPercent = 3.0
+$minimumAbsoluteReductionMs = 0.005
+$minimumPositiveWinFraction = 0.75
+$minimumP99ImprovementPercent = -5.0
+$calibrationMinimumP99ImprovementPercent = -2.0
 
 function Number($value, [string]$label) {
     try {
@@ -121,9 +126,13 @@ foreach ($operation in $operations) {
     $baseline = $candidateStats['portable']
     $wave = $candidateStats['wave-ops']
     $waveImprovement = Improvement $baseline.median $wave.median
-    $waveP99Regression = -1.0 * (Improvement $baseline.p99 $wave.p99)
-    $selectedVariant = if (
-        $waveImprovement -ge 1.0 -and $waveP99Regression -le 2.0) {
+    $waveAbsoluteReduction = $baseline.median - $wave.median
+    $waveP99Improvement = Improvement $baseline.p99 $wave.p99
+    $calibrationMeetsUpgradeGate =
+        $waveImprovement -ge $minimumAverageImprovementPercent -and
+        $waveAbsoluteReduction -ge $minimumAbsoluteReductionMs -and
+        $waveP99Improvement -ge $calibrationMinimumP99ImprovementPercent
+    $selectedVariant = if ($calibrationMeetsUpgradeGate) {
         'wave-ops'
     } else {
         'portable'
@@ -134,41 +143,93 @@ foreach ($operation in $operations) {
     $gpuP99Improvements = [System.Collections.Generic.List[double]]::new()
     $absoluteReductions = [System.Collections.Generic.List[double]]::new()
     $positiveWins = 0
+    $candidateGpuAverageImprovements =
+        [System.Collections.Generic.List[double]]::new()
+    $candidateGpuP99Improvements =
+        [System.Collections.Generic.List[double]]::new()
+    $candidateAbsoluteReductions =
+        [System.Collections.Generic.List[double]]::new()
+    $candidatePositiveWins = 0
     for ($round = $CalibrationRounds + 1; $round -le $roundCount; $round++) {
         $portable = @($blocks | Where-Object {
             $_.operation -eq $operation -and
             $_.variant -eq 'portable' -and
             [int]$_.round -eq $round })
-        $chosen = @($blocks | Where-Object {
+        $waveCandidate = @($blocks | Where-Object {
             $_.operation -eq $operation -and
-            $_.variant -eq $selectedVariant -and
+            $_.variant -eq 'wave-ops' -and
             [int]$_.round -eq $round })
-        if ($portable.Count -ne 1 -or $chosen.Count -ne 1) {
+        if ($portable.Count -ne 1 -or $waveCandidate.Count -ne 1) {
             throw "$operation evaluation round $round is incomplete."
         }
         $baselineAverage = Number $portable[0].gpuRegionAverageMs 'baseline average'
-        $selectedAverage = Number $chosen[0].gpuRegionAverageMs 'selected average'
+        $waveAverage = Number `
+            $waveCandidate[0].gpuRegionAverageMs `
+            'wave candidate average'
         $baselineP99 = Number $portable[0].gpuRegionP99Ms 'baseline p99'
-        $selectedP99 = Number $chosen[0].gpuRegionP99Ms 'selected p99'
+        $waveP99 = Number $waveCandidate[0].gpuRegionP99Ms 'wave candidate p99'
+        $selectedAverage = if ($selectedVariant -eq 'wave-ops') {
+            $waveAverage
+        } else {
+            $baselineAverage
+        }
+        $selectedP99 = if ($selectedVariant -eq 'wave-ops') {
+            $waveP99
+        } else {
+            $baselineP99
+        }
         $averageImprovement = Improvement $baselineAverage $selectedAverage
         $p99Improvement = Improvement $baselineP99 $selectedP99
+        $candidateAverageImprovement =
+            Improvement $baselineAverage $waveAverage
+        $candidateP99Improvement = Improvement $baselineP99 $waveP99
         if ($averageImprovement -gt 0.0) { $positiveWins++ }
+        if ($candidateAverageImprovement -gt 0.0) {
+            $candidatePositiveWins++
+        }
         $gpuAverageImprovements.Add($averageImprovement)
         $gpuP99Improvements.Add($p99Improvement)
         $absoluteReductions.Add($baselineAverage - $selectedAverage)
+        $candidateGpuAverageImprovements.Add($candidateAverageImprovement)
+        $candidateGpuP99Improvements.Add($candidateP99Improvement)
+        $candidateAbsoluteReductions.Add($baselineAverage - $waveAverage)
         $evaluationRows.Add([pscustomobject]@{
             workloadId = $operation
             evaluationRound = $round
             baselineBackend = 'portable'
+            candidateBackend = 'wave-ops'
             selectedBackend = $selectedVariant
             baselineGpuAverageMs = $baselineAverage
+            candidateGpuAverageMs = $waveAverage
             selectedGpuAverageMs = $selectedAverage
+            candidateGpuAverageImprovementPercent =
+                $candidateAverageImprovement
             gpuAverageImprovementPercent = $averageImprovement
             baselineGpuP99Ms = $baselineP99
+            candidateGpuP99Ms = $waveP99
             selectedGpuP99Ms = $selectedP99
+            candidateGpuP99ImprovementPercent = $candidateP99Improvement
             gpuP99ImprovementPercent = $p99Improvement
         })
     }
+
+    $requiredPositiveWins = [int][Math]::Ceiling(
+        $candidateGpuAverageImprovements.Count *
+        $minimumPositiveWinFraction)
+    $candidateAverageMedian =
+        Median ([double[]]$candidateGpuAverageImprovements)
+    $candidateP99Median =
+        Median ([double[]]$candidateGpuP99Improvements)
+    $candidateAbsoluteMedian =
+        Median ([double[]]$candidateAbsoluteReductions)
+    $candidateMeetsUpgradeGate =
+        $candidatePositiveWins -ge $requiredPositiveWins -and
+        $candidateAverageMedian -ge $minimumAverageImprovementPercent -and
+        $candidateAbsoluteMedian -ge $minimumAbsoluteReductionMs -and
+        $candidateP99Median -ge $minimumP99ImprovementPercent
+    $selectionConfirmed =
+        ($selectedVariant -eq 'wave-ops' -and $candidateMeetsUpgradeGate) -or
+        ($selectedVariant -eq 'portable' -and -not $candidateMeetsUpgradeGate)
 
     $profileRows.Add([pscustomobject]@{
         workloadId = $operation
@@ -176,14 +237,16 @@ foreach ($operation in $operations) {
         selectedBackend = if ($selectedVariant -eq 'wave-ops') {
             'WaveOps'
         } else { 'Portable' }
-        accepted = $true
+        accepted = $selectionConfirmed
         calibrationSamplesPerCandidate = [int]$selected.samples
         baselineMedianMs = [double]$baseline.median
         selectedMedianMs = [double]$selected.median
         baselineP99Ms = [double]$baseline.p99
         selectedP99Ms = [double]$selected.p99
-        calibrationImprovementPercent =
-            Improvement $baseline.median $selected.median
+        calibrationImprovementPercent = $waveImprovement
+        calibrationAbsoluteReductionMs = $waveAbsoluteReduction
+        calibrationP99ImprovementPercent = $waveP99Improvement
+        calibrationMeetsUpgradeGate = $calibrationMeetsUpgradeGate
         evaluationPairs = $gpuAverageImprovements.Count
         evaluationPositiveWins = $positiveWins
         evaluationGpuAverageImprovementMedianPercent =
@@ -192,6 +255,16 @@ foreach ($operation in $operations) {
             Median ([double[]]$gpuP99Improvements)
         evaluationGpuAverageAbsoluteReductionMedianMs =
             Median ([double[]]$absoluteReductions)
+        candidateEvaluationRequiredPositiveWins = $requiredPositiveWins
+        candidateEvaluationPositiveWins = $candidatePositiveWins
+        candidateEvaluationGpuAverageImprovementMedianPercent =
+            $candidateAverageMedian
+        candidateEvaluationGpuP99ImprovementMedianPercent =
+            $candidateP99Median
+        candidateEvaluationGpuAverageAbsoluteReductionMedianMs =
+            $candidateAbsoluteMedian
+        candidateMeetsUpgradeGate = $candidateMeetsUpgradeGate
+        selectionConfirmed = $selectionConfirmed
     })
 }
 
@@ -224,6 +297,10 @@ $profile = [ordered]@{
             baselineP99Ms = $_.baselineP99Ms
             selectedP99Ms = $_.selectedP99Ms
             calibrationImprovementPercent = $_.calibrationImprovementPercent
+            calibrationAbsoluteReductionMs = $_.calibrationAbsoluteReductionMs
+            calibrationP99ImprovementPercent =
+                $_.calibrationP99ImprovementPercent
+            calibrationMeetsUpgradeGate = $_.calibrationMeetsUpgradeGate
         }
     })
 }
@@ -244,17 +321,10 @@ if ($FormalAcceptance) {
         if ([int]$row.evaluationPairs -ne 4) {
             $violations.Add("$($row.workloadId): expected 4 evaluation pairs.")
         }
-        if ([int]$row.evaluationPositiveWins -lt 3) {
-            $violations.Add("$($row.workloadId): fewer than 3/4 average wins.")
-        }
-        if ([double]$row.evaluationGpuAverageImprovementMedianPercent -lt 3.0) {
-            $violations.Add("$($row.workloadId): median average improvement below 3%.")
-        }
-        if ([double]$row.evaluationGpuAverageAbsoluteReductionMedianMs -lt 0.005) {
-            $violations.Add("$($row.workloadId): absolute reduction below 0.005 ms.")
-        }
-        if ([double]$row.evaluationGpuP99ImprovementMedianPercent -lt -5.0) {
-            $violations.Add("$($row.workloadId): median P99 regression exceeds 5%.")
+        if (-not [bool]$row.selectionConfirmed) {
+            $violations.Add(
+                "$($row.workloadId): independent evaluation did not confirm " +
+                "$($row.selectedBackend) selected during calibration.")
         }
     }
     if ($violations.Count -ne 0) {
@@ -272,19 +342,20 @@ $lines.Add("Acceptance: **$acceptance**")
 $lines.Add('')
 $lines.Add("Device: **$($device.graphicsDeviceName)** / $($device.graphicsDeviceType)")
 $lines.Add('')
-$lines.Add('| Workload | Selected | Calibration improvement | Evaluation GPU avg | Evaluation GPU P99 | Wins |')
-$lines.Add('|---|---|---:|---:|---:|---:|')
+$lines.Add('| Workload | Selected | Calibration WaveOps delta | Evaluation WaveOps avg | Evaluation WaveOps P99 | WaveOps wins | Confirmed |')
+$lines.Add('|---|---|---:|---:|---:|---:|---:|')
 foreach ($row in $profileRows) {
-    $lines.Add(('| {0} | {1} | {2:F2}% | {3:F2}% | {4:F2}% | {5}/{6} |' -f
+    $lines.Add(('| {0} | {1} | {2:F2}% | {3:F2}% | {4:F2}% | {5}/{6} | {7} |' -f
         $row.workloadId,
         $row.selectedBackend,
         $row.calibrationImprovementPercent,
-        $row.evaluationGpuAverageImprovementMedianPercent,
-        $row.evaluationGpuP99ImprovementMedianPercent,
-        $row.evaluationPositiveWins,
-        $row.evaluationPairs))
+        $row.candidateEvaluationGpuAverageImprovementMedianPercent,
+        $row.candidateEvaluationGpuP99ImprovementMedianPercent,
+        $row.candidateEvaluationPositiveWins,
+        $row.evaluationPairs,
+        [int][bool]$row.selectionConfirmed))
 }
 $lines.Add('')
-$lines.Add('Calibration and evaluation use disjoint rounds. A mismatched or missing device profile falls back to capability-based Auto selection.')
+$lines.Add('Calibration and evaluation use disjoint rounds. WaveOps is selected only when it clears the improvement and P99 gates; otherwise the validated profile keeps the portable backend. A mismatched or missing device profile falls back to capability-based Auto selection.')
 $lines | Set-Content (Join-Path $root 'AUTOTUNING_SUMMARY.md')
 Write-Output "Generated GPU autotuning profile: $root"
