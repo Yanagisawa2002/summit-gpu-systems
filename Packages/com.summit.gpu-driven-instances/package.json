@@ -1,0 +1,21 @@
+{
+  "name": "com.summit.gpu-driven-instances",
+  "version": "0.1.0",
+  "displayName": "SUMMIT GPU Driven Instances",
+  "description": "Scene-agnostic multi-view GPU visibility, LOD grouping, CSR compaction, and indirect argument generation.",
+  "unity": "6000.0",
+  "dependencies": {
+    "com.summit.gpu-direct-binning": "0.1.0",
+    "com.summit.gpu-primitives": "0.1.0"
+  },
+  "keywords": [
+    "gpu",
+    "compute",
+    "visibility",
+    "lod",
+    "indirect-rendering"
+  ],
+  "author": {
+    "name": "SUMMIT"
+  }
+}

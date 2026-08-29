@@ -11,7 +11,7 @@ The adaptive overlay is explicit because that completed worktree was intentional
 
 ## Included
 
-- Eight `com.summit.gpu-*` UPM packages, including source, compute shaders, package tests, READMEs, Unity metadata, and the D3D12 timestamp native source/binary.
+- Nine `com.summit.gpu-*` UPM packages, including source, compute shaders, package tests, READMEs, Unity metadata, and the D3D12 timestamp native source/binary. The ninth package is the clean-room GPU-driven instance pipeline added after the original migration.
 - Six procedural benchmark hosts under `Assets/Gpu*Benchmark`.
 - Generic benchmark runners, summarizers, provenance checks, autotuning utilities, and native build automation.
 - GPU engineering plans, reports, portfolio notes, and the spatial-index report artifact.

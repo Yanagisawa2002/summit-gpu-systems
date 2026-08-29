@@ -1,0 +1,237 @@
+#pragma kernel ClearUint
+#pragma kernel ClassifyInstances
+#pragma kernel BuildIndirectArguments
+#pragma target 5.0
+
+struct GpuInstanceState
+{
+    float4 PositionRadius;
+    float4 LodDistances;
+    uint ApplicationId;
+    uint DrawGroupBase;
+    uint LodCount;
+    uint ViewMask;
+};
+
+struct GpuDrawTemplate
+{
+    uint IndexCountPerInstance;
+    uint StartIndex;
+    uint BaseVertex;
+    uint Reserved;
+};
+
+StructuredBuffer<GpuInstanceState> _Instances;
+StructuredBuffer<float4> _ViewPlanes;
+StructuredBuffer<float4> _ViewParameters;
+StructuredBuffer<GpuDrawTemplate> _DrawTemplates;
+StructuredBuffer<uint> _BinCounts;
+StructuredBuffer<uint> _BinOffsets;
+
+RWStructuredBuffer<uint> _ClearBuffer;
+RWStructuredBuffer<uint> _Keys;
+RWStructuredBuffer<uint> _Values;
+RWStructuredBuffer<uint> _IndirectArguments;
+RWStructuredBuffer<uint> _Diagnostics;
+
+int _ClearCount;
+int _InstanceCount;
+int _ViewCount;
+int _DrawGroupCount;
+int _VisibleBinCount;
+
+static const uint ContractViolationCountWord = 0u;
+static const uint ErrorFlagsWord = 1u;
+static const uint InvalidRadius = 1u << 0u;
+static const uint InvalidLodContract = 1u << 1u;
+static const uint InvalidDrawGroupRange = 1u << 2u;
+static const uint InvalidViewLodScale = 1u << 3u;
+
+float LodDistance(float4 distances, uint lod)
+{
+    if (lod == 0u)
+    {
+        return distances.x;
+    }
+    if (lod == 1u)
+    {
+        return distances.y;
+    }
+    if (lod == 2u)
+    {
+        return distances.z;
+    }
+    return distances.w;
+}
+
+uint ValidateInstance(GpuInstanceState instance)
+{
+    uint flags = 0u;
+    if (!(instance.PositionRadius.w >= 0.0f))
+    {
+        flags |= InvalidRadius;
+    }
+
+    uint lodCount = instance.LodCount;
+    if (lodCount < 1u || lodCount > 4u)
+    {
+        flags |= InvalidLodContract;
+        return flags;
+    }
+
+    float previous = 0.0f;
+    [unroll]
+    for (uint lod = 0u; lod < 4u; ++lod)
+    {
+        if (lod >= lodCount)
+        {
+            break;
+        }
+
+        float distance = LodDistance(instance.LodDistances, lod);
+        if (!(distance > 0.0f) || distance < previous)
+        {
+            flags |= InvalidLodContract;
+        }
+        previous = distance;
+    }
+
+    if (instance.DrawGroupBase >= (uint)_DrawGroupCount ||
+        lodCount > (uint)_DrawGroupCount - instance.DrawGroupBase)
+    {
+        flags |= InvalidDrawGroupRange;
+    }
+    return flags;
+}
+
+bool IsSphereVisible(float3 center, float radius, uint viewIndex)
+{
+    uint planeBase = viewIndex * 6u;
+    [unroll]
+    for (uint planeIndex = 0u; planeIndex < 6u; ++planeIndex)
+    {
+        float4 plane = _ViewPlanes[planeBase + planeIndex];
+        if (dot(plane.xyz, center) + plane.w < -radius)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+void ReportError(uint flags)
+{
+    uint ignoredCount;
+    uint ignoredFlags;
+    InterlockedAdd(
+        _Diagnostics[ContractViolationCountWord],
+        1u,
+        ignoredCount);
+    InterlockedOr(
+        _Diagnostics[ErrorFlagsWord],
+        flags,
+        ignoredFlags);
+}
+
+[numthreads(256, 1, 1)]
+void ClearUint(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint index = dispatchThreadId.x;
+    if (index < (uint)_ClearCount)
+    {
+        _ClearBuffer[index] = 0u;
+    }
+}
+
+[numthreads(256, 1, 1)]
+void ClassifyInstances(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint pairIndex = dispatchThreadId.x;
+    uint pairCount = (uint)_InstanceCount * (uint)_ViewCount;
+    if (pairIndex >= pairCount)
+    {
+        return;
+    }
+
+    uint instanceIndex = pairIndex % (uint)_InstanceCount;
+    uint viewIndex = pairIndex / (uint)_InstanceCount;
+    uint culledBin = (uint)_VisibleBinCount;
+    _Values[pairIndex] = instanceIndex;
+    _Keys[pairIndex] = culledBin;
+
+    GpuInstanceState instance = _Instances[instanceIndex];
+    uint instanceErrors = ValidateInstance(instance);
+    if (instanceErrors != 0u)
+    {
+        if (viewIndex == 0u)
+        {
+            ReportError(instanceErrors);
+        }
+        return;
+    }
+
+    float4 view = _ViewParameters[viewIndex];
+    if (!(view.w > 0.0f))
+    {
+        if (instanceIndex == 0u)
+        {
+            ReportError(InvalidViewLodScale);
+        }
+        return;
+    }
+
+    uint viewBit = 1u << viewIndex;
+    if ((instance.ViewMask & viewBit) == 0u)
+    {
+        return;
+    }
+
+    float3 center = instance.PositionRadius.xyz;
+    if (!IsSphereVisible(center, instance.PositionRadius.w, viewIndex))
+    {
+        return;
+    }
+
+    float scaledDistance = length(center - view.xyz) * view.w;
+    uint selectedLod = instance.LodCount;
+    [unroll]
+    for (uint lod = 0u; lod < 4u; ++lod)
+    {
+        if (lod >= instance.LodCount)
+        {
+            break;
+        }
+        if (scaledDistance <= LodDistance(instance.LodDistances, lod))
+        {
+            selectedLod = lod;
+            break;
+        }
+    }
+
+    if (selectedLod >= instance.LodCount)
+    {
+        return;
+    }
+
+    uint drawGroup = instance.DrawGroupBase + selectedLod;
+    _Keys[pairIndex] = viewIndex * (uint)_DrawGroupCount + drawGroup;
+}
+
+[numthreads(256, 1, 1)]
+void BuildIndirectArguments(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint bin = dispatchThreadId.x;
+    if (bin >= (uint)_VisibleBinCount)
+    {
+        return;
+    }
+
+    uint drawGroup = bin % (uint)_DrawGroupCount;
+    GpuDrawTemplate draw = _DrawTemplates[drawGroup];
+    uint argumentBase = bin * 5u;
+    _IndirectArguments[argumentBase + 0u] = draw.IndexCountPerInstance;
+    _IndirectArguments[argumentBase + 1u] = _BinCounts[bin];
+    _IndirectArguments[argumentBase + 2u] = draw.StartIndex;
+    _IndirectArguments[argumentBase + 3u] = draw.BaseVertex;
+    _IndirectArguments[argumentBase + 4u] = _BinOffsets[bin];
+}

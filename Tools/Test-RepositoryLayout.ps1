@@ -13,6 +13,7 @@ $expectedPackages = @(
     'com.summit.gpu-autotuning',
     'com.summit.gpu-deadline-scheduler',
     'com.summit.gpu-direct-binning',
+    'com.summit.gpu-driven-instances',
     'com.summit.gpu-primitives',
     'com.summit.gpu-residency-manager',
     'com.summit.gpu-sensor-pipeline',
