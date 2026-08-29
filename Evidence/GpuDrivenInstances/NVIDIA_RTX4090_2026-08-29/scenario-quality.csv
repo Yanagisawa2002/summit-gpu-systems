@@ -1,0 +1,5 @@
+scenarioId,visibility,instanceCount,viewCount,seed,processId,status,passed,rawSampleCount,validationRows,validationFailures,nativeTimestampReadyRows,gpuRegionTimingComplete
+visible5-n1048576-v4,visible5,1048576,4,20260829,3684,completed,1,9000,4,0,9000,1
+visible25-n1048576-v4,visible25,1048576,4,20260829,68224,completed,1,9000,4,0,9000,1
+visible75-n1048576-v4,visible75,1048576,4,20260829,31548,completed,1,9000,4,0,9000,1
+visible100-n1048576-v4,visible100,1048576,4,20260829,10468,completed,1,9000,4,0,9000,1

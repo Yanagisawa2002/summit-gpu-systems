@@ -1,0 +1,19 @@
+{
+  "operatingSystem": "Windows 11 (10.0.26200)",
+  "processorType": "Intel(R) Core(TM) Ultra 7 265K",
+  "systemMemoryMiB": 32122,
+  "graphicsDeviceName": "NVIDIA GeForce RTX 4090",
+  "graphicsDeviceVendor": "NVIDIA",
+  "graphicsDeviceVendorId": 4318,
+  "graphicsDeviceId": 9860,
+  "graphicsDriverVersion": "32.0.15.9186",
+  "graphicsDeviceType": "Direct3D12",
+  "graphicsDeviceVersion": "Direct3D 12 [level 12.2]",
+  "graphicsMemoryMiB": 24138,
+  "supportsComputeShaders": true,
+  "supportsGraphicsFence": true,
+  "supportsAsyncGpuReadback": true,
+  "nativeTimestampAvailability": "Available",
+  "nativeTimestampAbiVersion": 2,
+  "nativeTimestampCapabilityFlags": 31
+}
