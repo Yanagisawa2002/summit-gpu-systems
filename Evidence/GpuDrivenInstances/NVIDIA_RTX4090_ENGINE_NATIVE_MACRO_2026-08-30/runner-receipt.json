@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "suite": "summit.gpu-driven-instance-macro",
+  "testedCommit": "f7178c8f038deed3c93c7fc094339ec0e40715c0",
+  "branch": "codex/engine-native-macrobenchmark-20260830",
+  "unityVersion": "6000.5.2f1",
+  "matrixPreset": "formal-primary-v1",
+  "formalDecision": "NO-GO",
+  "evidenceValid": true,
+  "performanceDecisionPassed": false,
+  "formalContractSatisfied": false,
+  "sourceHashesStableAcrossBuildAndRun": true,
+  "playerPayloadStableThroughRun": true,
+  "finalGitClean": true,
+  "editMode": {
+    "passed": 584,
+    "total": 584,
+    "skipped": 0,
+    "sha256": "A548027BB31731567798B0EAAEB4A7F7FEF8D1BAE9101C9FAB852F8A8302F34D"
+  },
+  "evidenceCounts": {
+    "scenariosCompleted": 4,
+    "validationPassed": 16,
+    "validationTotal": 16,
+    "validationReadbackRetries": 0,
+    "nativeTimestampReadyRows": 36000,
+    "requiredFrameTimingReadyRows": 36000,
+    "mainThreadAllocationRows": 0,
+    "mainThreadAllocatedBytes": 0,
+    "measurementReadbackBytes": 0
+  },
+  "decisionCounts": {
+    "cpuSubmissionCellsPassed": 3,
+    "cpuSubmissionCellsTotal": 4,
+    "nativeGpuP99CellsPassed": 3,
+    "nativeGpuP99CellsTotal": 4
+  },
+  "sourceSnapshotSha256": "CA60D6590E92484A2CFBFB465675393231E5EBB45997AFE554081CC2C64924BF",
+  "runtimeShaderSha256": "C8F365BC2883FD85C6F9DEE94AD738DA7D2DFD061B785E935FCF2E41421B278D",
+  "macroShaderSha256": "A686325CC7FB292919FD57841E64916A8B7194BD673F0EA7D3BF1C33CBE80FB6",
+  "runtimeApiSha256": "9B1AB83CCEA676329822784183AFDC50BC7823CCC5EC22D36ADE0582C86D8F89",
+  "playerPayload": {
+    "fileCount": 283,
+    "lengthBytes": 155991977,
+    "sha256": "2D937C60BC9039327FD0910DF6479E60BC3F8822E27B193FBEFEB5F380610878"
+  },
+  "reportHashes": {
+    "matrixSummarySha256": "A66D6CB2B379AAA27DC43E3F9ABC8FBB34A06F650C5F6EE9C167E7636ACADD7E",
+    "benchmarkReportSha256": "B718A36A1FB95E8AD735E6A0C00AE533163E0A4141A322D7F0A024734FC8665C",
+    "runnerConfigSha256": "289CF04DDEDDC26CACBECFD1EC394B5B0B3BE360E682A574CA6457364F07CD88",
+    "playerPayloadManifestSha256": "EABF59E7EBAFFE55021F0F1FE274371743A2D125FA84AB2CF09E769B23E3BC0F"
+  }
+}

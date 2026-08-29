@@ -1,0 +1,5 @@
+"scenarioId","processId","passed","status","rawSampleCount","blockCount","validationRows","validationFailures","validationReadbackRetries","nativeTimestampReadyRows","frameTimingReadyRows","renderThreadFrameReadyRows","gpuFrameReadyRows","engineSubmissionWindowReadyRows","mainThreadAllocationRows","mainThreadAllocatedBytes","measurementReadbackBytes","completionFencesComplete","timedAllocationFree","graphicsDeviceName","graphicsDeviceType"
+"primary-n10000-v1-g1-visible25","55056","1","completed","9000","10","4","0","0","9000","9000","9000","7767","8995","0","0","0","1","1","NVIDIA GeForce RTX 4090","Direct3D12"
+"primary-n10000-v4-g8-visible25","15340","1","completed","9000","10","4","0","0","9000","9000","9000","7688","8995","0","0","0","1","1","NVIDIA GeForce RTX 4090","Direct3D12"
+"primary-n100000-v1-g1-visible25","45688","1","completed","9000","10","4","0","0","9000","9000","9000","7474","8994","0","0","0","1","1","NVIDIA GeForce RTX 4090","Direct3D12"
+"primary-n100000-v4-g8-visible25","57064","1","completed","9000","10","4","0","0","9000","9000","9000","7456","8995","0","0","0","1","1","NVIDIA GeForce RTX 4090","Direct3D12"
