@@ -1,0 +1,5 @@
+scenarioId,coarseVisibleClusterViewCount,candidateInstanceViewCount,hierarchicalVisiblePairCount,candidateReductionPercent,exactCpuOracleMatch
+hierarchical-visible5-n1048576-v4,63876,209715,209715,95.00000476837158,True
+hierarchical-visible25-n1048576-v4,65532,1048576,1048576,75,True
+hierarchical-visible75-n1048576-v4,65532,3145728,3145728,25,True
+hierarchical-visible100-n1048576-v4,65536,4194304,4194304,0,True
