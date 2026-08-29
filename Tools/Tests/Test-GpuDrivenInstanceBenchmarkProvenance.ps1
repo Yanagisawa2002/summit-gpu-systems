@@ -48,6 +48,8 @@ foreach ($requirement in @(
         @('sampleFrames = 900', 'Formal sample count'),
         @('same-process paired ABBA/BAAB', 'Paired protocol report'),
         @('pairedMedianSpeedupPercent', 'Paired effect estimate'),
+        @('$pairMedian -ge 1.0 -and $pairMinimum -gt 0.0',
+            'Material improvement threshold'),
         @('formalContractSatisfied', 'Formal completion receipt'))) {
     Assert-Contains $runner $requirement[0] $requirement[1]
 }

@@ -676,6 +676,20 @@ foreach ($scenario in $scenarios) {
     }
     $baselineMean = Mean $baselineTimes
     $optimizedMean = Mean $optimizedTimes
+    $pairMedian = Percentile ([double[]]$pairSpeedups) 0.50
+    $pairMinimum =
+        [double](($pairSpeedups | Measure-Object -Minimum).Minimum)
+    $pairMaximum =
+        [double](($pairSpeedups | Measure-Object -Maximum).Maximum)
+    $decision = if ($pairMedian -ge 1.0 -and $pairMinimum -gt 0.0) {
+        'material-improvement'
+    }
+    elseif ([Math]::Abs($pairMedian) -lt 1.0) {
+        'parity'
+    }
+    else {
+        'regression-or-unstable'
+    }
     $summaryRows.Add([pscustomobject][ordered]@{
         scenarioId = $scenario.scenarioId
         visibility = $scenario.visibility
@@ -699,12 +713,10 @@ foreach ($scenario in $scenarios) {
         p95SpeedupPercent = ImprovementPercent `
             (Percentile $baselineTimes 0.95) `
             (Percentile $optimizedTimes 0.95)
-        pairedMedianSpeedupPercent =
-            Percentile ([double[]]$pairSpeedups) 0.50
-        pairedMinSpeedupPercent =
-            ($pairSpeedups | Measure-Object -Minimum).Minimum
-        pairedMaxSpeedupPercent =
-            ($pairSpeedups | Measure-Object -Maximum).Maximum
+        pairedMedianSpeedupPercent = $pairMedian
+        pairedMinSpeedupPercent = $pairMinimum
+        pairedMaxSpeedupPercent = $pairMaximum
+        decision = $decision
         validationRows = $validation.Count
         validationFailures = 0
         nativeTimestampReadyRows = [int]$run.nativeTimestampReadyRows
@@ -749,35 +761,39 @@ $reportLines.Add(
 $reportLines.Add('')
 $reportLines.Add(
     '| Visible | Baseline mean (ms) | Visible-only mean (ms) | ' +
-    'Mean speedup | Paired median | P95 speedup |')
-$reportLines.Add('|---:|---:|---:|---:|---:|---:|')
+    'Mean speedup | Paired median | Pair range | Decision |')
+$reportLines.Add('|---:|---:|---:|---:|---:|---:|:---|')
 foreach ($row in $summaryRows) {
     $reportLines.Add(
-        ('| {0}% | {1:F4} | {2:F4} | {3:F2}% | {4:F2}% | {5:F2}% |' -f
+        ('| {0}% | {1:F4} | {2:F4} | {3:F2}% | {4:F2}% | ' +
+         '{5:F2}% to {6:F2}% | {7} |' -f
             $row.visibilityPercent,
             $row.baselineGpuMeanMs,
             $row.optimizedGpuMeanMs,
             $row.meanSpeedupPercent,
             $row.pairedMedianSpeedupPercent,
-            $row.p95SpeedupPercent))
+            $row.pairedMinSpeedupPercent,
+            $row.pairedMaxSpeedupPercent,
+            $row.decision))
 }
 $reportLines.Add('')
-$positive = @($summaryRows | Where-Object {
-    [double]$_.pairedMedianSpeedupPercent -gt 0.0
+$material = @($summaryRows | Where-Object {
+    [string]$_.decision -ceq 'material-improvement'
 })
-if ($positive.Count -eq 0) {
+if ($material.Count -eq 0) {
     $reportLines.Add(
         'Decision: retain `CulledTail` as the default; this matrix did not ' +
-        'show a positive paired-median cell.')
+        'show a material, consistently positive paired result.')
 }
 else {
-    $maxVisibility = ($positive |
+    $maxVisibility = ($material |
         Measure-Object -Property visibilityPercent -Maximum).Maximum
     $reportLines.Add(
-        "Decision evidence: `VisibleOnly` had positive paired-median " +
-        "speedup through the measured $maxVisibility% visibility cell. " +
-        'The public API remains explicit; no runtime policy is inferred ' +
-        'outside this matrix.')
+        "Decision evidence: `VisibleOnly` had at least 1% paired-median " +
+        "speedup with every pair positive through the measured " +
+        "$maxVisibility% visibility cell. Cells below 1% are classified " +
+        'as parity. The public API remains explicit; no runtime policy is ' +
+        'inferred outside this matrix.')
 }
 $reportLines | Set-Content -LiteralPath (
     Join-Path $outputRoot 'BENCHMARK_REPORT.md') -Encoding utf8
