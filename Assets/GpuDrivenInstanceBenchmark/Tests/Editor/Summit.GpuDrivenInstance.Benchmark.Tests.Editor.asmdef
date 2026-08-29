@@ -1,0 +1,22 @@
+{
+  "name": "Summit.GpuDrivenInstance.Benchmark.Tests.Editor",
+  "rootNamespace": "Summit.GpuDrivenInstance.Benchmark.Tests",
+  "references": [
+    "Summit.GpuDrivenInstance.Benchmark",
+    "Summit.GpuDrivenInstances"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": false,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false,
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ]
+}
