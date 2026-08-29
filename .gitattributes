@@ -21,3 +21,4 @@
 Evidence/GpuPrimitives/NVIDIA_RTX4090_2026-08-29/* -text -eol -diff
 Evidence/GpuAutotuning/NVIDIA_RTX4090_2026-08-29/* -text -eol -diff
 Evidence/GpuDrivenInstances/NVIDIA_RTX4090_DIRTY_RANGE_UPLOAD_2026-08-30/* -text -eol -diff
+Evidence/GpuDrivenInstances/NVIDIA_RTX4090_HIERARCHICAL_MULTIVIEW_2026-08-30/* -text -eol -diff
