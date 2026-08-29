@@ -20,3 +20,4 @@
 # Retained benchmark evidence is hashed as measured; never rewrite its bytes.
 Evidence/GpuPrimitives/NVIDIA_RTX4090_2026-08-29/* -text -eol -diff
 Evidence/GpuAutotuning/NVIDIA_RTX4090_2026-08-29/* -text -eol -diff
+Evidence/GpuDrivenInstances/NVIDIA_RTX4090_DIRTY_RANGE_UPLOAD_2026-08-30/* -text -eol -diff
