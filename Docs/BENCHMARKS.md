@@ -22,6 +22,7 @@ The root Unity project is intentionally asset-free. Every benchmark builder crea
 | Adaptive direct/radix selection | `Tools/Run-GpuAdaptiveBinningBenchmark.ps1` |
 | Device-keyed autotuning | `Tools/Run-GpuAutotuningBenchmark.ps1` |
 | GPU-driven visibility and visible-only scatter | `Tools/Run-GpuDrivenInstanceBenchmark.ps1` |
+| Engine-native CPU versus GPU-driven instances | `Tools/Run-GpuDrivenInstanceMacrobenchmark.ps1` |
 | GPU-resident sensor pipeline | `Tools/Run-GpuSensorPipelineBenchmark.ps1` |
 | Quantized SoA and producer-consumer fusion | `Tools/Run-GpuSensorDataPackingBenchmark.ps1` |
 | Shared multi-sensor spatial index | `Tools/Run-GpuMultiSensorSharedIndexBenchmark.ps1` |

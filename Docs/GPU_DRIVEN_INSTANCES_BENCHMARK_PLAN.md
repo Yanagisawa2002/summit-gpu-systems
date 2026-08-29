@@ -102,8 +102,8 @@ Anti-claim to rule out: the gain comes only from SUMMIT city data, fewer rendere
 
 ## Final checklist
 
-- [ ] Main anchor table is complete
-- [ ] Correctness and visual parity are exact enough for the claim
+- [x] Main procedural anchor table is complete; overall frozen result is retained as NO-GO
+- [x] Correctness and visual parity are exact for the procedural anchor
 - [ ] Novelty is isolated through deletion studies
 - [ ] Portable retention is accepted when a candidate misses the gate
 - [ ] External macrobenchmark is pinned and licensed
