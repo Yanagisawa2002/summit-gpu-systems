@@ -85,6 +85,8 @@ foreach ($requirement in @(
         @('projectVersionSha256', 'ProjectVersion receipt binding'),
         @('formal EditMode tests did not use the Direct3D 12 graphics path',
             'Formal D3D12 EditMode receipt gate'),
+        @("@('testFilter', [string]`$receipt.testFilter, '')",
+            'Formal full-suite empty-filter gate'),
         @('$config.unityVersion -cne $projectUnityVersion',
             'Built Player Unity version gate'),
         @('Get-GpuBenchmarkPlayerPayload', 'Payload manifest'),

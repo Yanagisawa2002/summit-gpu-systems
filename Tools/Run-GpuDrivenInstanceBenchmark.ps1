@@ -263,6 +263,7 @@ function Get-VerifiedEditModeReceipt {
         'resultsPath',
         'resultsSha256',
         'testPlatform',
+        'testFilter',
         'useGraphics',
         'forceDirect3D12',
         'exitCode',
@@ -357,6 +358,7 @@ function Get-VerifiedEditModeReceipt {
                 [string]$receipt.unityProductVersion,
                 $UnityProductVersion),
             @('testPlatform', [string]$receipt.testPlatform, 'EditMode'),
+            @('testFilter', [string]$receipt.testFilter, ''),
             @('result', [string]$receipt.result,
                 [string]$TestMetadata.result))) {
         if ([string]$valueEntry[1] -cne [string]$valueEntry[2]) {

@@ -22,7 +22,7 @@ explicit opt-in capability, not a universal-default performance claim.
 
 Negative frame-P99 regression means the hierarchy improved that tail. All four
 same-process paired medians were positive (`4.88%–25.28%`), and every one of
-the eight paired effects was positive. The failed guardrail is specifically
+the sixteen paired effects was positive. The failed guardrail is specifically
 CPU command enqueue P99, not GPU timing, correctness, allocation, or frame P99.
 
 ## Algorithm and reusable API
