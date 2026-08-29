@@ -30,6 +30,45 @@ Gameplay and simulation authority remain with the host. Atomic scatter leaves
 order within a draw group unspecified; membership, counts, offsets, and
 arguments are the stable public contract.
 
+## Hierarchical multi-view visible-only path
+
+Version 0.3 adds an explicit, opt-in hierarchy capacity and
+`RecordHierarchicalVisibleOnly`. The original constructor and flat `Record`
+API remain available without hierarchy scratch. The host builds immutable
+contiguous descriptors with `GpuInstanceClusterBuilder` (or an equivalent
+producer): each `GpuInstanceCluster` contains a conservative sphere, a range of
+at most 64 instances, and the union of those instances' view masks. Active
+ranges must be non-overlapping and exactly cover the active instance prefix.
+All four sphere components must be finite and the radius must be non-negative;
+invalid bounds fail closed before coarse classification.
+
+The GPU records these stages without readback:
+
+1. validate every range boundary and fail closed on an invalid cover;
+2. test each `(cluster, view)` sphere after its union-mask check;
+3. launch one 64-thread fine group per cluster, using a two-dimensional
+   dispatch when the cluster count exceeds 65,535;
+4. visit only bits surviving both the coarse mask and instance view mask,
+   perform exact instance visibility/LOD, and densely append visible
+   `(bin, instance)` pairs while pre-counting bins;
+5. scan the pre-counted bins and scatter the GPU-count prefix indirectly;
+6. reuse the normal five-word indexed-indirect argument builder.
+
+No wave intrinsics, `SV_DrawID`, asynchronous compute, CPU count readback, or
+scene-specific policy is required. Outputs are always visible-only. Callers
+also provide a three-word `hierarchyStatistics` buffer, cleared on every
+record: coarse-visible cluster/view count, fine candidate instance/view count,
+and visible-pair count. The last word is the same append counter consumed by
+the indirect scatter, so evidence does not rely on a second counter.
+
+Cluster bounds and union masks must be rebuilt when member positions, radii,
+membership, or view masks change. Malformed ranges set
+`InvalidClusterContract`, keep statistics/counts/offsets and instance counts in
+draw arguments at zero, and do not reuse the previous frame's dispatch size.
+Any later hierarchy or pre-counted-binning diagnostic also forces every draw
+instance count and base-instance offset to zero before indirect rendering;
+callers must still reject the diagnostic-marked CSR payload itself.
+
 ## Dynamic instance-state uploads
 
 `GpuInstanceStateUploader` adds an optional engine-native upload path for a
@@ -77,7 +116,10 @@ Editor tests include an independent CPU oracle, dispatch boundaries, multiple
 views, view masks, LOD selection, culled-tail and visible-only membership,
 exact indirect arguments, zero work, invalid-contract diagnostics, argument
 validation, disposal, dirty-range normalization, safety fallback, allocation-
-free warmed planning, and full-buffer GPU readback after partial updates.
+free warmed planning, full-buffer GPU readback after partial updates, cluster
+builder boundaries, hierarchical/flat/oracle parity, malformed-cover fail-
+closed behavior, exact causal statistics, and the two-dimensional fine-dispatch
+boundary.
 
 This first package PR establishes correctness and a benchmarkable API. It does
 not claim a frame-time improvement. A later PR must add a frozen CPU-versus-GPU

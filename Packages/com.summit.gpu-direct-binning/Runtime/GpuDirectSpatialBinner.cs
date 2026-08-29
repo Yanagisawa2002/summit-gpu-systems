@@ -21,6 +21,7 @@ namespace Summit.GpuDirectBinning
         public const int DiagnosticWordCount = 2;
         public const int InvalidKeyCountWord = 0;
         public const int ErrorFlagsWord = 1;
+        public const int IndirectDispatchArgumentWordCount = 3;
 
         private const string ResourcePath =
             "GpuDirectBinning/GpuDirectBinning";
@@ -46,6 +47,16 @@ namespace Summit.GpuDirectBinning
             "Summit.GpuDirectBinning/Scatter/GuaranteedInRange";
         private const string FilteredScatterSample =
             "Summit.GpuDirectBinning/Scatter/DiscardKey";
+        private const string PrecountedBinningSample =
+            "Summit.GpuDirectBinning/PrecountedPrefixIndirect";
+        private const string PrecountedDispatchSample =
+            "Summit.GpuDirectBinning/PrepareIndirectDispatch";
+        private const string PrecountedPrepareSample =
+            "Summit.GpuDirectBinning/Prepare/PrecountedPrefix";
+        private const string PrecountedValidateSample =
+            "Summit.GpuDirectBinning/Validate/PrecountedPrefixIndirect";
+        private const string PrecountedScatterSample =
+            "Summit.GpuDirectBinning/Scatter/PrecountedPrefixIndirect";
 
         private static readonly int ClearCountId =
             Shader.PropertyToID("_ClearCount");
@@ -71,6 +82,20 @@ namespace Summit.GpuDirectBinning
             Shader.PropertyToID("_WriteHeads");
         private static readonly int DiagnosticsId =
             Shader.PropertyToID("_Diagnostics");
+        private static readonly int GpuElementCountId =
+            Shader.PropertyToID("_GpuElementCount");
+        private static readonly int GpuElementCountOffsetId =
+            Shader.PropertyToID("_GpuElementCountOffset");
+        private static readonly int ElementCapacityId =
+            Shader.PropertyToID("_ElementCapacity");
+        private static readonly int ValidationDispatchArgumentsId =
+            Shader.PropertyToID("_ValidationDispatchArguments");
+        private static readonly int ValidationDispatchArgumentsOffsetId =
+            Shader.PropertyToID("_ValidationDispatchArgumentsOffset");
+        private static readonly int ScatterDispatchArgumentsId =
+            Shader.PropertyToID("_ScatterDispatchArguments");
+        private static readonly int ScatterDispatchArgumentsOffsetId =
+            Shader.PropertyToID("_ScatterDispatchArgumentsOffset");
 
         private readonly ComputeShader shader;
         private readonly int clearUintKernel;
@@ -81,6 +106,10 @@ namespace Summit.GpuDirectBinning
         private readonly int scatterValuesKernel;
         private readonly int scatterValuesGuaranteedInRangeKernel;
         private readonly int scatterValuesWithDiscardKeyKernel;
+        private readonly int initializePrecountedDispatchArgumentsKernel;
+        private readonly int preparePrecountedOffsetsAndWriteHeadsKernel;
+        private readonly int validatePrecountedPrefixKeysKernel;
+        private readonly int scatterPrecountedPrefixIndirectKernel;
         private readonly GpuPrimitivesRuntime primitives;
         private readonly bool ownsPrimitives;
         private readonly GraphicsBuffer writeHeads;
@@ -133,6 +162,27 @@ namespace Summit.GpuDirectBinning
             int selectedFilteredScatterKernel = selectedShader.HasKernel(
                 "ScatterValuesWithDiscardKey")
                     ? selectedShader.FindKernel("ScatterValuesWithDiscardKey")
+                    : -1;
+            int selectedInitializePrecountedDispatchKernel =
+                selectedShader.HasKernel(
+                    "InitializePrecountedDispatchArguments")
+                    ? selectedShader.FindKernel(
+                        "InitializePrecountedDispatchArguments")
+                    : -1;
+            int selectedPreparePrecountedKernel = selectedShader.HasKernel(
+                "PreparePrecountedOffsetsAndWriteHeads")
+                    ? selectedShader.FindKernel(
+                        "PreparePrecountedOffsetsAndWriteHeads")
+                    : -1;
+            int selectedValidatePrecountedKeysKernel = selectedShader.HasKernel(
+                "ValidatePrecountedPrefixKeys")
+                    ? selectedShader.FindKernel(
+                        "ValidatePrecountedPrefixKeys")
+                    : -1;
+            int selectedPrecountedScatterKernel = selectedShader.HasKernel(
+                "ScatterPrecountedPrefixIndirect")
+                    ? selectedShader.FindKernel(
+                        "ScatterPrecountedPrefixIndirect")
                     : -1;
 
             bool shouldOwnPrimitives = primitives == null;
@@ -192,6 +242,14 @@ namespace Summit.GpuDirectBinning
             scatterValuesGuaranteedInRangeKernel = selectedTrustedScatterKernel;
             scatterValuesWithDiscardKeyKernel =
                 selectedFilteredScatterKernel;
+            initializePrecountedDispatchArgumentsKernel =
+                selectedInitializePrecountedDispatchKernel;
+            preparePrecountedOffsetsAndWriteHeadsKernel =
+                selectedPreparePrecountedKernel;
+            validatePrecountedPrefixKeysKernel =
+                selectedValidatePrecountedKeysKernel;
+            scatterPrecountedPrefixIndirectKernel =
+                selectedPrecountedScatterKernel;
             this.primitives = selectedPrimitives;
             ownsPrimitives = shouldOwnPrimitives;
             writeHeads = selectedWriteHeads;
@@ -425,6 +483,305 @@ namespace Summit.GpuDirectBinning
                 false,
                 true,
                 discardKey);
+        }
+
+        /// <summary>
+        /// Records CSR scan and indirect scatter for a producer-precounted,
+        /// dense key/value prefix whose logical count remains on the GPU.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The caller must populate <paramref name="binCounts"/> and the
+        /// dense prefixes of <paramref name="keys"/> and
+        /// <paramref name="values"/> before this recording executes. The
+        /// prefix length is read from <paramref name="gpuElementCount"/> at
+        /// <paramref name="gpuElementCountWordOffset"/>. Counts must sum to
+        /// that length, and each <c>binCounts[b]</c> must exactly equal the
+        /// number of prefix keys whose value is <c>b</c>. Every prefix key
+        /// must be less than <paramref name="binCount"/>, and the length must
+        /// not exceed <see cref="ElementCapacity"/>.
+        /// </para>
+        /// <para>
+        /// This path does not clear diagnostics or recount binCounts and never
+        /// scans a CPU-declared fixed element count. It scans only the caller's
+        /// bin counts, prepares write heads, writes a three-uint indirect
+        /// compute dispatch record, validates the dense-prefix keys, and
+        /// scatters exactly the GPU-declared prefix.
+        /// Producer-contract violations OR diagnostic flags. A count outside
+        /// capacity, a dispatch dimension outside the D3D12 limit, a terminal
+        /// counts/count mismatch, or an invalid prefix key writes a zero X
+        /// dispatch dimension before scatter. A per-bin distribution mismatch
+        /// can only be detected during scatter and may leave a partial CSR;
+        /// consumers must reject every result with non-zero diagnostics.
+        /// </para>
+        /// <para>
+        /// All writable buffers, including the two indirect-argument
+        /// resources, must be distinct from one another and from every
+        /// read-only input. Read-only inputs may alias. Validation reads only
+        /// validationDispatchArguments and writes only the distinct
+        /// scatterDispatchArguments, avoiding an indirect-input/UAV alias on
+        /// D3D12. Do not overlap executions sharing this binner's write-head
+        /// scratch. Caller-owned inputs and arguments must remain valid until
+        /// execution completes.
+        /// </para>
+        /// </remarks>
+        public void RecordPrecountedPrefixIndirect(
+            CommandBuffer commands,
+            GraphicsBuffer keys,
+            GraphicsBuffer values,
+            GraphicsBuffer binCounts,
+            GraphicsBuffer binOffsets,
+            GraphicsBuffer binnedValues,
+            GraphicsBuffer diagnostics,
+            GraphicsBuffer gpuElementCount,
+            int gpuElementCountWordOffset,
+            GraphicsBuffer validationDispatchArguments,
+            uint validationDispatchArgumentsByteOffset,
+            GraphicsBuffer scatterDispatchArguments,
+            uint scatterDispatchArgumentsByteOffset,
+            int binCount,
+            GpuPrimitiveBackend scanBackend =
+                GpuPrimitiveBackend.Auto)
+        {
+            ValidatePrecountedPrefixIndirectArguments(
+                    commands,
+                    keys,
+                    values,
+                    binCounts,
+                    binOffsets,
+                    binnedValues,
+                    diagnostics,
+                    gpuElementCount,
+                    gpuElementCountWordOffset,
+                    validationDispatchArguments,
+                    validationDispatchArgumentsByteOffset,
+                    scatterDispatchArguments,
+                    scatterDispatchArgumentsByteOffset,
+                    binCount,
+                    scanBackend,
+                    out int validationDispatchArgumentsWordOffset,
+                    out int scatterDispatchArgumentsWordOffset);
+
+            if (initializePrecountedDispatchArgumentsKernel < 0 ||
+                preparePrecountedOffsetsAndWriteHeadsKernel < 0 ||
+                validatePrecountedPrefixKeysKernel < 0 ||
+                scatterPrecountedPrefixIndirectKernel < 0)
+            {
+                throw new InvalidOperationException(
+                    "The injected compute shader does not provide the " +
+                    "precounted-prefix indirect kernels.");
+            }
+
+            BeginSample(commands, PrecountedBinningSample);
+
+            primitives.RecordExclusiveScan(
+                commands,
+                binCounts,
+                binOffsets,
+                binCount,
+                scanBackend);
+
+            BeginSample(commands, PrecountedDispatchSample);
+            commands.SetComputeIntParam(
+                shader,
+                ElementCapacityId,
+                ElementCapacity);
+            commands.SetComputeIntParam(
+                shader,
+                GpuElementCountOffsetId,
+                gpuElementCountWordOffset);
+            commands.SetComputeIntParam(
+                shader,
+                ValidationDispatchArgumentsOffsetId,
+                validationDispatchArgumentsWordOffset);
+            commands.SetComputeIntParam(
+                shader,
+                ScatterDispatchArgumentsOffsetId,
+                scatterDispatchArgumentsWordOffset);
+            commands.SetComputeBufferParam(
+                shader,
+                initializePrecountedDispatchArgumentsKernel,
+                GpuElementCountId,
+                gpuElementCount);
+            commands.SetComputeBufferParam(
+                shader,
+                initializePrecountedDispatchArgumentsKernel,
+                ValidationDispatchArgumentsId,
+                validationDispatchArguments);
+            commands.SetComputeBufferParam(
+                shader,
+                initializePrecountedDispatchArgumentsKernel,
+                ScatterDispatchArgumentsId,
+                scatterDispatchArguments);
+            commands.SetComputeBufferParam(
+                shader,
+                initializePrecountedDispatchArgumentsKernel,
+                DiagnosticsId,
+                diagnostics);
+            commands.DispatchCompute(
+                shader,
+                initializePrecountedDispatchArgumentsKernel,
+                1,
+                1,
+                1);
+            EndSample(commands, PrecountedDispatchSample);
+
+            BeginSample(commands, PrecountedPrepareSample);
+            commands.SetComputeIntParam(shader, BinCountId, binCount);
+            commands.SetComputeIntParam(
+                shader,
+                ElementCapacityId,
+                ElementCapacity);
+            commands.SetComputeIntParam(
+                shader,
+                GpuElementCountOffsetId,
+                gpuElementCountWordOffset);
+            commands.SetComputeIntParam(
+                shader,
+                ValidationDispatchArgumentsOffsetId,
+                validationDispatchArgumentsWordOffset);
+            commands.SetComputeIntParam(
+                shader,
+                ScatterDispatchArgumentsOffsetId,
+                scatterDispatchArgumentsWordOffset);
+            commands.SetComputeBufferParam(
+                shader,
+                preparePrecountedOffsetsAndWriteHeadsKernel,
+                BinCountsId,
+                binCounts);
+            commands.SetComputeBufferParam(
+                shader,
+                preparePrecountedOffsetsAndWriteHeadsKernel,
+                BinOffsetsId,
+                binOffsets);
+            commands.SetComputeBufferParam(
+                shader,
+                preparePrecountedOffsetsAndWriteHeadsKernel,
+                WriteHeadsId,
+                writeHeads);
+            commands.SetComputeBufferParam(
+                shader,
+                preparePrecountedOffsetsAndWriteHeadsKernel,
+                GpuElementCountId,
+                gpuElementCount);
+            commands.SetComputeBufferParam(
+                shader,
+                preparePrecountedOffsetsAndWriteHeadsKernel,
+                ValidationDispatchArgumentsId,
+                validationDispatchArguments);
+            commands.SetComputeBufferParam(
+                shader,
+                preparePrecountedOffsetsAndWriteHeadsKernel,
+                ScatterDispatchArgumentsId,
+                scatterDispatchArguments);
+            commands.SetComputeBufferParam(
+                shader,
+                preparePrecountedOffsetsAndWriteHeadsKernel,
+                DiagnosticsId,
+                diagnostics);
+            commands.DispatchCompute(
+                shader,
+                preparePrecountedOffsetsAndWriteHeadsKernel,
+                DivideRoundUp(binCount, ThreadGroupSize),
+                1,
+                1);
+            EndSample(commands, PrecountedPrepareSample);
+
+            BeginSample(commands, PrecountedValidateSample);
+            commands.SetComputeIntParam(shader, BinCountId, binCount);
+            commands.SetComputeIntParam(
+                shader,
+                GpuElementCountOffsetId,
+                gpuElementCountWordOffset);
+            commands.SetComputeIntParam(
+                shader,
+                ScatterDispatchArgumentsOffsetId,
+                scatterDispatchArgumentsWordOffset);
+            commands.SetComputeBufferParam(
+                shader,
+                validatePrecountedPrefixKeysKernel,
+                KeysId,
+                keys);
+            commands.SetComputeBufferParam(
+                shader,
+                validatePrecountedPrefixKeysKernel,
+                GpuElementCountId,
+                gpuElementCount);
+            commands.SetComputeBufferParam(
+                shader,
+                validatePrecountedPrefixKeysKernel,
+                ScatterDispatchArgumentsId,
+                scatterDispatchArguments);
+            commands.SetComputeBufferParam(
+                shader,
+                validatePrecountedPrefixKeysKernel,
+                DiagnosticsId,
+                diagnostics);
+            commands.DispatchCompute(
+                shader,
+                validatePrecountedPrefixKeysKernel,
+                validationDispatchArguments,
+                validationDispatchArgumentsByteOffset);
+            EndSample(commands, PrecountedValidateSample);
+
+            BeginSample(commands, PrecountedScatterSample);
+            commands.SetComputeIntParam(shader, BinCountId, binCount);
+            commands.SetComputeIntParam(
+                shader,
+                ElementCapacityId,
+                ElementCapacity);
+            commands.SetComputeIntParam(
+                shader,
+                GpuElementCountOffsetId,
+                gpuElementCountWordOffset);
+            commands.SetComputeBufferParam(
+                shader,
+                scatterPrecountedPrefixIndirectKernel,
+                KeysId,
+                keys);
+            commands.SetComputeBufferParam(
+                shader,
+                scatterPrecountedPrefixIndirectKernel,
+                ValuesId,
+                values);
+            commands.SetComputeBufferParam(
+                shader,
+                scatterPrecountedPrefixIndirectKernel,
+                BinCountsId,
+                binCounts);
+            commands.SetComputeBufferParam(
+                shader,
+                scatterPrecountedPrefixIndirectKernel,
+                BinOffsetsId,
+                binOffsets);
+            commands.SetComputeBufferParam(
+                shader,
+                scatterPrecountedPrefixIndirectKernel,
+                BinnedValuesId,
+                binnedValues);
+            commands.SetComputeBufferParam(
+                shader,
+                scatterPrecountedPrefixIndirectKernel,
+                WriteHeadsId,
+                writeHeads);
+            commands.SetComputeBufferParam(
+                shader,
+                scatterPrecountedPrefixIndirectKernel,
+                DiagnosticsId,
+                diagnostics);
+            commands.SetComputeBufferParam(
+                shader,
+                scatterPrecountedPrefixIndirectKernel,
+                GpuElementCountId,
+                gpuElementCount);
+            commands.DispatchCompute(
+                shader,
+                scatterPrecountedPrefixIndirectKernel,
+                scatterDispatchArguments,
+                scatterDispatchArgumentsByteOffset);
+            EndSample(commands, PrecountedScatterSample);
+
+            EndSample(commands, PrecountedBinningSample);
         }
 
         private void RecordInternal(
@@ -674,6 +1031,186 @@ namespace Summit.GpuDirectBinning
             }
         }
 
+        private void ValidatePrecountedPrefixIndirectArguments(
+            CommandBuffer commands,
+            GraphicsBuffer keys,
+            GraphicsBuffer values,
+            GraphicsBuffer binCounts,
+            GraphicsBuffer binOffsets,
+            GraphicsBuffer binnedValues,
+            GraphicsBuffer diagnostics,
+            GraphicsBuffer gpuElementCount,
+            int gpuElementCountWordOffset,
+            GraphicsBuffer validationDispatchArguments,
+            uint validationDispatchArgumentsByteOffset,
+            GraphicsBuffer scatterDispatchArguments,
+            uint scatterDispatchArgumentsByteOffset,
+            int binCount,
+            GpuPrimitiveBackend scanBackend,
+            out int validationDispatchArgumentsWordOffset,
+            out int scatterDispatchArgumentsWordOffset)
+        {
+            ThrowIfDisposed();
+            if (commands == null)
+            {
+                throw new ArgumentNullException(nameof(commands));
+            }
+            if (!SystemInfo.supportsIndirectArgumentsBuffer)
+            {
+                throw new NotSupportedException(
+                    "The active graphics device does not support indirect " +
+                    "argument buffers.");
+            }
+            if (binCount < 1 || binCount > BinCapacity)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(binCount),
+                    $"Bin count must be in [1, {BinCapacity}].");
+            }
+            if (scanBackend != GpuPrimitiveBackend.Auto &&
+                scanBackend != GpuPrimitiveBackend.Portable &&
+                scanBackend != GpuPrimitiveBackend.WaveOps)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(scanBackend));
+            }
+            if (primitives.Capacity < binCount)
+            {
+                throw new InvalidOperationException(
+                    "The referenced primitives instance is disposed or no " +
+                    "longer covers the requested bin count.");
+            }
+            primitives.EnsureCapacity(binCount);
+
+            ValidateUintBuffer(keys, ElementCapacity, nameof(keys));
+            ValidateUintBuffer(values, ElementCapacity, nameof(values));
+            ValidateUintBuffer(binCounts, binCount, nameof(binCounts));
+            ValidateUintBuffer(
+                binOffsets,
+                checked(binCount + 1),
+                nameof(binOffsets));
+            ValidateUintBuffer(
+                binnedValues,
+                ElementCapacity,
+                nameof(binnedValues));
+            ValidateUintBuffer(
+                diagnostics,
+                DiagnosticWordCount,
+                nameof(diagnostics));
+            ValidateUintBuffer(
+                gpuElementCount,
+                1,
+                nameof(gpuElementCount));
+            if (gpuElementCountWordOffset < 0 ||
+                gpuElementCountWordOffset >= gpuElementCount.count)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(gpuElementCountWordOffset),
+                    "GPU element-count word offset must select one word " +
+                    "inside gpuElementCount.");
+            }
+
+            validationDispatchArgumentsWordOffset =
+                ValidateIndirectDispatchArgumentsBuffer(
+                    validationDispatchArguments,
+                    validationDispatchArgumentsByteOffset,
+                    nameof(validationDispatchArguments),
+                    nameof(validationDispatchArgumentsByteOffset));
+            scatterDispatchArgumentsWordOffset =
+                ValidateIndirectDispatchArgumentsBuffer(
+                    scatterDispatchArguments,
+                    scatterDispatchArgumentsByteOffset,
+                    nameof(scatterDispatchArguments),
+                    nameof(scatterDispatchArgumentsByteOffset));
+
+            RequireNotPrecountedInput(
+                binOffsets,
+                nameof(binOffsets),
+                keys,
+                values,
+                binCounts,
+                gpuElementCount);
+            RequireNotPrecountedInput(
+                binnedValues,
+                nameof(binnedValues),
+                keys,
+                values,
+                binCounts,
+                gpuElementCount);
+            RequireNotPrecountedInput(
+                diagnostics,
+                nameof(diagnostics),
+                keys,
+                values,
+                binCounts,
+                gpuElementCount);
+            RequireNotPrecountedInput(
+                validationDispatchArguments,
+                nameof(validationDispatchArguments),
+                keys,
+                values,
+                binCounts,
+                gpuElementCount);
+            RequireNotPrecountedInput(
+                scatterDispatchArguments,
+                nameof(scatterDispatchArguments),
+                keys,
+                values,
+                binCounts,
+                gpuElementCount);
+
+            RequireDistinct(
+                binOffsets,
+                nameof(binOffsets),
+                binnedValues,
+                nameof(binnedValues));
+            RequireDistinct(
+                binOffsets,
+                nameof(binOffsets),
+                diagnostics,
+                nameof(diagnostics));
+            RequireDistinct(
+                binOffsets,
+                nameof(binOffsets),
+                validationDispatchArguments,
+                nameof(validationDispatchArguments));
+            RequireDistinct(
+                binOffsets,
+                nameof(binOffsets),
+                scatterDispatchArguments,
+                nameof(scatterDispatchArguments));
+            RequireDistinct(
+                binnedValues,
+                nameof(binnedValues),
+                diagnostics,
+                nameof(diagnostics));
+            RequireDistinct(
+                binnedValues,
+                nameof(binnedValues),
+                validationDispatchArguments,
+                nameof(validationDispatchArguments));
+            RequireDistinct(
+                binnedValues,
+                nameof(binnedValues),
+                scatterDispatchArguments,
+                nameof(scatterDispatchArguments));
+            RequireDistinct(
+                diagnostics,
+                nameof(diagnostics),
+                validationDispatchArguments,
+                nameof(validationDispatchArguments));
+            RequireDistinct(
+                diagnostics,
+                nameof(diagnostics),
+                scatterDispatchArguments,
+                nameof(scatterDispatchArguments));
+            RequireDistinct(
+                validationDispatchArguments,
+                nameof(validationDispatchArguments),
+                scatterDispatchArguments,
+                nameof(scatterDispatchArguments));
+        }
+
         private void ValidateRecordArguments(
             CommandBuffer commands,
             GraphicsBuffer keys,
@@ -883,6 +1420,80 @@ namespace Summit.GpuDirectBinning
                     "elements.",
                     parameterName);
             }
+        }
+
+        private static int ValidateIndirectDispatchArgumentsBuffer(
+            GraphicsBuffer buffer,
+            uint byteOffset,
+            string parameterName,
+            string offsetParameterName)
+        {
+            if (buffer == null)
+            {
+                throw new ArgumentNullException(parameterName);
+            }
+
+            GraphicsBuffer.Target requiredTargets =
+                GraphicsBuffer.Target.Structured |
+                GraphicsBuffer.Target.IndirectArguments;
+            if ((buffer.target & requiredTargets) != requiredTargets ||
+                buffer.stride != sizeof(uint))
+            {
+                throw new ArgumentException(
+                    $"{parameterName} must be a structured indirect-" +
+                    $"arguments GraphicsBuffer with stride {sizeof(uint)}.",
+                    parameterName);
+            }
+            if ((byteOffset & 3u) != 0u)
+            {
+                throw new ArgumentOutOfRangeException(
+                    offsetParameterName,
+                    "Indirect dispatch argument byte offset must be " +
+                    "four-byte aligned.");
+            }
+
+            int wordOffset = checked((int)(byteOffset / sizeof(uint)));
+            if (buffer.count < IndirectDispatchArgumentWordCount ||
+                wordOffset >
+                buffer.count - IndirectDispatchArgumentWordCount)
+            {
+                throw new ArgumentOutOfRangeException(
+                    offsetParameterName,
+                    "Indirect dispatch argument byte offset must leave " +
+                    $"{IndirectDispatchArgumentWordCount} writable words " +
+                    "inside indirectDispatchArguments.");
+            }
+            return wordOffset;
+        }
+
+        private static void RequireNotPrecountedInput(
+            GraphicsBuffer writable,
+            string writableName,
+            GraphicsBuffer keys,
+            GraphicsBuffer values,
+            GraphicsBuffer binCounts,
+            GraphicsBuffer gpuElementCount)
+        {
+            RequireDistinct(
+                writable,
+                writableName,
+                keys,
+                nameof(keys));
+            RequireDistinct(
+                writable,
+                writableName,
+                values,
+                nameof(values));
+            RequireDistinct(
+                writable,
+                writableName,
+                binCounts,
+                nameof(binCounts));
+            RequireDistinct(
+                writable,
+                writableName,
+                gpuElementCount,
+                nameof(gpuElementCount));
         }
 
         private static void RequireDistinct(

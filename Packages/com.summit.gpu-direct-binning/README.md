@@ -101,6 +101,57 @@ Do not overlap executions that share one binner's write-head scratch.
 and clears the same diagnostic buffer before classification. The ordinary
 discard-key method retains the safe self-clearing behavior.
 
+### Precounted GPU prefix and indirect scatter
+
+`RecordPrecountedPrefixIndirect` is the lower-layer handoff for a GPU producer
+that has already emitted all three of the following:
+
+- `binCounts[C]`;
+- a dense `keys`/`values` prefix;
+- the prefix length in one word of a structured GPU buffer.
+
+The binner does not clear diagnostics and does not rerun a fixed-size count
+pass. It records this sequence:
+
+```text
+exclusive scan caller binCounts
+    -> GPU count to DispatchIndirect arguments
+    -> initialize write heads and validate the terminal count
+    -> indirect validation of the dense-prefix keys
+    -> indirect scatter of only the dense prefix
+```
+
+The caller supplies two distinct writable `Structured | IndirectArguments`
+uint buffers and a four-byte-aligned byte offset for each. Both offsets must
+leave space for the D3D12 dispatch ABI: `{ groupCountX, 1, 1 }`. The validation
+buffer is only the first indirect dispatch's input. Validation writes only the
+distinct scatter buffer, which is the second indirect dispatch's input. The
+two resources must not alias: simultaneously treating one D3D12 resource as
+an indirect argument input and UAV output is not a valid synchronization
+contract. The GPU element-count input is a structured uint buffer and supports
+a word offset. A zero count produces `{ 0, 1, 1 }` in both buffers and no
+validation or scatter threads. `keys`, `values`, and `binnedValues` must cover
+the binner's fixed `ElementCapacity`, because their active GPU prefix is not
+known to the CPU at recording time.
+
+This path treats the producer data as a checked contract. It ORs, but never
+clears, these additional flags:
+
+| Flag | Meaning and action |
+| --- | --- |
+| `PrecountedElementCountOutOfRange` | GPU count exceeds `ElementCapacity`; X dispatch is forced to zero. |
+| `PrecountedCountMismatch` | counts do not sum to the GPU count, a bin range exceeds capacity, or scatter exceeds a declared bin range; pre-dispatch failures force X to zero. |
+| `IndirectDispatchDimensionOutOfRange` | X would exceed the D3D12 65,535-group limit; X is forced to zero. |
+
+Invalid dense-prefix keys and scatter overflow retain the existing
+`InvalidKeyEncountered` and `ScatterDestinationOutOfRange` bits. Diagnostic
+word 0 remains the invalid-key count; producer count/range failures are flags
+in word 1 and do not change word 0. The caller owns diagnostic initialization
+and must inspect it after GPU completion. Invalid keys atomically force the
+shared indirect X argument to zero in a validation dispatch before scatter,
+so they cannot produce a partially written CSR. Existing `Record*` methods
+retain their previous clear/count behavior and signatures.
+
 ## Zero elements and profiling
 
 With `elementCount == 0`, counts, all `C + 1` offsets, and diagnostics become
@@ -116,6 +167,11 @@ Recorded scopes are:
 - `Summit.GpuPrimitives/ExclusiveScan`
 - `Summit.GpuDirectBinning/Prepare`
 - `Summit.GpuDirectBinning/Scatter`
+- `Summit.GpuDirectBinning/PrecountedPrefixIndirect`
+- `Summit.GpuDirectBinning/PrepareIndirectDispatch`
+- `Summit.GpuDirectBinning/Prepare/PrecountedPrefix`
+- `Summit.GpuDirectBinning/Validate/PrecountedPrefixIndirect`
+- `Summit.GpuDirectBinning/Scatter/PrecountedPrefixIndirect`
 
 Profiler scopes identify regions but do not prove performance. Any claim still
 requires direct GPU timestamps, deterministic validation, named hardware and

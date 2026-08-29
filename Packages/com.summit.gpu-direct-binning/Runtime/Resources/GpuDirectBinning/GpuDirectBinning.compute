@@ -6,10 +6,15 @@
 #pragma kernel ScatterValues
 #pragma kernel ScatterValuesGuaranteedInRange
 #pragma kernel ScatterValuesWithDiscardKey
+#pragma kernel InitializePrecountedDispatchArguments
+#pragma kernel PreparePrecountedOffsetsAndWriteHeads
+#pragma kernel ValidatePrecountedPrefixKeys
+#pragma kernel ScatterPrecountedPrefixIndirect
 #pragma target 5.0
 
 StructuredBuffer<uint> _Keys;
 StructuredBuffer<uint> _Values;
+StructuredBuffer<uint> _GpuElementCount;
 
 RWStructuredBuffer<uint> _ClearBuffer;
 RWStructuredBuffer<uint> _BinCounts;
@@ -17,16 +22,27 @@ RWStructuredBuffer<uint> _BinOffsets;
 RWStructuredBuffer<uint> _BinnedValues;
 RWStructuredBuffer<uint> _WriteHeads;
 RWStructuredBuffer<uint> _Diagnostics;
+RWStructuredBuffer<uint> _ValidationDispatchArguments;
+RWStructuredBuffer<uint> _ScatterDispatchArguments;
 
 int _ClearCount;
 int _ElementCount;
+int _ElementCapacity;
 int _BinCount;
+int _GpuElementCountOffset;
+int _ValidationDispatchArgumentsOffset;
+int _ScatterDispatchArgumentsOffset;
 uint _DiscardKey;
 
 static const uint InvalidKeyCountWord = 0u;
 static const uint ErrorFlagsWord = 1u;
 static const uint InvalidKeyEncountered = 1u << 0u;
 static const uint ScatterDestinationOutOfRange = 1u << 1u;
+static const uint PrecountedElementCountOutOfRange = 1u << 2u;
+static const uint PrecountedCountMismatch = 1u << 3u;
+static const uint IndirectDispatchDimensionOutOfRange = 1u << 4u;
+static const uint DirectBinningThreadGroupSize = 256u;
+static const uint D3D12MaxDispatchGroupsPerDimension = 65535u;
 
 [numthreads(256, 1, 1)]
 void ClearUint(uint3 dispatchThreadId : SV_DispatchThreadID)
@@ -135,6 +151,146 @@ void PrepareOffsetsAndWriteHeads(
     }
 }
 
+// Initializes a caller-owned D3D12 DispatchIndirect record directly from the
+// producer's GPU count. Invalid counts publish X=0 and an explicit flag, so a
+// later indirect scatter cannot address an unknown prefix.
+[numthreads(1, 1, 1)]
+void InitializePrecountedDispatchArguments(
+    uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint elementCount = _GpuElementCount[_GpuElementCountOffset];
+    uint groupCount = elementCount == 0u
+        ? 0u
+        : 1u + ((elementCount - 1u) / DirectBinningThreadGroupSize);
+    uint errorFlags = 0u;
+    if (elementCount > (uint)_ElementCapacity)
+    {
+        errorFlags |= PrecountedElementCountOutOfRange;
+    }
+    if (groupCount > D3D12MaxDispatchGroupsPerDimension)
+    {
+        errorFlags |= IndirectDispatchDimensionOutOfRange;
+    }
+
+    uint argument = (errorFlags == 0u) ? groupCount : 0u;
+    uint validationOffset = (uint)_ValidationDispatchArgumentsOffset;
+    uint scatterOffset = (uint)_ScatterDispatchArgumentsOffset;
+    _ValidationDispatchArguments[validationOffset + 0u] = argument;
+    _ValidationDispatchArguments[validationOffset + 1u] = 1u;
+    _ValidationDispatchArguments[validationOffset + 2u] = 1u;
+    _ScatterDispatchArguments[scatterOffset + 0u] = argument;
+    _ScatterDispatchArguments[scatterOffset + 1u] = 1u;
+    _ScatterDispatchArguments[scatterOffset + 2u] = 1u;
+
+    if (errorFlags != 0u)
+    {
+        uint ignoredFlags;
+        InterlockedOr(
+            _Diagnostics[ErrorFlagsWord],
+            errorFlags,
+            ignoredFlags);
+    }
+}
+
+// binCounts is producer-owned input on this path. The scan already populated
+// the first _BinCount offsets; this kernel initializes write heads, publishes
+// the terminal offset, and disables indirect scatter for malformed ranges.
+[numthreads(256, 1, 1)]
+void PreparePrecountedOffsetsAndWriteHeads(
+    uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint bin = dispatchThreadId.x;
+    if (bin >= (uint)_BinCount)
+    {
+        return;
+    }
+
+    uint offset = _BinOffsets[bin];
+    uint count = _BinCounts[bin];
+    uint rangeEnd = offset + count;
+    uint capacity = (uint)_ElementCapacity;
+    bool rangeValid = offset <= capacity;
+    if (rangeValid)
+    {
+        rangeValid = count <= capacity - offset;
+    }
+
+    _WriteHeads[bin] = offset;
+
+    uint errorFlags = 0u;
+    if (!rangeValid)
+    {
+        errorFlags |= PrecountedCountMismatch;
+    }
+    if (bin + 1u == (uint)_BinCount)
+    {
+        _BinOffsets[_BinCount] = rangeEnd;
+        uint elementCount = _GpuElementCount[_GpuElementCountOffset];
+        if (rangeEnd != elementCount)
+        {
+            errorFlags |= PrecountedCountMismatch;
+        }
+    }
+
+    if (errorFlags != 0u)
+    {
+        uint validationOffset = (uint)_ValidationDispatchArgumentsOffset;
+        uint scatterOffset = (uint)_ScatterDispatchArgumentsOffset;
+        uint ignoredValidationArgument;
+        uint ignoredScatterArgument;
+        uint ignoredFlags;
+        InterlockedExchange(
+            _ValidationDispatchArguments[validationOffset],
+            0u,
+            ignoredValidationArgument);
+        InterlockedExchange(
+            _ScatterDispatchArguments[scatterOffset],
+            0u,
+            ignoredScatterArgument);
+        InterlockedOr(
+            _Diagnostics[ErrorFlagsWord],
+            errorFlags,
+            ignoredFlags);
+    }
+}
+
+// This pass touches only the producer's dense prefix. It does not revisit a
+// fixed input domain. Any invalid key atomically disables the following
+// indirect scatter before output writes can begin.
+[numthreads(256, 1, 1)]
+void ValidatePrecountedPrefixKeys(
+    uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint source = dispatchThreadId.x;
+    uint elementCount = _GpuElementCount[_GpuElementCountOffset];
+    if (source >= elementCount)
+    {
+        return;
+    }
+
+    if (_Keys[source] < (uint)_BinCount)
+    {
+        return;
+    }
+
+    uint scatterOffset = (uint)_ScatterDispatchArgumentsOffset;
+    uint ignoredScatterArgument;
+    uint ignoredCount;
+    uint ignoredFlags;
+    InterlockedExchange(
+        _ScatterDispatchArguments[scatterOffset],
+        0u,
+        ignoredScatterArgument);
+    InterlockedAdd(
+        _Diagnostics[InvalidKeyCountWord],
+        1u,
+        ignoredCount);
+    InterlockedOr(
+        _Diagnostics[ErrorFlagsWord],
+        InvalidKeyEncountered,
+        ignoredFlags);
+}
+
 [numthreads(256, 1, 1)]
 void ScatterValues(uint3 dispatchThreadId : SV_DispatchThreadID)
 {
@@ -211,5 +367,55 @@ void ScatterValuesWithDiscardKey(
     InterlockedOr(
         _Diagnostics[ErrorFlagsWord],
         ScatterDestinationOutOfRange,
+        ignoredFlags);
+}
+
+// The dispatch size and per-thread bound both come from the same GPU count.
+// The checks retain memory safety if a producer violates the key/count
+// contract; diagnostics are ORed and are intentionally never cleared here.
+[numthreads(256, 1, 1)]
+void ScatterPrecountedPrefixIndirect(
+    uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint source = dispatchThreadId.x;
+    uint elementCount = _GpuElementCount[_GpuElementCountOffset];
+    if (source >= elementCount)
+    {
+        return;
+    }
+
+    uint key = _Keys[source];
+    if (key >= (uint)_BinCount)
+    {
+        uint ignoredCount;
+        uint ignoredFlags;
+        InterlockedAdd(
+            _Diagnostics[InvalidKeyCountWord],
+            1u,
+            ignoredCount);
+        InterlockedOr(
+            _Diagnostics[ErrorFlagsWord],
+            InvalidKeyEncountered,
+            ignoredFlags);
+        return;
+    }
+
+    uint rangeStart = _BinOffsets[key];
+    uint rangeEnd = rangeStart + _BinCounts[key];
+    uint destination;
+    InterlockedAdd(_WriteHeads[key], 1u, destination);
+    if (destination >= rangeStart &&
+        destination < rangeEnd &&
+        destination < elementCount &&
+        destination < (uint)_ElementCapacity)
+    {
+        _BinnedValues[destination] = _Values[source];
+        return;
+    }
+
+    uint ignoredFlags;
+    InterlockedOr(
+        _Diagnostics[ErrorFlagsWord],
+        ScatterDestinationOutOfRange | PrecountedCountMismatch,
         ignoredFlags);
 }

@@ -65,10 +65,12 @@ namespace Summit.GpuDrivenInstances.Tests
                 .Where(value => value != GpuDrivenInstanceErrorFlags.None)
                 .Select(value => (uint)value)
                 .ToArray();
-            Assert.That(bits, Is.EqualTo(new[] { 1u, 2u, 4u, 8u }));
+            Assert.That(
+                bits,
+                Is.EqualTo(new[] { 1u, 2u, 4u, 8u, 16u, 32u, 64u }));
             Assert.That(
                 bits.Aggregate(0u, (combined, bit) => combined | bit),
-                Is.EqualTo(15u));
+                Is.EqualTo(127u));
         }
 
         [Test]
@@ -138,6 +140,95 @@ namespace Summit.GpuDrivenInstances.Tests
                     2,
                     global::Summit.GpuPrimitives.GpuPrimitives
                         .MaxElementCount));
+            Assert.Throws<ArgumentOutOfRangeException>(
+                () => new GpuDrivenInstancePipeline(1, 1, 1, -1));
+            Assert.Throws<ArgumentOutOfRangeException>(
+                () => new GpuDrivenInstancePipeline(1, 1, 1, 2));
+        }
+
+        [Test]
+        public void HierarchicalRecordIsExplicitAndVisibleOnly()
+        {
+            MethodInfo[] records = typeof(GpuDrivenInstancePipeline)
+                .GetMethods(BindingFlags.Instance | BindingFlags.Public)
+                .Where(method =>
+                    method.Name == "RecordHierarchicalVisibleOnly")
+                .ToArray();
+            Assert.That(records, Has.Length.EqualTo(1));
+
+            ParameterInfo[] parameters = records[0].GetParameters();
+            Assert.That(parameters, Has.Length.EqualTo(17));
+            Assert.That(
+                parameters.Select(parameter => parameter.ParameterType),
+                Is.EqualTo(new[]
+                {
+                    typeof(CommandBuffer),
+                    typeof(GraphicsBuffer),
+                    typeof(GraphicsBuffer),
+                    typeof(GraphicsBuffer),
+                    typeof(GraphicsBuffer),
+                    typeof(GraphicsBuffer),
+                    typeof(GraphicsBuffer),
+                    typeof(GraphicsBuffer),
+                    typeof(GraphicsBuffer),
+                    typeof(GraphicsBuffer),
+                    typeof(GraphicsBuffer),
+                    typeof(GraphicsBuffer),
+                    typeof(int),
+                    typeof(int),
+                    typeof(int),
+                    typeof(int),
+                    typeof(GpuPrimitiveBackend),
+                }));
+            Assert.That(parameters.Last().IsOptional, Is.True);
+            Assert.That(
+                parameters.Last().DefaultValue,
+                Is.EqualTo(GpuPrimitiveBackend.Auto));
+            Assert.That(
+                parameters.Take(parameters.Length - 1)
+                    .All(parameter => !parameter.IsOptional),
+                Is.True);
+            Assert.That(
+                GpuDrivenInstancePipeline.HierarchyStatisticWordCount,
+                Is.EqualTo(3));
+            Assert.That(
+                GpuDrivenInstancePipeline
+                    .CoarseVisibleClusterViewCountWord,
+                Is.EqualTo(0));
+            Assert.That(
+                GpuDrivenInstancePipeline.CandidateInstanceViewCountWord,
+                Is.EqualTo(1));
+            Assert.That(
+                GpuDrivenInstancePipeline.HierarchicalVisiblePairCountWord,
+                Is.EqualTo(2));
+        }
+
+        [Test]
+        public void FineDispatchSpillsIntoSecondDimension()
+        {
+            GpuDrivenInstancePipeline.GetHierarchicalFineDispatchDimensions(
+                0,
+                out int zeroX,
+                out int zeroY);
+            Assert.That((zeroX, zeroY), Is.EqualTo((0, 0)));
+
+            GpuDrivenInstancePipeline.GetHierarchicalFineDispatchDimensions(
+                65535,
+                out int boundaryX,
+                out int boundaryY);
+            Assert.That((boundaryX, boundaryY), Is.EqualTo((65535, 1)));
+
+            GpuDrivenInstancePipeline.GetHierarchicalFineDispatchDimensions(
+                65536,
+                out int spillX,
+                out int spillY);
+            Assert.That((spillX, spillY), Is.EqualTo((65535, 2)));
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                GpuDrivenInstancePipeline
+                    .GetHierarchicalFineDispatchDimensions(
+                        -1,
+                        out _,
+                        out _));
         }
 
         [Test]

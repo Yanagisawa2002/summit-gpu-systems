@@ -1,11 +1,11 @@
 {
   "name": "com.summit.gpu-driven-instances",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "displayName": "SUMMIT GPU Driven Instances",
   "description": "Scene-agnostic instance-state upload, multi-view GPU visibility, LOD grouping, CSR compaction, and indirect argument generation.",
   "unity": "6000.5",
   "dependencies": {
-    "com.summit.gpu-direct-binning": "0.1.0",
+    "com.summit.gpu-direct-binning": "0.2.0",
     "com.summit.gpu-primitives": "0.1.0",
     "com.unity.collections": "6.5.0"
   },

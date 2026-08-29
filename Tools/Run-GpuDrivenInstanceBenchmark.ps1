@@ -8,6 +8,8 @@ param(
     [int]$DeviceIndex = 0,
     [ValidateSet('single', 'visibility-sweep-v1')]
     [string]$MatrixPreset = 'single',
+    [ValidateSet('filtered-binning', 'hierarchical-culling')]
+    [string]$BenchmarkMode = 'filtered-binning',
     [string]$ScenarioId = 'custom',
     [ValidateSet('visible5', 'visible25', 'visible75', 'visible100')]
     [string]$Visibility = 'visible25',
@@ -37,10 +39,34 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+$BenchmarkMode = $BenchmarkMode.ToLowerInvariant()
+if ($SkipBuild) {
+    throw (
+        '-SkipBuild is retained for command-line compatibility, but every ' +
+        'GPU-driven instance benchmark run requires a fresh Player build.')
+}
 
 $formalContract = [ordered]@{
+    contractId = if ($BenchmarkMode -ceq 'hierarchical-culling') {
+        'gpu-driven-hierarchical-culling-v1'
+    }
+    else {
+        'gpu-driven-visible-only-v1'
+    }
     unityVersion = '6000.5.2f1'
     deviceIndex = 0
+    benchmarkMode = if ($BenchmarkMode -ceq 'hierarchical-culling') {
+        'hierarchical-culling'
+    }
+    else {
+        'filtered-binning'
+    }
+    visibilityLayout = if ($BenchmarkMode -ceq 'hierarchical-culling') {
+        'spatial-clustered-multiview-64-v2'
+    }
+    else {
+        'seeded-coprime-permutation-v1'
+    }
     matrixPreset = 'visibility-sweep-v1'
     instanceCount = 1048576
     viewCount = 4
@@ -50,36 +76,73 @@ $formalContract = [ordered]@{
     cooldownFrames = 15
     dispatchesPerFrame = 1
 }
+$formalScenarioPrefix = if ($BenchmarkMode -ceq 'hierarchical-culling') {
+    'hierarchical-'
+}
+else {
+    ''
+}
 $formalScenarios = @(
     [ordered]@{
-        scenarioId = 'visible5-n1048576-v4'
+        scenarioId = $formalScenarioPrefix + 'visible5-n1048576-v4'
         visibility = 'visible5'
         instanceCount = 1048576
         viewCount = 4
         seed = 20260829
     },
     [ordered]@{
-        scenarioId = 'visible25-n1048576-v4'
+        scenarioId = $formalScenarioPrefix + 'visible25-n1048576-v4'
         visibility = 'visible25'
         instanceCount = 1048576
         viewCount = 4
         seed = 20260829
     },
     [ordered]@{
-        scenarioId = 'visible75-n1048576-v4'
+        scenarioId = $formalScenarioPrefix + 'visible75-n1048576-v4'
         visibility = 'visible75'
         instanceCount = 1048576
         viewCount = 4
         seed = 20260829
     },
     [ordered]@{
-        scenarioId = 'visible100-n1048576-v4'
+        scenarioId = $formalScenarioPrefix + 'visible100-n1048576-v4'
         visibility = 'visible100'
         instanceCount = 1048576
         viewCount = 4
         seed = 20260829
     }
 )
+$hierarchicalMode = $BenchmarkMode -ceq 'hierarchical-culling'
+$expectedVisibilityLayout = if ($hierarchicalMode) {
+    'spatial-clustered-multiview-64-v2'
+}
+else {
+    'seeded-coprime-permutation-v1'
+}
+$baselineVariantId = if ($hierarchicalMode) {
+    'flat-visible-only-portable'
+}
+else {
+    'culled-tail-portable'
+}
+$optimizedVariantId = if ($hierarchicalMode) {
+    'hierarchical-visible-only-portable'
+}
+else {
+    'visible-only-discard-key-portable'
+}
+$baselineReportLabel = if ($hierarchicalMode) {
+    'Flat visible-only'
+}
+else {
+    'Baseline'
+}
+$optimizedReportLabel = if ($hierarchicalMode) {
+    'Hierarchical visible-only'
+}
+else {
+    'Visible-only'
+}
 
 function Quote-ProcessArgument {
     param([Parameter(Mandatory = $true)][string]$Value)
@@ -161,6 +224,188 @@ function Get-NUnitMetadata {
     }
 }
 
+function Get-UnityProductVersion {
+    param([Parameter(Mandatory = $true)][string]$ExecutablePath)
+    $versionInfo = (Get-Item -LiteralPath $ExecutablePath).VersionInfo
+    $version = (([string]$versionInfo.ProductVersion -split '_', 2)[0]).Trim()
+    if ([string]::IsNullOrWhiteSpace($version)) {
+        throw "Unity executable has no ProductVersion: $ExecutablePath"
+    }
+    return $version
+}
+
+function Get-VerifiedEditModeReceipt {
+    param(
+        [Parameter(Mandatory = $true)]$TestMetadata,
+        [Parameter(Mandatory = $true)][string]$ProjectRoot,
+        [Parameter(Mandatory = $true)][string]$ProjectVersionPath,
+        [Parameter(Mandatory = $true)][string]$ProjectUnityVersion,
+        [Parameter(Mandatory = $true)][string]$UnityPath,
+        [Parameter(Mandatory = $true)][string]$UnityProductVersion,
+        [Parameter(Mandatory = $true)][string]$GitCommit
+    )
+    $receiptPath = [string]$TestMetadata.path + '.receipt.json'
+    if (-not (Test-Path -LiteralPath $receiptPath -PathType Leaf)) {
+        throw "Formal EditMode receipt is missing: $receiptPath"
+    }
+    $receipt = Get-Content -LiteralPath $receiptPath -Raw |
+        ConvertFrom-Json
+    $required = @(
+        'schemaVersion',
+        'receiptType',
+        'projectPath',
+        'projectVersionPath',
+        'projectVersionSha256',
+        'projectUnityVersion',
+        'unityExecutablePath',
+        'unityExecutableSha256',
+        'unityProductVersion',
+        'resultsPath',
+        'resultsSha256',
+        'testPlatform',
+        'useGraphics',
+        'forceDirect3D12',
+        'exitCode',
+        'result',
+        'total',
+        'passed',
+        'failed',
+        'skipped',
+        'inconclusive',
+        'gitCommit',
+        'gitRoot',
+        'gitStart',
+        'gitFinal',
+        'gitStateStable')
+    $missing = @(
+        $required | Where-Object {
+            $_ -notin @($receipt.PSObject.Properties.Name)
+        })
+    if ($missing.Count -ne 0) {
+        throw "Formal EditMode receipt is incomplete: $($missing -join ', ')"
+    }
+    foreach ($snapshotName in @('gitStart', 'gitFinal')) {
+        $snapshot = $receipt.$snapshotName
+        $snapshotMissing = @(
+            @('root', 'head', 'branch', 'dirty', 'statusLines') |
+                Where-Object {
+                    $_ -notin @($snapshot.PSObject.Properties.Name)
+                })
+        if ($snapshotMissing.Count -ne 0) {
+            throw (
+                "Formal EditMode receipt $snapshotName is incomplete: " +
+                ($snapshotMissing -join ', '))
+        }
+    }
+
+    $resolvedProjectRoot = [IO.Path]::GetFullPath($ProjectRoot)
+    $resolvedProjectVersionPath =
+        [IO.Path]::GetFullPath($ProjectVersionPath)
+    $resolvedUnityPath = [IO.Path]::GetFullPath($UnityPath)
+    $resolvedResultsPath = [IO.Path]::GetFullPath([string]$TestMetadata.path)
+    $currentUnitySha256 =
+        (Get-FileHash -LiteralPath $resolvedUnityPath -Algorithm SHA256).Hash
+    $currentProjectVersionSha256 =
+        (Get-FileHash `
+            -LiteralPath $resolvedProjectVersionPath `
+            -Algorithm SHA256).Hash
+    $violations = [Collections.Generic.List[string]]::new()
+    if ([int]$receipt.schemaVersion -ne 1) {
+        $violations.Add("schemaVersion=$($receipt.schemaVersion)")
+    }
+    if ([string]$receipt.receiptType -cne 'summit.unity-editmode-test') {
+        $violations.Add("receiptType='$($receipt.receiptType)'")
+    }
+    foreach ($pathEntry in @(
+            @('projectPath', [string]$receipt.projectPath,
+                $resolvedProjectRoot),
+            @('gitRoot', [string]$receipt.gitRoot,
+                $resolvedProjectRoot),
+            @('projectVersionPath', [string]$receipt.projectVersionPath,
+                $resolvedProjectVersionPath),
+            @('unityExecutablePath', [string]$receipt.unityExecutablePath,
+                $resolvedUnityPath),
+            @('resultsPath', [string]$receipt.resultsPath,
+                $resolvedResultsPath))) {
+        if ([IO.Path]::GetFullPath($pathEntry[1]) -ine $pathEntry[2]) {
+            $violations.Add(
+                "$($pathEntry[0])='$($pathEntry[1])'; expected '$($pathEntry[2])'")
+        }
+    }
+    foreach ($valueEntry in @(
+            @('gitCommit', [string]$receipt.gitCommit, $GitCommit),
+            @('gitStart.head', [string]$receipt.gitStart.head, $GitCommit),
+            @('gitFinal.head', [string]$receipt.gitFinal.head, $GitCommit),
+            @('gitStart.root',
+                [IO.Path]::GetFullPath([string]$receipt.gitStart.root),
+                $resolvedProjectRoot),
+            @('gitFinal.root',
+                [IO.Path]::GetFullPath([string]$receipt.gitFinal.root),
+                $resolvedProjectRoot),
+            @('resultsSha256', [string]$receipt.resultsSha256,
+                [string]$TestMetadata.sha256),
+            @('projectVersionSha256',
+                [string]$receipt.projectVersionSha256,
+                $currentProjectVersionSha256),
+            @('unityExecutableSha256',
+                [string]$receipt.unityExecutableSha256,
+                $currentUnitySha256),
+            @('projectUnityVersion',
+                [string]$receipt.projectUnityVersion,
+                $ProjectUnityVersion),
+            @('unityProductVersion',
+                [string]$receipt.unityProductVersion,
+                $UnityProductVersion),
+            @('testPlatform', [string]$receipt.testPlatform, 'EditMode'),
+            @('result', [string]$receipt.result,
+                [string]$TestMetadata.result))) {
+        if ([string]$valueEntry[1] -cne [string]$valueEntry[2]) {
+            $violations.Add(
+                "$($valueEntry[0])='$($valueEntry[1])'; " +
+                "expected '$($valueEntry[2])'")
+        }
+    }
+    foreach ($countEntry in @(
+            @('total', [int]$receipt.total, [int]$TestMetadata.total),
+            @('passed', [int]$receipt.passed, [int]$TestMetadata.passed),
+            @('failed', [int]$receipt.failed, [int]$TestMetadata.failed),
+            @('skipped', [int]$receipt.skipped, [int]$TestMetadata.skipped),
+            @('inconclusive', [int]$receipt.inconclusive,
+                [int]$TestMetadata.inconclusive))) {
+        if ([int]$countEntry[1] -ne [int]$countEntry[2]) {
+            $violations.Add(
+                "$($countEntry[0])=$($countEntry[1]); expected $($countEntry[2])")
+        }
+    }
+    if ([int]$receipt.exitCode -ne 0) {
+        $violations.Add("exitCode=$($receipt.exitCode)")
+    }
+    if (-not [bool]$receipt.useGraphics -or
+        -not [bool]$receipt.forceDirect3D12) {
+        $violations.Add(
+            'formal EditMode tests did not use the Direct3D 12 graphics path')
+    }
+    if (-not [bool]$receipt.gitStateStable -or
+        [bool]$receipt.gitStart.dirty -or
+        [bool]$receipt.gitFinal.dirty -or
+        @($receipt.gitStart.statusLines).Count -ne 0 -or
+        @($receipt.gitFinal.statusLines).Count -ne 0) {
+        $violations.Add('receipt Git state is not clean and stable')
+    }
+    if ($violations.Count -ne 0) {
+        throw (
+            "Formal EditMode receipt rejected:`n" +
+            ($violations -join "`n"))
+    }
+    return [ordered]@{
+        path = [IO.Path]::GetFullPath($receiptPath)
+        sha256 =
+            (Get-FileHash -LiteralPath $receiptPath -Algorithm SHA256).Hash
+        receipt = $receipt
+        verified = $true
+    }
+}
+
 function Read-KeyValueFile {
     param([Parameter(Mandatory = $true)][string]$Path)
     $result = @{}
@@ -178,6 +423,13 @@ function Number {
     return [double]::Parse(
         [string]$Value,
         [Globalization.CultureInfo]::InvariantCulture)
+}
+
+function Is-FiniteNumber {
+    param([Parameter(Mandatory = $true)]$Value)
+    $number = Number $Value
+    return -not [double]::IsNaN($number) -and
+        -not [double]::IsInfinity($number)
 }
 
 function Mean {
@@ -236,7 +488,11 @@ if ($FormalAcceptanceMode) {
             "MatrixPreset='$MatrixPreset'; expected " +
             "'$($formalContract.matrixPreset)'")
     }
-    if ($SkipBuild) { $violations.Add('SkipBuild is forbidden.') }
+    if ($BenchmarkMode -cne $formalContract.benchmarkMode) {
+        $violations.Add(
+            "BenchmarkMode='$BenchmarkMode'; expected " +
+            "'$($formalContract.benchmarkMode)'")
+    }
     if ([string]::IsNullOrWhiteSpace($EditModeResultsPath)) {
         $violations.Add('EditModeResultsPath is required.')
     }
@@ -276,6 +532,20 @@ if ($FormalAcceptanceMode -and
 if (-not (Test-Path -LiteralPath $UnityPath -PathType Leaf)) {
     throw "Unity editor is missing: $UnityPath"
 }
+$resolvedUnityPath = [IO.Path]::GetFullPath($UnityPath)
+$unityProductVersion =
+    Get-UnityProductVersion -ExecutablePath $resolvedUnityPath
+if ($unityProductVersion -cne $projectUnityVersion) {
+    throw (
+        "Unity executable version '$unityProductVersion' does not match " +
+        "ProjectVersion '$projectUnityVersion'.")
+}
+if ($FormalAcceptanceMode -and
+    $unityProductVersion -cne $formalContract.unityVersion) {
+    throw (
+        "Formal benchmark requires editor $($formalContract.unityVersion); " +
+        "found '$unityProductVersion'.")
+}
 
 $expectedTestIdentities = @(
     'Summit.GpuDrivenInstance.Benchmark.Tests.Editor.dll',
@@ -289,7 +559,19 @@ $expectedTestIdentities = @(
     'Summit.GpuDirectBinning.Tests.GpuDirectSpatialBinnerContractTests',
     'Summit.GpuDirectBinning.Tests.GpuDirectSpatialBinnerIntegrationTests'
 )
+if ($hierarchicalMode) {
+    $expectedTestIdentities += @(
+        'Summit.GpuDrivenInstance.Benchmark.Tests.' +
+            'GpuDrivenInstanceHierarchicalInputGeneratorTests',
+        'Summit.GpuDrivenInstances.Tests.GpuInstanceClusterBuilderTests',
+        'Summit.GpuDrivenInstances.Tests.' +
+            'GpuDrivenInstanceHierarchicalPipelineIntegrationTests',
+        'Summit.GpuDirectBinning.Tests.' +
+            'GpuDirectSpatialBinnerPrecountedIntegrationTests'
+    )
+}
 $testMetadata = $null
+$testReceiptMetadata = $null
 if (-not [string]::IsNullOrWhiteSpace($EditModeResultsPath)) {
     $testMetadata = Get-NUnitMetadata `
         -Path $EditModeResultsPath `
@@ -309,6 +591,16 @@ if ($FormalAcceptanceMode -and
     }
     else { @($testMetadata.missingIdentities) -join ', ' }
     throw "Formal benchmark requires complete focused tests; missing: $missing"
+}
+if ($FormalAcceptanceMode) {
+    $testReceiptMetadata = Get-VerifiedEditModeReceipt `
+        -TestMetadata $testMetadata `
+        -ProjectRoot $projectRoot `
+        -ProjectVersionPath $projectVersionPath `
+        -ProjectUnityVersion $projectUnityVersion `
+        -UnityPath $resolvedUnityPath `
+        -UnityProductVersion $unityProductVersion `
+        -GitCommit $gitCommit
 }
 
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
@@ -444,12 +736,18 @@ $runnerConfig = [ordered]@{
     suite = 'summit.gpu-driven-instance'
     formalAcceptanceMode = [bool]$FormalAcceptanceMode
     formalContract = $formalContract
+    benchmarkMode = $BenchmarkMode
+    visibilityLayout = $expectedVisibilityLayout
+    baselineVariant = $baselineVariantId
+    optimizedVariant = $optimizedVariantId
     matrixPreset = $MatrixPreset
     scenarios = $scenarios
     editModeResults = $testMetadata
+    editModeReceipt = $testReceiptMetadata
     projectRoot = $projectRoot
     projectUnityVersion = $projectUnityVersion
-    unityPath = [IO.Path]::GetFullPath($UnityPath)
+    unityPath = $resolvedUnityPath
+    unityProductVersion = $unityProductVersion
     playerPath = $resolvedPlayerPath
     outputDirectory = $outputRoot
     deviceIndex = $DeviceIndex
@@ -487,31 +785,34 @@ if ($null -ne $testMetadata) {
     Copy-Item -LiteralPath $testMetadata.path `
         -Destination (Join-Path $outputRoot 'editmode-results.xml') -Force
 }
+if ($null -ne $testReceiptMetadata) {
+    Copy-Item -LiteralPath $testReceiptMetadata.path `
+        -Destination (
+            Join-Path $outputRoot 'editmode-results.xml.receipt.json') -Force
+}
 
 $buildLog = Join-Path $outputRoot 'unity-build.log'
-if (-not $SkipBuild) {
-    New-Item -ItemType Directory -Force `
-        -Path (Split-Path -Parent $resolvedPlayerPath) | Out-Null
-    $buildArguments = @(
-        '-batchmode',
-        '-nographics',
-        '-quit',
-        '-projectPath', (Quote-ProcessArgument $projectRoot),
-        '-executeMethod', 'GpuDrivenInstanceBenchmarkBuild.PerformBuild',
-        '-gpu-driven-instance-player-path',
-            (Quote-ProcessArgument $resolvedPlayerPath),
-        '-logFile', (Quote-ProcessArgument $buildLog)
-    )
-    $build = Start-Process `
-        -FilePath $UnityPath `
-        -ArgumentList $buildArguments `
-        -WorkingDirectory $projectRoot `
-        -WindowStyle Hidden `
-        -Wait `
-        -PassThru
-    if ($build.ExitCode -ne 0) {
-        throw "Unity Player build failed; see $buildLog"
-    }
+New-Item -ItemType Directory -Force `
+    -Path (Split-Path -Parent $resolvedPlayerPath) | Out-Null
+$buildArguments = @(
+    '-batchmode',
+    '-nographics',
+    '-quit',
+    '-projectPath', (Quote-ProcessArgument $projectRoot),
+    '-executeMethod', 'GpuDrivenInstanceBenchmarkBuild.PerformBuild',
+    '-gpu-driven-instance-player-path',
+        (Quote-ProcessArgument $resolvedPlayerPath),
+    '-logFile', (Quote-ProcessArgument $buildLog)
+)
+$build = Start-Process `
+    -FilePath $UnityPath `
+    -ArgumentList $buildArguments `
+    -WorkingDirectory $projectRoot `
+    -WindowStyle Hidden `
+    -Wait `
+    -PassThru
+if ($build.ExitCode -ne 0) {
+    throw "Unity Player build failed; see $buildLog"
 }
 if (-not (Test-Path -LiteralPath $resolvedPlayerPath -PathType Leaf)) {
     throw "Benchmark Player is missing: $resolvedPlayerPath"
@@ -553,6 +854,8 @@ foreach ($scenario in $scenarios) {
         '-screen-width', '640',
         '-screen-height', '360',
         '-gpu-driven-instance-benchmark',
+        '-gpu-driven-instance-benchmark-mode',
+            (Quote-ProcessArgument $BenchmarkMode),
         '-gpu-driven-instance-report-dir',
             (Quote-ProcessArgument $scenarioRoot),
         '-gpu-driven-instance-scenario-id',
@@ -603,25 +906,110 @@ foreach ($scenario in $scenarios) {
     $runSummaryPath = Join-Path $scenarioRoot 'run-summary.txt'
     $configPath = Join-Path $scenarioRoot 'config.json'
     $rawPath = Join-Path $scenarioRoot 'raw-frames.csv'
+    $blockPath = Join-Path $scenarioRoot 'block-summary.csv'
     $validationPath = Join-Path $scenarioRoot 'validation.csv'
     foreach ($path in @(
-            $runSummaryPath, $configPath, $rawPath, $validationPath)) {
+            $runSummaryPath, $configPath, $rawPath, $blockPath,
+            $validationPath)) {
         if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
             throw "Scenario output is incomplete: $path"
         }
     }
     $run = Read-KeyValueFile -Path $runSummaryPath
-    if ([int]$run.passed -ne 1 -or $run.status -cne 'completed' -or
+    if (-not $run.ContainsKey('mainThreadAllocationRows') -or
+        -not $run.ContainsKey('mainThreadAllocatedBytes') -or
+        [int]$run.passed -ne 1 -or $run.status -cne 'completed' -or
+        [string]$run.benchmarkMode -cne $BenchmarkMode -or
+        [string]$run.visibilityLayout -cne $expectedVisibilityLayout -or
         [int]$run.validationFailures -ne 0 -or
         [int]$run.gpuRegionTimingComplete -ne 1 -or
-        [int]$run.nativeTimestampPendingRows -ne 0) {
+        [int]$run.nativeTimestampPendingRows -ne 0 -or
+        [int]$run.mainThreadAllocationRows -ne 0 -or
+        [int64]$run.mainThreadAllocatedBytes -ne 0L) {
         throw "Scenario quality gate failed: $($scenario.scenarioId)"
     }
     $config = Get-Content -LiteralPath $configPath -Raw |
         ConvertFrom-Json
+    $expectedClusterCount = if ($hierarchicalMode) {
+        [int][Math]::Ceiling([double]$scenario.instanceCount / 64.0)
+    }
+    else {
+        0
+    }
+    $expectedClusterBytes = [int64]$expectedClusterCount * 32L
+    $expectedHierarchyStatisticsBytes = if ($hierarchicalMode) {
+        12L
+    }
+    else {
+        0L
+    }
+    $expectedCoarseVisibleClusterViewCount = 0L
+    $expectedCandidateInstanceViewCount = 0L
+    $expectedHierarchicalVisiblePairCount = 0L
+    if ($hierarchicalMode) {
+        $expectedStatisticsFields = @(
+            'expectedCoarseVisibleClusterViewCount',
+            'expectedCandidateInstanceViewCount',
+            'expectedHierarchicalVisiblePairCount')
+        $missingStatisticsFields = @(
+            $expectedStatisticsFields | Where-Object {
+                $_ -notin @($config.PSObject.Properties.Name)
+            })
+        if ($missingStatisticsFields.Count -ne 0) {
+            throw (
+                "Scenario expected hierarchy statistics are missing: " +
+                ($missingStatisticsFields -join ', '))
+        }
+        $expectedCoarseVisibleClusterViewCount =
+            [int64]$config.expectedCoarseVisibleClusterViewCount
+        $expectedCandidateInstanceViewCount =
+            [int64]$config.expectedCandidateInstanceViewCount
+        $expectedHierarchicalVisiblePairCount =
+            [int64]$config.expectedHierarchicalVisiblePairCount
+        $visiblePairNumerator =
+            [int64]$scenario.instanceCount *
+            [int64]$scenario.viewCount *
+            [int]([string]$scenario.visibility).Substring(7)
+        $oracleVisiblePairCount =
+            [int64][Math]::Floor([double]$visiblePairNumerator / 100.0)
+        $flatCandidatePairCount =
+            [int64]$scenario.instanceCount * [int64]$scenario.viewCount
+        if ($expectedCoarseVisibleClusterViewCount -lt 0L -or
+            $expectedCoarseVisibleClusterViewCount -gt
+                ([int64]$expectedClusterCount * [int64]$scenario.viewCount) -or
+            $expectedCandidateInstanceViewCount -lt
+                $expectedCoarseVisibleClusterViewCount -or
+            $expectedCandidateInstanceViewCount -gt
+                ($expectedCoarseVisibleClusterViewCount * 64L) -or
+            $expectedCandidateInstanceViewCount -lt
+                $expectedHierarchicalVisiblePairCount -or
+            $expectedCandidateInstanceViewCount -gt $flatCandidatePairCount -or
+            $expectedHierarchicalVisiblePairCount -ne
+                $oracleVisiblePairCount) {
+            throw (
+                "Scenario expected hierarchy statistics are invalid: " +
+                $scenario.scenarioId)
+        }
+    }
     if ([string]$config.buildCommit -cne $gitCommit -or
+        [string]$config.unityVersion -cne $projectUnityVersion -or
+        [string]$config.benchmarkMode -cne $BenchmarkMode -or
         [string]$config.visibilityLayout -cne
-            'seeded-coprime-permutation-v1' -or
+            $expectedVisibilityLayout -or
+        [string]$config.baselineId -cne ($baselineVariantId + '-v1') -or
+        [string]$config.directId -cne ($optimizedVariantId + '-v1') -or
+        [int]$config.clusterCount -ne $expectedClusterCount -or
+        [int64]$config.clusterBytes -ne $expectedClusterBytes -or
+        [int64]$config.hierarchyStatisticsBytes -ne
+            $expectedHierarchyStatisticsBytes -or
+        [int]$config.instancesPerCluster -ne $(if ($hierarchicalMode) {
+            64
+        }
+        else {
+            0
+        }) -or
+        [string]::IsNullOrWhiteSpace(
+            [string]$config.statisticsSemantics) -or
         [string]$config.runtimeShaderSha256 -cne
             $runtimeShaderSha256 -or
         [string]$config.referenceShaderSha256 -cne
@@ -634,19 +1022,140 @@ foreach ($scenario in $scenarios) {
         @($validation | Where-Object { [int]$_.passed -ne 1 }).Count -ne 0) {
         throw "Scenario validation failed: $($scenario.scenarioId)"
     }
+    $baselineValidation = @($validation | Where-Object {
+        $_.variant -ceq $baselineVariantId
+    })
+    $optimizedValidation = @($validation | Where-Object {
+        $_.variant -ceq $optimizedVariantId
+    })
+    $baselineValidationPhases = @(
+        $baselineValidation | Select-Object -ExpandProperty phase -Unique)
+    $optimizedValidationPhases = @(
+        $optimizedValidation | Select-Object -ExpandProperty phase -Unique)
+    if ($baselineValidation.Count -ne 2 -or
+        $optimizedValidation.Count -ne 2 -or
+        $baselineValidationPhases.Count -ne 2 -or
+        $optimizedValidationPhases.Count -ne 2 -or
+        @($baselineValidationPhases | Where-Object {
+            $_ -notin @('warmup', 'final')
+        }).Count -ne 0 -or
+        @($optimizedValidationPhases | Where-Object {
+            $_ -notin @('warmup', 'final')
+        }).Count -ne 0) {
+        throw "Scenario validation identities differ: $($scenario.scenarioId)"
+    }
+    $validatedCoarseVisibleClusterViewCount = 0L
+    $validatedCandidateInstanceViewCount = 0L
+    $validatedHierarchicalVisiblePairCount = 0L
+    if ($hierarchicalMode) {
+        $validationHashes = @(
+            $validation |
+                Select-Object -ExpandProperty resultHash -Unique)
+        if ($validationHashes.Count -ne 1 -or
+            @($validation | Where-Object {
+                $_.message -notlike '*canonical membership*'
+            }).Count -ne 0 -or
+            @($optimizedValidation | Where-Object {
+                [int64]$_.coarseVisibleClusterViewCount -ne
+                    $expectedCoarseVisibleClusterViewCount -or
+                [int64]$_.candidateInstanceViewCount -ne
+                    $expectedCandidateInstanceViewCount -or
+                [int64]$_.hierarchicalVisiblePairCount -ne
+                    $expectedHierarchicalVisiblePairCount
+            }).Count -ne 0) {
+            throw (
+                "Flat/hierarchical oracle equivalence failed: " +
+                $scenario.scenarioId)
+        }
+        $validatedCoarseVisibleClusterViewCount =
+            [int64]$optimizedValidation[0].coarseVisibleClusterViewCount
+        $validatedCandidateInstanceViewCount =
+            [int64]$optimizedValidation[0].candidateInstanceViewCount
+        $validatedHierarchicalVisiblePairCount =
+            [int64]$optimizedValidation[0].hierarchicalVisiblePairCount
+    }
     $raw = @(Import-Csv -LiteralPath $rawPath)
+    $requiredRawFields = @(
+        'nativeTimestampStatus',
+        'gpuRegionElapsedMs',
+        'frameMs',
+        'enqueueCpuMs',
+        'mainThreadAllocatedBytes',
+        'measurementReadbackBytes',
+        'timestampInstrumentationReadbackBytes')
+    $missingRawFields = if ($raw.Count -eq 0) {
+        $requiredRawFields
+    }
+    else {
+        @($requiredRawFields | Where-Object {
+            $_ -notin @($raw[0].PSObject.Properties.Name)
+        })
+    }
+    if ($missingRawFields.Count -ne 0) {
+        throw (
+            "Scenario raw evidence fields are missing: " +
+            ($missingRawFields -join ', '))
+    }
     $expectedRows = ($SuperRounds * 4 + 2) * $SampleFrames
     if ($raw.Count -ne $expectedRows -or
         @($raw | Where-Object {
-            $_.nativeTimestampStatus -cne 'ready'
+            $_.nativeTimestampStatus -cne 'ready' -or
+            [int64]$_.nativeTimestampElapsedTicks -lt 0 -or
+            [int64]$_.nativeTimestampFrequency -le 0 -or
+            [int64]$_.nativeTimestampEndTicks -lt
+                [int64]$_.nativeTimestampBeginTicks -or
+            -not (Is-FiniteNumber $_.gpuRegionElapsedMs) -or
+            -not (Is-FiniteNumber $_.frameMs) -or
+            -not (Is-FiniteNumber $_.enqueueCpuMs) -or
+            (Number $_.gpuRegionElapsedMs) -lt 0.0 -or
+            ($_.blockType -ceq 'measurement' -and
+                ([int64]$_.nativeTimestampElapsedTicks -le 0 -or
+                 (Number $_.gpuRegionElapsedMs) -le 0.0)) -or
+            (Number $_.frameMs) -le 0.0 -or
+            (Number $_.enqueueCpuMs) -lt 0.0 -or
+            [int64]$_.mainThreadAllocatedBytes -ne 0L -or
+            [int64]$_.measurementReadbackBytes -ne 0 -or
+            [int64]$_.timestampInstrumentationReadbackBytes -ne 16
         }).Count -ne 0) {
         throw "Scenario timestamp rows are incomplete: $($scenario.scenarioId)"
     }
+    $blocks = @(Import-Csv -LiteralPath $blockPath)
+    $requiredBlockFields = @(
+        'mainThreadAllocationRows',
+        'mainThreadAllocatedBytes')
+    $missingBlockFields = if ($blocks.Count -eq 0) {
+        $requiredBlockFields
+    }
+    else {
+        @($requiredBlockFields | Where-Object {
+            $_ -notin @($blocks[0].PSObject.Properties.Name)
+        })
+    }
+    if ($missingBlockFields.Count -ne 0) {
+        throw (
+            "Scenario block allocation fields are missing: " +
+            ($missingBlockFields -join ', '))
+    }
+    $expectedBlockCount = $SuperRounds * 4 + 2
+    if ($blocks.Count -ne $expectedBlockCount -or
+        @($blocks | Where-Object {
+            [int]$_.samples -ne $SampleFrames -or
+            [int]$_.gpuRegionValidSamples -ne $SampleFrames -or
+            [int]$_.fenceSupported -ne 1 -or
+            [int]$_.fencePassed -ne 1 -or
+            [int]$_.mainThreadAllocationRows -ne 0 -or
+            [int64]$_.mainThreadAllocatedBytes -ne 0L -or
+            [int64]$_.measurementReadbackBytes -ne 0 -or
+            [int64]$_.timestampInstrumentationReadbackBytes -ne
+                (16L * $SampleFrames)
+        }).Count -ne 0) {
+        throw "Scenario block evidence is incomplete: $($scenario.scenarioId)"
+    }
     $baselineRows = @($raw | Where-Object {
-        $_.variant -ceq 'culled-tail-portable'
+        $_.variant -ceq $baselineVariantId
     })
     $optimizedRows = @($raw | Where-Object {
-        $_.variant -ceq 'visible-only-discard-key-portable'
+        $_.variant -ceq $optimizedVariantId
     })
     $expectedCaseRows = $SuperRounds * 2 * $SampleFrames
     if ($baselineRows.Count -ne $expectedCaseRows -or
@@ -657,6 +1166,14 @@ foreach ($scenario in $scenarios) {
         $baselineRows | ForEach-Object { Number $_.gpuRegionElapsedMs })
     $optimizedTimes = [double[]]@(
         $optimizedRows | ForEach-Object { Number $_.gpuRegionElapsedMs })
+    $baselineFrameTimes = [double[]]@(
+        $baselineRows | ForEach-Object { Number $_.frameMs })
+    $optimizedFrameTimes = [double[]]@(
+        $optimizedRows | ForEach-Object { Number $_.frameMs })
+    $baselineEnqueueTimes = [double[]]@(
+        $baselineRows | ForEach-Object { Number $_.enqueueCpuMs })
+    $optimizedEnqueueTimes = [double[]]@(
+        $optimizedRows | ForEach-Object { Number $_.enqueueCpuMs })
     $pairSpeedups = [Collections.Generic.List[double]]::new()
     foreach ($pairIndex in 1..($SuperRounds * 2)) {
         $pairBaseline = [double[]]@(
@@ -683,10 +1200,37 @@ foreach ($scenario in $scenarios) {
         [double](($pairSpeedups | Measure-Object -Minimum).Minimum)
     $pairMaximum =
         [double](($pairSpeedups | Measure-Object -Maximum).Maximum)
-    $decision = if ($pairMedian -ge 1.0 -and $pairMinimum -gt 0.0) {
+    $baselineGpuP95 = Percentile $baselineTimes 0.95
+    $optimizedGpuP95 = Percentile $optimizedTimes 0.95
+    $gpuP95Speedup =
+        ImprovementPercent $baselineGpuP95 $optimizedGpuP95
+    $baselineFrameP99 = Percentile $baselineFrameTimes 0.99
+    $optimizedFrameP99 = Percentile $optimizedFrameTimes 0.99
+    $frameP99Regression =
+        -1.0 * (ImprovementPercent $baselineFrameP99 $optimizedFrameP99)
+    $baselineEnqueueP99 = Percentile $baselineEnqueueTimes 0.99
+    $optimizedEnqueueP99 = Percentile $optimizedEnqueueTimes 0.99
+    $enqueueP99Regression =
+        -1.0 * (ImprovementPercent `
+            $baselineEnqueueP99 `
+            $optimizedEnqueueP99)
+    $nativeGpuP95NonRegression = $optimizedGpuP95 -le $baselineGpuP95
+    $frameP99WithinGuardrail =
+        $optimizedFrameP99 -le ($baselineFrameP99 * 1.05)
+    $enqueueP99WithinGuardrail =
+        $baselineEnqueueP99 -gt 0.0 -and
+        $optimizedEnqueueP99 -le ($baselineEnqueueP99 * 1.05)
+    $tailGuardrailsPassed =
+        $nativeGpuP95NonRegression -and
+        $frameP99WithinGuardrail -and
+        $enqueueP99WithinGuardrail
+    $decision = if ($pairMedian -ge 1.0 -and
+        $pairMinimum -gt 0.0 -and
+        $tailGuardrailsPassed) {
         'material-improvement'
     }
-    elseif ([Math]::Abs($pairMedian) -lt 1.0) {
+    elseif ([Math]::Abs($pairMedian) -lt 1.0 -and
+        $tailGuardrailsPassed) {
         'parity'
     }
     else {
@@ -694,11 +1238,44 @@ foreach ($scenario in $scenarios) {
     }
     $summaryRows.Add([pscustomobject][ordered]@{
         scenarioId = $scenario.scenarioId
+        benchmarkMode = $BenchmarkMode
+        visibilityLayout = $expectedVisibilityLayout
+        baselineVariant = $baselineVariantId
+        optimizedVariant = $optimizedVariantId
         visibility = $scenario.visibility
         visibilityPercent =
             [int]([string]$scenario.visibility).Substring(7)
         instanceCount = $scenario.instanceCount
         viewCount = $scenario.viewCount
+        clusterCount = $expectedClusterCount
+        clusterBytes = $expectedClusterBytes
+        expectedCoarseVisibleClusterViewCount =
+            $expectedCoarseVisibleClusterViewCount
+        expectedCandidateInstanceViewCount =
+            $expectedCandidateInstanceViewCount
+        expectedHierarchicalVisiblePairCount =
+            $expectedHierarchicalVisiblePairCount
+        coarseVisibleClusterViewCount =
+            $validatedCoarseVisibleClusterViewCount
+        candidateInstanceViewCount =
+            $validatedCandidateInstanceViewCount
+        hierarchicalVisiblePairCount =
+            $validatedHierarchicalVisiblePairCount
+        hierarchyStatisticValidationRows = if ($hierarchicalMode) {
+            2
+        }
+        else {
+            0
+        }
+        candidateReductionPercent = if ($hierarchicalMode) {
+            ImprovementPercent `
+                ([double]([int64]$scenario.instanceCount *
+                    [int64]$scenario.viewCount)) `
+                ([double]$validatedCandidateInstanceViewCount)
+        }
+        else {
+            0.0
+        }
         pairCount = $SuperRounds * 2
         samplesPerVariant = $expectedCaseRows
         baselineGpuMeanMs = $baselineMean
@@ -710,11 +1287,19 @@ foreach ($scenario in $scenarios) {
         p50SpeedupPercent = ImprovementPercent `
             (Percentile $baselineTimes 0.50) `
             (Percentile $optimizedTimes 0.50)
-        baselineGpuP95Ms = Percentile $baselineTimes 0.95
-        optimizedGpuP95Ms = Percentile $optimizedTimes 0.95
-        p95SpeedupPercent = ImprovementPercent `
-            (Percentile $baselineTimes 0.95) `
-            (Percentile $optimizedTimes 0.95)
+        baselineGpuP95Ms = $baselineGpuP95
+        optimizedGpuP95Ms = $optimizedGpuP95
+        p95SpeedupPercent = $gpuP95Speedup
+        baselineFrameP99Ms = $baselineFrameP99
+        optimizedFrameP99Ms = $optimizedFrameP99
+        frameP99RegressionPercent = $frameP99Regression
+        baselineEnqueueP99Ms = $baselineEnqueueP99
+        optimizedEnqueueP99Ms = $optimizedEnqueueP99
+        enqueueP99RegressionPercent = $enqueueP99Regression
+        nativeGpuP95NonRegression = [bool]$nativeGpuP95NonRegression
+        frameP99Within5Percent = [bool]$frameP99WithinGuardrail
+        enqueueP99Within5Percent = [bool]$enqueueP99WithinGuardrail
+        tailGuardrailsPassed = [bool]$tailGuardrailsPassed
         pairedMedianSpeedupPercent = $pairMedian
         pairedMinSpeedupPercent = $pairMinimum
         pairedMaxSpeedupPercent = $pairMaximum
@@ -722,10 +1307,14 @@ foreach ($scenario in $scenarios) {
         validationRows = $validation.Count
         validationFailures = 0
         nativeTimestampReadyRows = [int]$run.nativeTimestampReadyRows
+        mainThreadAllocationRows = [int]$run.mainThreadAllocationRows
+        mainThreadAllocatedBytes = [int64]$run.mainThreadAllocatedBytes
         processId = [int]$run.processId
     })
     $matrixRows.Add([pscustomobject][ordered]@{
         scenarioId = $scenario.scenarioId
+        benchmarkMode = $BenchmarkMode
+        visibilityLayout = $expectedVisibilityLayout
         visibility = $scenario.visibility
         instanceCount = $scenario.instanceCount
         viewCount = $scenario.viewCount
@@ -749,53 +1338,123 @@ $matrixRows | Export-Csv -LiteralPath (
 $summaryRows | Export-Csv -LiteralPath (
     Join-Path $outputRoot 'matrix-summary.csv') `
     -NoTypeInformation -Encoding utf8
+$totalRawEvidenceRows = [int64](
+    ($summaryRows |
+        Measure-Object -Property nativeTimestampReadyRows -Sum).Sum)
+$totalMainThreadAllocationRows = [int64](
+    ($summaryRows |
+        Measure-Object -Property mainThreadAllocationRows -Sum).Sum)
+$totalMainThreadAllocatedBytes = [int64](
+    ($summaryRows |
+        Measure-Object -Property mainThreadAllocatedBytes -Sum).Sum)
 
 $reportLines = [Collections.Generic.List[string]]::new()
-$reportLines.Add('# GPU-driven visible-only benchmark')
+$reportLines.Add($(if ($hierarchicalMode) {
+    '# GPU-driven hierarchical multi-view culling benchmark'
+}
+else {
+    '# GPU-driven visible-only benchmark'
+}))
 $reportLines.Add('')
 $reportLines.Add(
     "Commit: ``$gitCommit``  ")
+if ($hierarchicalMode) {
+    $reportLines.Add(
+        "Mode: ``$BenchmarkMode``; layout: ``$expectedVisibilityLayout``.  ")
+}
 $reportLines.Add(
     "Protocol: same-process paired ABBA/BAAB, native D3D12 timestamps, " +
     "$SampleFrames samples per block.  ")
 $reportLines.Add(
-    'Correctness: CPU oracle before and after measurement; no timed readback.')
+    'Correctness: CPU oracle before and after measurement; no timed readback; ' +
+    'zero main-thread allocated bytes in every sampled row and block.')
+$reportLines.Add(
+    "Allocation evidence: $totalRawEvidenceRows raw rows, " +
+    "$totalMainThreadAllocationRows allocation rows, " +
+    "$totalMainThreadAllocatedBytes allocated bytes.  ")
+$reportLines.Add(
+    'Material gate: paired median >= 1% with every pair positive, native GPU ' +
+    'P95 non-regression, and no more than 5% regression in frame P99 or ' +
+    'enqueue P99.')
 $reportLines.Add('')
 $reportLines.Add(
-    '| Visible | Baseline mean (ms) | Visible-only mean (ms) | ' +
-    'Mean speedup | Paired median | Pair range | Decision |')
-$reportLines.Add('|---:|---:|---:|---:|---:|---:|:---|')
+    "| Visible | $baselineReportLabel mean (ms) | " +
+    "$optimizedReportLabel mean (ms) | " +
+    'Mean speedup | Paired median | GPU P95 speedup | Frame P99 regression | ' +
+    'Enqueue P99 regression | Pair range | Decision |')
+$reportLines.Add(
+    '|---:|---:|---:|---:|---:|---:|---:|---:|---:|:---|')
 foreach ($row in $summaryRows) {
     $reportLines.Add(
         (('| {0}% | {1:F4} | {2:F4} | {3:F2}% | {4:F2}% | ' +
-          '{5:F2}% to {6:F2}% | {7} |') -f
+          '{5:F2}% | {6:F2}% | {7:F2}% | {8:F2}% to {9:F2}% | {10} |') -f
             $row.visibilityPercent,
             $row.baselineGpuMeanMs,
             $row.optimizedGpuMeanMs,
             $row.meanSpeedupPercent,
             $row.pairedMedianSpeedupPercent,
+            $row.p95SpeedupPercent,
+            $row.frameP99RegressionPercent,
+            $row.enqueueP99RegressionPercent,
             $row.pairedMinSpeedupPercent,
             $row.pairedMaxSpeedupPercent,
             $row.decision))
 }
 $reportLines.Add('')
+if ($hierarchicalMode) {
+    $reportLines.Add(
+        '| Visible | Coarse cluster-view pairs | Candidate instance-view ' +
+        'pairs | Visible pairs | Candidate reduction vs flat |')
+    $reportLines.Add('|---:|---:|---:|---:|---:|')
+    foreach ($row in $summaryRows) {
+        $reportLines.Add(
+            (('| {0}% | {1} | {2} | {3} | {4:F2}% |') -f
+                $row.visibilityPercent,
+                $row.coarseVisibleClusterViewCount,
+                $row.candidateInstanceViewCount,
+                $row.hierarchicalVisiblePairCount,
+                $row.candidateReductionPercent))
+    }
+    $reportLines.Add('')
+}
 $material = @($summaryRows | Where-Object {
     [string]$_.decision -ceq 'material-improvement'
 })
 if ($material.Count -eq 0) {
-    $reportLines.Add(
-        'Decision: retain `CulledTail` as the default; this matrix did not ' +
-        'show a material, consistently positive paired result.')
+    if ($hierarchicalMode) {
+        $reportLines.Add(
+            'Decision: do not select hierarchical culling by default; this ' +
+            'matrix did not show a material, consistently positive paired ' +
+            'result. The explicit hierarchical API remains available.')
+    }
+    else {
+        $reportLines.Add(
+            'Decision: retain `CulledTail` as the default; this matrix did not ' +
+            'show a material, consistently positive paired result.')
+    }
 }
 else {
-    $maxVisibility = ($material |
-        Measure-Object -Property visibilityPercent -Maximum).Maximum
-    $reportLines.Add(
-        "Decision evidence: `VisibleOnly` had at least 1% paired-median " +
-        "speedup with every pair positive through the measured " +
-        "$maxVisibility% visibility cell. Cells below 1% are classified " +
-        'as parity. The public API remains explicit; no runtime policy is ' +
-        'inferred outside this matrix.')
+    $materialCells = @(
+        $material |
+            Sort-Object visibilityPercent |
+            ForEach-Object { "$($_.visibilityPercent)%" }) -join ', '
+    if ($hierarchicalMode) {
+        $reportLines.Add(
+            "Decision evidence: ``$optimizedReportLabel`` had at least 1% " +
+            'paired-median speedup with every pair positive and passed all ' +
+            "P95/P99 guardrails in: " +
+            "$materialCells. Other cells are parity or regression. The " +
+            'public API remains explicit; no runtime policy is inferred ' +
+            'outside this matrix.')
+    }
+    else {
+        $reportLines.Add(
+            "Decision evidence: `VisibleOnly` had at least 1% paired-median " +
+            'speedup with every pair positive and passed all P95/P99 ' +
+            "guardrails in these measured cells: $materialCells. Other cells " +
+            'are parity or regression. The public API remains explicit; no ' +
+            'runtime policy is inferred outside this matrix.')
+    }
 }
 $reportLines | Set-Content -LiteralPath (
     Join-Path $outputRoot 'BENCHMARK_REPORT.md') -Encoding utf8

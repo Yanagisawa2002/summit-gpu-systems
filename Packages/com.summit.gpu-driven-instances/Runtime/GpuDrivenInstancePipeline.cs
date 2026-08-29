@@ -19,6 +19,12 @@ namespace Summit.GpuDrivenInstances
         public const int DiagnosticWordCount = 2;
         public const int ContractViolationCountWord = 0;
         public const int ErrorFlagsWord = 1;
+        public const int HierarchyStatisticWordCount = 3;
+        public const int CoarseVisibleClusterViewCountWord = 0;
+        public const int CandidateInstanceViewCountWord = 1;
+        public const int HierarchicalVisiblePairCountWord = 2;
+        public const int HierarchicalFineThreadGroupSize =
+            GpuInstanceCluster.MaximumInstanceCount;
 
         private const string ResourcePath =
             "GpuDrivenInstances/GpuDrivenInstances";
@@ -28,6 +34,14 @@ namespace Summit.GpuDrivenInstances
             "Summit.GpuDrivenInstances/Classify";
         private const string ArgumentsSample =
             "Summit.GpuDrivenInstances/BuildIndirectArguments";
+        private const string HierarchicalSample =
+            "Summit.GpuDrivenInstances/HierarchicalVisibleOnly";
+        private const string HierarchicalValidationSample =
+            "Summit.GpuDrivenInstances/HierarchicalValidate";
+        private const string HierarchicalCoarseSample =
+            "Summit.GpuDrivenInstances/HierarchicalCoarse";
+        private const string HierarchicalFineSample =
+            "Summit.GpuDrivenInstances/HierarchicalFine";
 
         private static readonly int ClearCountId =
             Shader.PropertyToID("_ClearCount");
@@ -35,6 +49,12 @@ namespace Summit.GpuDrivenInstances
             Shader.PropertyToID("_InstanceCount");
         private static readonly int ViewCountId =
             Shader.PropertyToID("_ViewCount");
+        private static readonly int ClusterCountId =
+            Shader.PropertyToID("_ClusterCount");
+        private static readonly int PairCapacityId =
+            Shader.PropertyToID("_PairCapacity");
+        private static readonly int FineDispatchGroupsXId =
+            Shader.PropertyToID("_FineDispatchGroupsX");
         private static readonly int DrawGroupCountId =
             Shader.PropertyToID("_DrawGroupCount");
         private static readonly int VisibleBinCountId =
@@ -45,6 +65,16 @@ namespace Summit.GpuDrivenInstances
             Shader.PropertyToID("_ClearBuffer");
         private static readonly int InstancesId =
             Shader.PropertyToID("_Instances");
+        private static readonly int ClustersId =
+            Shader.PropertyToID("_Clusters");
+        private static readonly int ClusterViewMasksId =
+            Shader.PropertyToID("_ClusterViewMasks");
+        private static readonly int HierarchyStatisticsId =
+            Shader.PropertyToID("_HierarchyStatistics");
+        private static readonly int HierarchyValidityId =
+            Shader.PropertyToID("_HierarchyValidity");
+        private static readonly int BinningDiagnosticsId =
+            Shader.PropertyToID("_BinningDiagnostics");
         private static readonly int ViewPlanesId =
             Shader.PropertyToID("_ViewPlanes");
         private static readonly int ViewParametersId =
@@ -68,9 +98,19 @@ namespace Summit.GpuDrivenInstances
         private readonly int clearUintKernel;
         private readonly int classifyInstancesKernel;
         private readonly int buildIndirectArgumentsKernel;
+        private readonly int buildHierarchicalIndirectArgumentsKernel;
+        private readonly int validateHierarchyKernel;
+        private readonly int classifyClustersKernel;
+        private readonly int classifyClusterInstancesKernel;
+        private readonly int mergeHierarchyDiagnosticsKernel;
         private readonly GpuDirectSpatialBinner binner;
         private readonly GraphicsBuffer keys;
         private readonly GraphicsBuffer values;
+        private readonly GraphicsBuffer clusterViewMasks;
+        private readonly GraphicsBuffer hierarchyValidity;
+        private readonly GraphicsBuffer hierarchyBinningDiagnostics;
+        private readonly GraphicsBuffer hierarchyValidationDispatchArguments;
+        private readonly GraphicsBuffer hierarchyScatterDispatchArguments;
         private readonly bool emitProfilerMarkers;
         private bool disposed;
 
@@ -78,6 +118,32 @@ namespace Summit.GpuDrivenInstances
             int instanceCapacity,
             int viewCapacity,
             int drawGroupCapacity,
+            ComputeShader shader = null,
+            bool emitProfilerMarkers = true)
+            : this(
+                instanceCapacity,
+                viewCapacity,
+                drawGroupCapacity,
+                0,
+                shader,
+                emitProfilerMarkers)
+        {
+        }
+
+        /// <summary>
+        /// Creates a pipeline with opt-in hierarchical visible-only capacity.
+        /// </summary>
+        /// <remarks>
+        /// A zero <paramref name="hierarchicalClusterCapacity"/> keeps the
+        /// original flat-only allocation contract. A positive capacity owns
+        /// persistent coarse masks and GPU-count scatter scratch used only by
+        /// <see cref="RecordHierarchicalVisibleOnly"/>.
+        /// </remarks>
+        public GpuDrivenInstancePipeline(
+            int instanceCapacity,
+            int viewCapacity,
+            int drawGroupCapacity,
+            int hierarchicalClusterCapacity,
             ComputeShader shader = null,
             bool emitProfilerMarkers = true)
         {
@@ -88,6 +154,14 @@ namespace Summit.GpuDrivenInstances
             ValidatePositiveCapacity(
                 drawGroupCapacity,
                 nameof(drawGroupCapacity));
+            if (hierarchicalClusterCapacity < 0 ||
+                hierarchicalClusterCapacity > instanceCapacity)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(hierarchicalClusterCapacity),
+                    "Hierarchical cluster capacity must be zero (disabled) " +
+                    "or no greater than instanceCapacity.");
+            }
 
             int pairCapacity = CheckedProduct(
                 instanceCapacity,
@@ -121,10 +195,34 @@ namespace Summit.GpuDrivenInstances
                 selectedShader.FindKernel("ClassifyInstances");
             int selectedArgumentsKernel =
                 selectedShader.FindKernel("BuildIndirectArguments");
+            int selectedHierarchicalArgumentsKernel = -1;
+            int selectedValidateHierarchyKernel = -1;
+            int selectedClassifyClustersKernel = -1;
+            int selectedClassifyClusterInstancesKernel = -1;
+            int selectedMergeHierarchyDiagnosticsKernel = -1;
+            if (hierarchicalClusterCapacity > 0)
+            {
+                selectedHierarchicalArgumentsKernel =
+                    selectedShader.FindKernel(
+                        "BuildHierarchicalIndirectArguments");
+                selectedValidateHierarchyKernel =
+                    selectedShader.FindKernel("ValidateHierarchy");
+                selectedClassifyClustersKernel =
+                    selectedShader.FindKernel("ClassifyClusters");
+                selectedClassifyClusterInstancesKernel =
+                    selectedShader.FindKernel("ClassifyClusterInstances");
+                selectedMergeHierarchyDiagnosticsKernel =
+                    selectedShader.FindKernel("MergeHierarchyDiagnostics");
+            }
 
             GpuDirectSpatialBinner selectedBinner = null;
             GraphicsBuffer selectedKeys = null;
             GraphicsBuffer selectedValues = null;
+            GraphicsBuffer selectedClusterViewMasks = null;
+            GraphicsBuffer selectedHierarchyValidity = null;
+            GraphicsBuffer selectedHierarchyBinningDiagnostics = null;
+            GraphicsBuffer selectedHierarchyValidationDispatchArguments = null;
+            GraphicsBuffer selectedHierarchyScatterDispatchArguments = null;
             try
             {
                 selectedBinner = new GpuDirectSpatialBinner(
@@ -141,9 +239,51 @@ namespace Summit.GpuDrivenInstances
                     sizeof(uint));
                 selectedKeys.name = "GPU Driven Instance Classification Keys";
                 selectedValues.name = "GPU Driven Instance Source Indices";
+                if (hierarchicalClusterCapacity > 0)
+                {
+                    selectedClusterViewMasks = new GraphicsBuffer(
+                        GraphicsBuffer.Target.Structured,
+                        hierarchicalClusterCapacity,
+                        sizeof(uint));
+                    selectedHierarchyValidity = new GraphicsBuffer(
+                        GraphicsBuffer.Target.Structured,
+                        1,
+                        sizeof(uint));
+                    selectedHierarchyBinningDiagnostics = new GraphicsBuffer(
+                        GraphicsBuffer.Target.Structured,
+                        DiagnosticWordCount,
+                        sizeof(uint));
+                    selectedHierarchyValidationDispatchArguments =
+                        new GraphicsBuffer(
+                            GraphicsBuffer.Target.Structured |
+                            GraphicsBuffer.Target.IndirectArguments,
+                            3,
+                            sizeof(uint));
+                    selectedHierarchyScatterDispatchArguments =
+                        new GraphicsBuffer(
+                            GraphicsBuffer.Target.Structured |
+                            GraphicsBuffer.Target.IndirectArguments,
+                            3,
+                            sizeof(uint));
+                    selectedClusterViewMasks.name =
+                        "GPU Driven Cluster View Masks";
+                    selectedHierarchyValidity.name =
+                        "GPU Driven Hierarchy Validity";
+                    selectedHierarchyBinningDiagnostics.name =
+                        "GPU Driven Hierarchical Binning Diagnostics";
+                    selectedHierarchyValidationDispatchArguments.name =
+                        "GPU Driven Hierarchical Validation Dispatch Arguments";
+                    selectedHierarchyScatterDispatchArguments.name =
+                        "GPU Driven Hierarchical Scatter Dispatch Arguments";
+                }
             }
             catch
             {
+                selectedHierarchyScatterDispatchArguments?.Dispose();
+                selectedHierarchyValidationDispatchArguments?.Dispose();
+                selectedHierarchyBinningDiagnostics?.Dispose();
+                selectedHierarchyValidity?.Dispose();
+                selectedClusterViewMasks?.Dispose();
                 selectedValues?.Dispose();
                 selectedKeys?.Dispose();
                 selectedBinner?.Dispose();
@@ -155,13 +295,30 @@ namespace Summit.GpuDrivenInstances
             DrawGroupCapacity = drawGroupCapacity;
             PairCapacity = pairCapacity;
             VisibleBinCapacity = visibleBinCapacity;
+            HierarchicalClusterCapacity = hierarchicalClusterCapacity;
             this.shader = selectedShader;
             clearUintKernel = selectedClearKernel;
             classifyInstancesKernel = selectedClassifyKernel;
             buildIndirectArgumentsKernel = selectedArgumentsKernel;
+            buildHierarchicalIndirectArgumentsKernel =
+                selectedHierarchicalArgumentsKernel;
+            validateHierarchyKernel = selectedValidateHierarchyKernel;
+            classifyClustersKernel = selectedClassifyClustersKernel;
+            classifyClusterInstancesKernel =
+                selectedClassifyClusterInstancesKernel;
+            mergeHierarchyDiagnosticsKernel =
+                selectedMergeHierarchyDiagnosticsKernel;
             binner = selectedBinner;
             keys = selectedKeys;
             values = selectedValues;
+            clusterViewMasks = selectedClusterViewMasks;
+            hierarchyValidity = selectedHierarchyValidity;
+            hierarchyBinningDiagnostics =
+                selectedHierarchyBinningDiagnostics;
+            hierarchyValidationDispatchArguments =
+                selectedHierarchyValidationDispatchArguments;
+            hierarchyScatterDispatchArguments =
+                selectedHierarchyScatterDispatchArguments;
             this.emitProfilerMarkers = emitProfilerMarkers;
         }
 
@@ -175,6 +332,11 @@ namespace Summit.GpuDrivenInstances
 
         public int VisibleBinCapacity { get; }
 
+        public int HierarchicalClusterCapacity { get; }
+
+        public bool SupportsHierarchicalVisibleOnly =>
+            HierarchicalClusterCapacity > 0;
+
         public bool EmitsProfilerMarkers => emitProfilerMarkers;
 
         public static bool SupportsCurrentDevice =>
@@ -186,8 +348,20 @@ namespace Summit.GpuDrivenInstances
 
         public long BinningScratchBytes => binner.ScratchBytes;
 
+        public long HierarchicalScratchBytes =>
+            HierarchicalClusterCapacity == 0
+                ? 0L
+                : checked(
+                    (long)HierarchicalClusterCapacity * sizeof(uint) +
+                    sizeof(uint) +
+                    DiagnosticWordCount * sizeof(uint) +
+                    6L * sizeof(uint));
+
         public long ScratchBytes =>
-            checked(ClassificationScratchBytes + BinningScratchBytes);
+            checked(
+                ClassificationScratchBytes +
+                BinningScratchBytes +
+                HierarchicalScratchBytes);
 
         public long ResidentBytes => ScratchBytes;
 
@@ -231,6 +405,41 @@ namespace Summit.GpuDrivenInstances
                 default:
                     throw new ArgumentOutOfRangeException(
                         nameof(outputMode));
+            }
+        }
+
+        /// <summary>
+        /// Returns the two-dimensional dispatch shape used by the one-group-
+        /// per-cluster fine pass.
+        /// </summary>
+        public static void GetHierarchicalFineDispatchDimensions(
+            int clusterCount,
+            out int groupsX,
+            out int groupsY)
+        {
+            if (clusterCount < 0 ||
+                clusterCount >
+                    global::Summit.GpuPrimitives.GpuPrimitives
+                        .MaxElementCount)
+            {
+                throw new ArgumentOutOfRangeException(nameof(clusterCount));
+            }
+            if (clusterCount == 0)
+            {
+                groupsX = 0;
+                groupsY = 0;
+                return;
+            }
+
+            groupsX = Math.Min(
+                clusterCount,
+                global::Summit.GpuPrimitives.GpuPrimitives
+                    .MaxDispatchGroups);
+            groupsY = DivideRoundUp(clusterCount, groupsX);
+            if (groupsY >
+                global::Summit.GpuPrimitives.GpuPrimitives.MaxDispatchGroups)
+            {
+                throw new ArgumentOutOfRangeException(nameof(clusterCount));
             }
         }
 
@@ -384,6 +593,373 @@ namespace Summit.GpuDrivenInstances
                     scanBackend);
             }
 
+            RecordBuildIndirectArguments(
+                commands,
+                drawTemplates,
+                groupCounts,
+                groupOffsets,
+                indirectArguments,
+                visibleBinCount,
+                drawGroupCount);
+            EndSample(commands, PipelineSample);
+        }
+
+        /// <summary>
+        /// Records the opt-in hierarchical, visible-only classification path.
+        /// </summary>
+        /// <remarks>
+        /// Clusters must be a contiguous, non-overlapping exact cover of the
+        /// active instance prefix. Every cluster contains between one and 64
+        /// instances and supplies a conservative sphere plus the union of its
+        /// members' view masks. The GPU validates the range cover before any
+        /// fine work and fails closed with diagnostics when it is malformed.
+        /// Coarse classification emits one view mask per cluster; one 64-lane
+        /// fine group per cluster then examines only views surviving both that
+        /// mask and the instance mask. Visible pairs are appended densely,
+        /// pre-counted by bin, scanned, and scattered from a GPU-owned count.
+        /// <paramref name="hierarchyStatistics"/> receives exactly three
+        /// words: coarse-visible cluster/view pairs, fine candidate
+        /// instance/view pairs, and visible pairs. The final word is also the
+        /// GPU count consumed by the indirect scatter.
+        /// </remarks>
+        public void RecordHierarchicalVisibleOnly(
+            CommandBuffer commands,
+            GraphicsBuffer instances,
+            GraphicsBuffer clusters,
+            GraphicsBuffer viewPlanes,
+            GraphicsBuffer viewParameters,
+            GraphicsBuffer drawTemplates,
+            GraphicsBuffer groupCounts,
+            GraphicsBuffer groupOffsets,
+            GraphicsBuffer groupedInstanceIndices,
+            GraphicsBuffer indirectArguments,
+            GraphicsBuffer hierarchyStatistics,
+            GraphicsBuffer diagnostics,
+            int instanceCount,
+            int clusterCount,
+            int viewCount,
+            int drawGroupCount,
+            GpuPrimitiveBackend scanBackend = GpuPrimitiveBackend.Auto)
+        {
+            ValidateHierarchicalRecordArguments(
+                commands,
+                instances,
+                clusters,
+                viewPlanes,
+                viewParameters,
+                drawTemplates,
+                groupCounts,
+                groupOffsets,
+                groupedInstanceIndices,
+                indirectArguments,
+                hierarchyStatistics,
+                diagnostics,
+                instanceCount,
+                clusterCount,
+                viewCount,
+                drawGroupCount,
+                scanBackend);
+
+            int pairCount = checked(instanceCount * viewCount);
+            int clusterViewCount = checked(clusterCount * viewCount);
+            int visibleBinCount = checked(viewCount * drawGroupCount);
+
+            BeginSample(commands, PipelineSample);
+            BeginSample(commands, HierarchicalSample);
+            RecordClearBuffer(
+                commands,
+                diagnostics,
+                DiagnosticWordCount);
+            RecordClearBuffer(commands, groupCounts, visibleBinCount);
+            RecordClearBuffer(
+                commands,
+                hierarchyStatistics,
+                HierarchyStatisticWordCount);
+            RecordClearBuffer(commands, hierarchyValidity, 1);
+            RecordClearBuffer(
+                commands,
+                hierarchyBinningDiagnostics,
+                DiagnosticWordCount);
+            if (clusterCount > 0)
+            {
+                RecordClearBuffer(
+                    commands,
+                    clusterViewMasks,
+                    clusterCount);
+
+                BeginSample(commands, HierarchicalValidationSample);
+                commands.SetComputeIntParam(
+                    shader,
+                    InstanceCountId,
+                    instanceCount);
+                commands.SetComputeIntParam(
+                    shader,
+                    ClusterCountId,
+                    clusterCount);
+                commands.SetComputeBufferParam(
+                    shader,
+                    validateHierarchyKernel,
+                    ClustersId,
+                    clusters);
+                commands.SetComputeBufferParam(
+                    shader,
+                    validateHierarchyKernel,
+                    HierarchyValidityId,
+                    hierarchyValidity);
+                commands.SetComputeBufferParam(
+                    shader,
+                    validateHierarchyKernel,
+                    DiagnosticsId,
+                    diagnostics);
+                commands.DispatchCompute(
+                    shader,
+                    validateHierarchyKernel,
+                    DivideRoundUp(clusterCount, ThreadGroupSize),
+                    1,
+                    1);
+                EndSample(commands, HierarchicalValidationSample);
+
+                BeginSample(commands, HierarchicalCoarseSample);
+                commands.SetComputeIntParam(
+                    shader,
+                    ClusterCountId,
+                    clusterCount);
+                commands.SetComputeIntParam(shader, ViewCountId, viewCount);
+                commands.SetComputeBufferParam(
+                    shader,
+                    classifyClustersKernel,
+                    ClustersId,
+                    clusters);
+                commands.SetComputeBufferParam(
+                    shader,
+                    classifyClustersKernel,
+                    ViewPlanesId,
+                    viewPlanes);
+                commands.SetComputeBufferParam(
+                    shader,
+                    classifyClustersKernel,
+                    ViewParametersId,
+                    viewParameters);
+                commands.SetComputeBufferParam(
+                    shader,
+                    classifyClustersKernel,
+                    ClusterViewMasksId,
+                    clusterViewMasks);
+                commands.SetComputeBufferParam(
+                    shader,
+                    classifyClustersKernel,
+                    HierarchyValidityId,
+                    hierarchyValidity);
+                commands.SetComputeBufferParam(
+                    shader,
+                    classifyClustersKernel,
+                    DiagnosticsId,
+                    diagnostics);
+                commands.DispatchCompute(
+                    shader,
+                    classifyClustersKernel,
+                    DivideRoundUp(clusterViewCount, ThreadGroupSize),
+                    1,
+                    1);
+                EndSample(commands, HierarchicalCoarseSample);
+
+                BeginSample(commands, HierarchicalFineSample);
+                GetHierarchicalFineDispatchDimensions(
+                    clusterCount,
+                    out int fineGroupsX,
+                    out int fineGroupsY);
+                commands.SetComputeIntParam(
+                    shader,
+                    InstanceCountId,
+                    instanceCount);
+                commands.SetComputeIntParam(
+                    shader,
+                    ClusterCountId,
+                    clusterCount);
+                commands.SetComputeIntParam(shader, ViewCountId, viewCount);
+                commands.SetComputeIntParam(
+                    shader,
+                    DrawGroupCountId,
+                    drawGroupCount);
+                commands.SetComputeIntParam(
+                    shader,
+                    PairCapacityId,
+                    pairCount);
+                commands.SetComputeIntParam(
+                    shader,
+                    FineDispatchGroupsXId,
+                    fineGroupsX);
+                commands.SetComputeBufferParam(
+                    shader,
+                    classifyClusterInstancesKernel,
+                    InstancesId,
+                    instances);
+                commands.SetComputeBufferParam(
+                    shader,
+                    classifyClusterInstancesKernel,
+                    ClustersId,
+                    clusters);
+                commands.SetComputeBufferParam(
+                    shader,
+                    classifyClusterInstancesKernel,
+                    ClusterViewMasksId,
+                    clusterViewMasks);
+                commands.SetComputeBufferParam(
+                    shader,
+                    classifyClusterInstancesKernel,
+                    ViewPlanesId,
+                    viewPlanes);
+                commands.SetComputeBufferParam(
+                    shader,
+                    classifyClusterInstancesKernel,
+                    ViewParametersId,
+                    viewParameters);
+                commands.SetComputeBufferParam(
+                    shader,
+                    classifyClusterInstancesKernel,
+                    KeysId,
+                    keys);
+                commands.SetComputeBufferParam(
+                    shader,
+                    classifyClusterInstancesKernel,
+                    ValuesId,
+                    values);
+                commands.SetComputeBufferParam(
+                    shader,
+                    classifyClusterInstancesKernel,
+                    BinCountsId,
+                    groupCounts);
+                commands.SetComputeBufferParam(
+                    shader,
+                    classifyClusterInstancesKernel,
+                    HierarchyStatisticsId,
+                    hierarchyStatistics);
+                commands.SetComputeBufferParam(
+                    shader,
+                    classifyClusterInstancesKernel,
+                    HierarchyValidityId,
+                    hierarchyValidity);
+                commands.SetComputeBufferParam(
+                    shader,
+                    classifyClusterInstancesKernel,
+                    DiagnosticsId,
+                    diagnostics);
+                commands.DispatchCompute(
+                    shader,
+                    classifyClusterInstancesKernel,
+                    fineGroupsX,
+                    fineGroupsY,
+                    1);
+                EndSample(commands, HierarchicalFineSample);
+            }
+
+            binner.RecordPrecountedPrefixIndirect(
+                commands,
+                keys,
+                values,
+                groupCounts,
+                groupOffsets,
+                groupedInstanceIndices,
+                hierarchyBinningDiagnostics,
+                hierarchyStatistics,
+                HierarchicalVisiblePairCountWord,
+                hierarchyValidationDispatchArguments,
+                0u,
+                hierarchyScatterDispatchArguments,
+                0u,
+                visibleBinCount,
+                scanBackend);
+
+            commands.SetComputeBufferParam(
+                shader,
+                mergeHierarchyDiagnosticsKernel,
+                BinningDiagnosticsId,
+                hierarchyBinningDiagnostics);
+            commands.SetComputeBufferParam(
+                shader,
+                mergeHierarchyDiagnosticsKernel,
+                DiagnosticsId,
+                diagnostics);
+            commands.DispatchCompute(
+                shader,
+                mergeHierarchyDiagnosticsKernel,
+                1,
+                1,
+                1);
+
+            RecordBuildHierarchicalIndirectArguments(
+                commands,
+                drawTemplates,
+                groupCounts,
+                groupOffsets,
+                indirectArguments,
+                diagnostics,
+                visibleBinCount,
+                drawGroupCount);
+            EndSample(commands, HierarchicalSample);
+            EndSample(commands, PipelineSample);
+        }
+
+        public void Dispose()
+        {
+            if (disposed)
+            {
+                return;
+            }
+
+            disposed = true;
+            hierarchyScatterDispatchArguments?.Dispose();
+            hierarchyValidationDispatchArguments?.Dispose();
+            hierarchyBinningDiagnostics?.Dispose();
+            hierarchyValidity?.Dispose();
+            clusterViewMasks?.Dispose();
+            values?.Dispose();
+            keys?.Dispose();
+            binner?.Dispose();
+        }
+
+        private void RecordClearDiagnostics(
+            CommandBuffer commands,
+            GraphicsBuffer diagnostics)
+        {
+            RecordClearBuffer(
+                commands,
+                diagnostics,
+                DiagnosticWordCount);
+        }
+
+        private void RecordClearBuffer(
+            CommandBuffer commands,
+            GraphicsBuffer buffer,
+            int count)
+        {
+            if (count <= 0)
+            {
+                return;
+            }
+            commands.SetComputeIntParam(shader, ClearCountId, count);
+            commands.SetComputeBufferParam(
+                shader,
+                clearUintKernel,
+                ClearBufferId,
+                buffer);
+            commands.DispatchCompute(
+                shader,
+                clearUintKernel,
+                DivideRoundUp(count, ThreadGroupSize),
+                1,
+                1);
+        }
+
+        private void RecordBuildIndirectArguments(
+            CommandBuffer commands,
+            GraphicsBuffer drawTemplates,
+            GraphicsBuffer groupCounts,
+            GraphicsBuffer groupOffsets,
+            GraphicsBuffer indirectArguments,
+            int visibleBinCount,
+            int drawGroupCount)
+        {
             BeginSample(commands, ArgumentsSample);
             commands.SetComputeIntParam(
                 shader,
@@ -420,36 +996,59 @@ namespace Summit.GpuDrivenInstances
                 1,
                 1);
             EndSample(commands, ArgumentsSample);
-            EndSample(commands, PipelineSample);
         }
 
-        public void Dispose()
-        {
-            if (disposed)
-            {
-                return;
-            }
-
-            disposed = true;
-            values?.Dispose();
-            keys?.Dispose();
-            binner?.Dispose();
-        }
-
-        private void RecordClearDiagnostics(
+        private void RecordBuildHierarchicalIndirectArguments(
             CommandBuffer commands,
-            GraphicsBuffer diagnostics)
+            GraphicsBuffer drawTemplates,
+            GraphicsBuffer groupCounts,
+            GraphicsBuffer groupOffsets,
+            GraphicsBuffer indirectArguments,
+            GraphicsBuffer diagnostics,
+            int visibleBinCount,
+            int drawGroupCount)
         {
+            BeginSample(commands, ArgumentsSample);
             commands.SetComputeIntParam(
                 shader,
-                ClearCountId,
-                DiagnosticWordCount);
+                DrawGroupCountId,
+                drawGroupCount);
+            commands.SetComputeIntParam(
+                shader,
+                VisibleBinCountId,
+                visibleBinCount);
             commands.SetComputeBufferParam(
                 shader,
-                clearUintKernel,
-                ClearBufferId,
+                buildHierarchicalIndirectArgumentsKernel,
+                DrawTemplatesId,
+                drawTemplates);
+            commands.SetComputeBufferParam(
+                shader,
+                buildHierarchicalIndirectArgumentsKernel,
+                BinCountsId,
+                groupCounts);
+            commands.SetComputeBufferParam(
+                shader,
+                buildHierarchicalIndirectArgumentsKernel,
+                BinOffsetsId,
+                groupOffsets);
+            commands.SetComputeBufferParam(
+                shader,
+                buildHierarchicalIndirectArgumentsKernel,
+                IndirectArgumentsId,
+                indirectArguments);
+            commands.SetComputeBufferParam(
+                shader,
+                buildHierarchicalIndirectArgumentsKernel,
+                DiagnosticsId,
                 diagnostics);
-            commands.DispatchCompute(shader, clearUintKernel, 1, 1, 1);
+            commands.DispatchCompute(
+                shader,
+                buildHierarchicalIndirectArgumentsKernel,
+                DivideRoundUp(visibleBinCount, ThreadGroupSize),
+                1,
+                1);
+            EndSample(commands, ArgumentsSample);
         }
 
         private void ValidateRecordArguments(
@@ -640,6 +1239,143 @@ namespace Summit.GpuDrivenInstances
             RequireDistinct(
                 indirectArguments,
                 nameof(indirectArguments),
+                diagnostics,
+                nameof(diagnostics));
+        }
+
+        private void ValidateHierarchicalRecordArguments(
+            CommandBuffer commands,
+            GraphicsBuffer instances,
+            GraphicsBuffer clusters,
+            GraphicsBuffer viewPlanes,
+            GraphicsBuffer viewParameters,
+            GraphicsBuffer drawTemplates,
+            GraphicsBuffer groupCounts,
+            GraphicsBuffer groupOffsets,
+            GraphicsBuffer groupedInstanceIndices,
+            GraphicsBuffer indirectArguments,
+            GraphicsBuffer hierarchyStatistics,
+            GraphicsBuffer diagnostics,
+            int instanceCount,
+            int clusterCount,
+            int viewCount,
+            int drawGroupCount,
+            GpuPrimitiveBackend scanBackend)
+        {
+            ThrowIfDisposed();
+            if (!SupportsHierarchicalVisibleOnly)
+            {
+                throw new InvalidOperationException(
+                    "Hierarchical visible-only recording was not enabled " +
+                    "for this pipeline. Construct it with a positive " +
+                    "hierarchicalClusterCapacity.");
+            }
+
+            ValidateRecordArguments(
+                commands,
+                instances,
+                viewPlanes,
+                viewParameters,
+                drawTemplates,
+                groupCounts,
+                groupOffsets,
+                groupedInstanceIndices,
+                indirectArguments,
+                diagnostics,
+                instanceCount,
+                viewCount,
+                drawGroupCount,
+                scanBackend,
+                GpuDrivenInstanceOutputMode.VisibleOnly);
+
+            int minimumClusterCount = instanceCount == 0
+                ? 0
+                : DivideRoundUp(
+                    instanceCount,
+                    GpuInstanceCluster.MaximumInstanceCount);
+            int maximumClusterCount = instanceCount;
+            if (clusterCount < minimumClusterCount ||
+                clusterCount > maximumClusterCount ||
+                clusterCount > HierarchicalClusterCapacity)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(clusterCount),
+                    $"Cluster count must be in [{minimumClusterCount}, " +
+                    $"{Math.Min(maximumClusterCount, HierarchicalClusterCapacity)}] " +
+                    "and fit the configured hierarchy capacity.");
+            }
+            ValidateStructuredBuffer(
+                clusters,
+                clusterCount,
+                GpuInstanceCluster.Stride,
+                nameof(clusters));
+            ValidateStructuredBuffer(
+                hierarchyStatistics,
+                HierarchyStatisticWordCount,
+                sizeof(uint),
+                nameof(hierarchyStatistics));
+
+            RequireDistinct(
+                groupCounts,
+                nameof(groupCounts),
+                clusters,
+                nameof(clusters));
+            RequireDistinct(
+                groupOffsets,
+                nameof(groupOffsets),
+                clusters,
+                nameof(clusters));
+            RequireDistinct(
+                groupedInstanceIndices,
+                nameof(groupedInstanceIndices),
+                clusters,
+                nameof(clusters));
+            RequireDistinct(
+                indirectArguments,
+                nameof(indirectArguments),
+                clusters,
+                nameof(clusters));
+            RequireDistinct(
+                hierarchyStatistics,
+                nameof(hierarchyStatistics),
+                clusters,
+                nameof(clusters));
+            RequireDistinct(
+                diagnostics,
+                nameof(diagnostics),
+                clusters,
+                nameof(clusters));
+
+            RequireNotInput(
+                hierarchyStatistics,
+                nameof(hierarchyStatistics),
+                instances,
+                viewPlanes,
+                viewParameters,
+                drawTemplates);
+            RequireDistinct(
+                hierarchyStatistics,
+                nameof(hierarchyStatistics),
+                groupCounts,
+                nameof(groupCounts));
+            RequireDistinct(
+                hierarchyStatistics,
+                nameof(hierarchyStatistics),
+                groupOffsets,
+                nameof(groupOffsets));
+            RequireDistinct(
+                hierarchyStatistics,
+                nameof(hierarchyStatistics),
+                groupedInstanceIndices,
+                nameof(groupedInstanceIndices));
+            RequireDistinct(
+                hierarchyStatistics,
+                nameof(hierarchyStatistics),
+                indirectArguments,
+                nameof(indirectArguments));
+            RequireDistinct(
+                hierarchyStatistics,
+                nameof(hierarchyStatistics),
                 diagnostics,
                 nameof(diagnostics));
         }
