@@ -765,8 +765,8 @@ $reportLines.Add(
 $reportLines.Add('|---:|---:|---:|---:|---:|---:|:---|')
 foreach ($row in $summaryRows) {
     $reportLines.Add(
-        ('| {0}% | {1:F4} | {2:F4} | {3:F2}% | {4:F2}% | ' +
-         '{5:F2}% to {6:F2}% | {7} |' -f
+        (('| {0}% | {1:F4} | {2:F4} | {3:F2}% | {4:F2}% | ' +
+          '{5:F2}% to {6:F2}% | {7} |') -f
             $row.visibilityPercent,
             $row.baselineGpuMeanMs,
             $row.optimizedGpuMeanMs,
