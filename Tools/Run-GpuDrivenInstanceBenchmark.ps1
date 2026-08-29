@@ -1083,14 +1083,16 @@ foreach ($scenario in $scenarios) {
         'mainThreadAllocatedBytes',
         'measurementReadbackBytes',
         'timestampInstrumentationReadbackBytes')
-    $missingRawFields = if ($raw.Count -eq 0) {
-        $requiredRawFields
-    }
-    else {
-        @($requiredRawFields | Where-Object {
-            $_ -notin @($raw[0].PSObject.Properties.Name)
-        })
-    }
+    $missingRawFields = @(
+        if ($raw.Count -eq 0) {
+            $requiredRawFields
+        }
+        else {
+            $requiredRawFields | Where-Object {
+                $_ -notin @($raw[0].PSObject.Properties.Name)
+            }
+        }
+    )
     if ($missingRawFields.Count -ne 0) {
         throw (
             "Scenario raw evidence fields are missing: " +
@@ -1123,14 +1125,16 @@ foreach ($scenario in $scenarios) {
     $requiredBlockFields = @(
         'mainThreadAllocationRows',
         'mainThreadAllocatedBytes')
-    $missingBlockFields = if ($blocks.Count -eq 0) {
-        $requiredBlockFields
-    }
-    else {
-        @($requiredBlockFields | Where-Object {
-            $_ -notin @($blocks[0].PSObject.Properties.Name)
-        })
-    }
+    $missingBlockFields = @(
+        if ($blocks.Count -eq 0) {
+            $requiredBlockFields
+        }
+        else {
+            $requiredBlockFields | Where-Object {
+                $_ -notin @($blocks[0].PSObject.Properties.Name)
+            }
+        }
+    )
     if ($missingBlockFields.Count -ne 0) {
         throw (
             "Scenario block allocation fields are missing: " +
