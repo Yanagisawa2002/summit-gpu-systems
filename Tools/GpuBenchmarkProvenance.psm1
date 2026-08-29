@@ -1,17 +1,5 @@
 Set-StrictMode -Version Latest
 
-$script:FishNetMetaPath =
-    'Packages/com.firstgeargames.fishnet/CodeGenerating/cecil-0.11.4/' +
-    'Mono.Cecil.sln.meta'
-$script:FishNetMetaCanonicalBlob =
-    'aa8a0776011df4847964bbb9a9b6625869984ce8'
-$script:UrpSettingsPath =
-    'Assets/Settings/UniversalRenderPipelineGlobalSettings.asset'
-$script:UrpSettingsCanonicalBlob =
-    '9b34186d29cd19c3afcd8333b51146778c66ebf8'
-$script:UrpSettingsKnownMutatedBlob =
-    '6d9912b9fd05c032c4af461c89aa4eb84d07b9a7'
-
 function Invoke-GitLines {
     param(
         [Parameter(Mandatory = $true)][string]$ProjectRoot,
@@ -103,65 +91,6 @@ function Assert-GitSnapshotCurrent {
     }
 }
 
-function Get-GitRevisionBlob {
-    param(
-        [Parameter(Mandatory = $true)][string]$ProjectRoot,
-        [Parameter(Mandatory = $true)][string]$Revision,
-        [Parameter(Mandatory = $true)][string]$RelativePath
-    )
-
-    $lines = @(Invoke-GitLines `
-        -ProjectRoot $ProjectRoot `
-        -Arguments @('rev-parse', "${Revision}:$RelativePath") `
-        -FailureMessage "Unable to resolve '$RelativePath' at $Revision.")
-    if ($lines.Count -ne 1 -or $lines[0] -notmatch '^[0-9a-fA-F]{40}$') {
-        throw "Unexpected Git object ID for '$RelativePath' at $Revision."
-    }
-    return $lines[0].ToLowerInvariant()
-}
-
-function Assert-IndexBlob {
-    param(
-        [Parameter(Mandatory = $true)][string]$ProjectRoot,
-        [Parameter(Mandatory = $true)][string]$RelativePath,
-        [Parameter(Mandatory = $true)][string]$ExpectedBlob
-    )
-
-    $lines = @(Invoke-GitLines `
-        -ProjectRoot $ProjectRoot `
-        -Arguments @('ls-files', '--stage', '--', $RelativePath) `
-        -FailureMessage "Unable to inspect the index entry for '$RelativePath'.")
-    if ($lines.Count -ne 1 -or
-        $lines[0] -notmatch '^100644 ([0-9a-fA-F]{40}) 0\t' -or
-        $Matches[1] -ine $ExpectedBlob) {
-        throw "The index entry for '$RelativePath' is not canonical."
-    }
-}
-
-function Get-WorktreeBlob {
-    param(
-        [Parameter(Mandatory = $true)][string]$ProjectRoot,
-        [Parameter(Mandatory = $true)][string]$RelativePath
-    )
-
-    $absolutePath = Join-Path $ProjectRoot ($RelativePath.Replace('/', '\'))
-    if (-not (Test-Path -LiteralPath $absolutePath -PathType Leaf)) {
-        throw "Expected worktree file is missing: $RelativePath"
-    }
-    $lines = @(Invoke-GitLines `
-        -ProjectRoot $ProjectRoot `
-        -Arguments @(
-            'hash-object',
-            "--path=$RelativePath",
-            '--',
-            $absolutePath) `
-        -FailureMessage "Unable to hash worktree file '$RelativePath'.")
-    if ($lines.Count -ne 1 -or $lines[0] -notmatch '^[0-9a-fA-F]{40}$') {
-        throw "Unexpected worktree hash for '$RelativePath'."
-    }
-    return $lines[0].ToLowerInvariant()
-}
-
 function Restore-KnownUnityBenchmarkDrift {
     [CmdletBinding()]
     param(
@@ -177,73 +106,10 @@ function Restore-KnownUnityBenchmarkDrift {
     }
     Assert-GitSnapshotCurrent -ProjectRoot $ProjectRoot -Snapshot $Snapshot
 
-    $fishStatus = " D $script:FishNetMetaPath"
-    $urpStatus = " M $script:UrpSettingsPath"
-    $restorePaths = [System.Collections.Generic.List[string]]::new()
-    $driftKinds = [System.Collections.Generic.List[string]]::new()
     foreach ($line in [string[]]@($Snapshot.statusLines)) {
-        if ([string]::Equals(
-                $line, $fishStatus, [System.StringComparison]::Ordinal)) {
-            $restorePaths.Add($script:FishNetMetaPath)
-            $driftKinds.Add('fishnet-meta-deleted')
-            continue
-        }
-        if ([string]::Equals(
-                $line, $urpStatus, [System.StringComparison]::Ordinal)) {
-            $restorePaths.Add($script:UrpSettingsPath)
-            $driftKinds.Add('urp-runtime-setting-removed')
-            continue
-        }
         throw (
             "Unrecognized Git drift; no files were restored: '$line'. " +
             'Staged, renamed, untracked, or non-allowlisted changes are forbidden.')
-    }
-
-    if ($restorePaths.Contains($script:FishNetMetaPath)) {
-        $headBlob = Get-GitRevisionBlob `
-            -ProjectRoot $ProjectRoot `
-            -Revision $ExpectedHead `
-            -RelativePath $script:FishNetMetaPath
-        if ($headBlob -ine $script:FishNetMetaCanonicalBlob) {
-            throw 'FishNet metadata at HEAD does not have the canonical blob ID.'
-        }
-        Assert-IndexBlob `
-            -ProjectRoot $ProjectRoot `
-            -RelativePath $script:FishNetMetaPath `
-            -ExpectedBlob $script:FishNetMetaCanonicalBlob
-    }
-    if ($restorePaths.Contains($script:UrpSettingsPath)) {
-        $headBlob = Get-GitRevisionBlob `
-            -ProjectRoot $ProjectRoot `
-            -Revision $ExpectedHead `
-            -RelativePath $script:UrpSettingsPath
-        if ($headBlob -ine $script:UrpSettingsCanonicalBlob) {
-            throw 'URP settings at HEAD do not have the canonical blob ID.'
-        }
-        Assert-IndexBlob `
-            -ProjectRoot $ProjectRoot `
-            -RelativePath $script:UrpSettingsPath `
-            -ExpectedBlob $script:UrpSettingsCanonicalBlob
-        $worktreeBlob = Get-WorktreeBlob `
-            -ProjectRoot $ProjectRoot `
-            -RelativePath $script:UrpSettingsPath
-        if ($worktreeBlob -ine $script:UrpSettingsKnownMutatedBlob) {
-            throw (
-                'URP settings do not match the one exact known Unity line ' +
-                'removal; no files were restored.')
-        }
-    }
-
-    if ($restorePaths.Count -ne 0) {
-        Assert-GitSnapshotCurrent -ProjectRoot $ProjectRoot -Snapshot $Snapshot
-        & git -C $ProjectRoot restore `
-            "--source=$ExpectedHead" `
-            --worktree `
-            -- `
-            @($restorePaths)
-        if ($LASTEXITCODE -ne 0) {
-            throw 'Unable to restore the validated Unity-generated drift.'
-        }
     }
     $after = Get-GpuBenchmarkGitSnapshot -ProjectRoot $ProjectRoot
     if ($after.head -ine $ExpectedHead -or
@@ -253,9 +119,9 @@ function Restore-KnownUnityBenchmarkDrift {
     }
 
     return [pscustomobject][ordered]@{
-        restored = [bool]($restorePaths.Count -ne 0)
-        restoredPaths = [string[]]@($restorePaths)
-        driftKinds = [string[]]@($driftKinds)
+        restored = $false
+        restoredPaths = [string[]]@()
+        driftKinds = [string[]]@()
         afterSnapshot = $after
     }
 }
