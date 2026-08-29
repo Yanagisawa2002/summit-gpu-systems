@@ -66,6 +66,12 @@ foreach ($requirement in @(
             'All-mode fresh-build fail-fast'),
         @('gpu-driven-hierarchical-culling-v1',
             'Named hierarchical formal contract'),
+        @('Summit.GpuDrivenInstance.Benchmark.Tests.GpuDrivenInstanceHierarchicalInputGeneratorTests',
+            'Exact hierarchical benchmark fixture identity'),
+        @('Summit.GpuDrivenInstances.Tests.GpuDrivenInstanceHierarchicalPipelineIntegrationTests',
+            'Exact hierarchical pipeline fixture identity'),
+        @('Summit.GpuDirectBinning.Tests.GpuDirectSpatialBinnerPrecountedIntegrationTests',
+            'Exact precounted binner fixture identity'),
         @('-gpu-driven-instance-benchmark-mode',
             'Player mode attribution'),
         @('Get-GpuBenchmarkGitSnapshot', 'Git snapshot'),
@@ -156,6 +162,10 @@ foreach ($requirement in @(
     Assert-Contains $runner $requirement[0] $requirement[1]
 }
 
+Assert-NotContains `
+    -Text $runner `
+    -Needle "'Summit.GpuDrivenInstance.Benchmark.Tests.' +" `
+    -Label 'Hierarchical fixture identity array'
 Assert-NotContains `
     -Text $runner `
     -Needle 'if (-not $SkipBuild)' `

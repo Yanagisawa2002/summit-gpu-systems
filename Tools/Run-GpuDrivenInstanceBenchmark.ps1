@@ -561,13 +561,10 @@ $expectedTestIdentities = @(
 )
 if ($hierarchicalMode) {
     $expectedTestIdentities += @(
-        'Summit.GpuDrivenInstance.Benchmark.Tests.' +
-            'GpuDrivenInstanceHierarchicalInputGeneratorTests',
+        'Summit.GpuDrivenInstance.Benchmark.Tests.GpuDrivenInstanceHierarchicalInputGeneratorTests',
         'Summit.GpuDrivenInstances.Tests.GpuInstanceClusterBuilderTests',
-        'Summit.GpuDrivenInstances.Tests.' +
-            'GpuDrivenInstanceHierarchicalPipelineIntegrationTests',
-        'Summit.GpuDirectBinning.Tests.' +
-            'GpuDirectSpatialBinnerPrecountedIntegrationTests'
+        'Summit.GpuDrivenInstances.Tests.GpuDrivenInstanceHierarchicalPipelineIntegrationTests',
+        'Summit.GpuDirectBinning.Tests.GpuDirectSpatialBinnerPrecountedIntegrationTests'
     )
 }
 $testMetadata = $null
