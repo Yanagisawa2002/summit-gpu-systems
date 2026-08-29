@@ -28,18 +28,24 @@ namespace Summit.GpuDirectBinning
             "Summit.GpuDirectBinning/DirectSpatialBinning";
         private const string TrustedBinningSample =
             "Summit.GpuDirectBinning/DirectSpatialBinning/GuaranteedInRange";
+        private const string FilteredBinningSample =
+            "Summit.GpuDirectBinning/DirectSpatialBinning/DiscardKey";
         private const string ClearSample =
             "Summit.GpuDirectBinning/Clear";
         private const string CountSample =
             "Summit.GpuDirectBinning/Count";
         private const string TrustedCountSample =
             "Summit.GpuDirectBinning/Count/GuaranteedInRange";
+        private const string FilteredCountSample =
+            "Summit.GpuDirectBinning/Count/DiscardKey";
         private const string PrepareSample =
             "Summit.GpuDirectBinning/Prepare";
         private const string ScatterSample =
             "Summit.GpuDirectBinning/Scatter";
         private const string TrustedScatterSample =
             "Summit.GpuDirectBinning/Scatter/GuaranteedInRange";
+        private const string FilteredScatterSample =
+            "Summit.GpuDirectBinning/Scatter/DiscardKey";
 
         private static readonly int ClearCountId =
             Shader.PropertyToID("_ClearCount");
@@ -47,6 +53,8 @@ namespace Summit.GpuDirectBinning
             Shader.PropertyToID("_ElementCount");
         private static readonly int BinCountId =
             Shader.PropertyToID("_BinCount");
+        private static readonly int DiscardKeyId =
+            Shader.PropertyToID("_DiscardKey");
         private static readonly int ClearBufferId =
             Shader.PropertyToID("_ClearBuffer");
         private static readonly int KeysId =
@@ -68,9 +76,11 @@ namespace Summit.GpuDirectBinning
         private readonly int clearUintKernel;
         private readonly int countBinsKernel;
         private readonly int countBinsGuaranteedInRangeKernel;
+        private readonly int countBinsWithDiscardKeyKernel;
         private readonly int prepareOffsetsAndWriteHeadsKernel;
         private readonly int scatterValuesKernel;
         private readonly int scatterValuesGuaranteedInRangeKernel;
+        private readonly int scatterValuesWithDiscardKeyKernel;
         private readonly GpuPrimitivesRuntime primitives;
         private readonly bool ownsPrimitives;
         private readonly GraphicsBuffer writeHeads;
@@ -108,6 +118,10 @@ namespace Summit.GpuDirectBinning
                 "CountBinsGuaranteedInRange")
                     ? selectedShader.FindKernel("CountBinsGuaranteedInRange")
                     : -1;
+            int selectedFilteredCountKernel = selectedShader.HasKernel(
+                "CountBinsWithDiscardKey")
+                    ? selectedShader.FindKernel("CountBinsWithDiscardKey")
+                    : -1;
             int selectedPrepareKernel =
                 selectedShader.FindKernel("PrepareOffsetsAndWriteHeads");
             int selectedScatterKernel =
@@ -115,6 +129,10 @@ namespace Summit.GpuDirectBinning
             int selectedTrustedScatterKernel = selectedShader.HasKernel(
                 "ScatterValuesGuaranteedInRange")
                     ? selectedShader.FindKernel("ScatterValuesGuaranteedInRange")
+                    : -1;
+            int selectedFilteredScatterKernel = selectedShader.HasKernel(
+                "ScatterValuesWithDiscardKey")
+                    ? selectedShader.FindKernel("ScatterValuesWithDiscardKey")
                     : -1;
 
             bool shouldOwnPrimitives = primitives == null;
@@ -168,9 +186,12 @@ namespace Summit.GpuDirectBinning
             clearUintKernel = selectedClearKernel;
             countBinsKernel = selectedCountKernel;
             countBinsGuaranteedInRangeKernel = selectedTrustedCountKernel;
+            countBinsWithDiscardKeyKernel = selectedFilteredCountKernel;
             prepareOffsetsAndWriteHeadsKernel = selectedPrepareKernel;
             scatterValuesKernel = selectedScatterKernel;
             scatterValuesGuaranteedInRangeKernel = selectedTrustedScatterKernel;
+            scatterValuesWithDiscardKeyKernel =
+                selectedFilteredScatterKernel;
             this.primitives = selectedPrimitives;
             ownsPrimitives = shouldOwnPrimitives;
             writeHeads = selectedWriteHeads;
@@ -249,7 +270,9 @@ namespace Summit.GpuDirectBinning
                 binCount,
                 scanBackend,
                 false,
-                true);
+                true,
+                false,
+                0u);
         }
 
         /// <summary>
@@ -285,7 +308,9 @@ namespace Summit.GpuDirectBinning
                 binCount,
                 scanBackend,
                 true,
-                true);
+                true,
+                false,
+                0u);
         }
 
         /// <summary>
@@ -323,7 +348,83 @@ namespace Summit.GpuDirectBinning
                 binCount,
                 scanBackend,
                 true,
-                false);
+                false,
+                false,
+                0u);
+        }
+
+        /// <summary>
+        /// Records safe CSR binning while excluding one explicit key.
+        /// </summary>
+        /// <remarks>
+        /// Elements whose key equals <paramref name="discardKey"/> do not
+        /// contribute to counts, offsets, diagnostics, or output writes.
+        /// Other out-of-range keys retain the normal invalid-key diagnostic.
+        /// The discard key must be outside the active bin range.
+        /// </remarks>
+        public void RecordWithDiscardKey(
+            CommandBuffer commands,
+            GraphicsBuffer keys,
+            GraphicsBuffer values,
+            GraphicsBuffer binCounts,
+            GraphicsBuffer binOffsets,
+            GraphicsBuffer binnedValues,
+            GraphicsBuffer diagnostics,
+            int elementCount,
+            int binCount,
+            uint discardKey,
+            GpuPrimitiveBackend scanBackend =
+                GpuPrimitiveBackend.Auto)
+        {
+            RecordInternal(
+                commands,
+                keys,
+                values,
+                binCounts,
+                binOffsets,
+                binnedValues,
+                diagnostics,
+                elementCount,
+                binCount,
+                scanBackend,
+                false,
+                true,
+                true,
+                discardKey);
+        }
+
+        /// <summary>
+        /// Records discard-key binning without clearing caller diagnostics.
+        /// </summary>
+        public void RecordWithDiscardKeyWithoutDiagnosticClear(
+            CommandBuffer commands,
+            GraphicsBuffer keys,
+            GraphicsBuffer values,
+            GraphicsBuffer binCounts,
+            GraphicsBuffer binOffsets,
+            GraphicsBuffer binnedValues,
+            GraphicsBuffer diagnostics,
+            int elementCount,
+            int binCount,
+            uint discardKey,
+            GpuPrimitiveBackend scanBackend =
+                GpuPrimitiveBackend.Auto)
+        {
+            RecordInternal(
+                commands,
+                keys,
+                values,
+                binCounts,
+                binOffsets,
+                binnedValues,
+                diagnostics,
+                elementCount,
+                binCount,
+                scanBackend,
+                false,
+                false,
+                true,
+                discardKey);
         }
 
         private void RecordInternal(
@@ -338,7 +439,9 @@ namespace Summit.GpuDirectBinning
             int binCount,
             GpuPrimitiveBackend scanBackend,
             bool guaranteedInRange,
-            bool clearDiagnostics)
+            bool clearDiagnostics,
+            bool hasDiscardKey,
+            uint discardKey)
         {
             ValidateRecordArguments(
                 commands,
@@ -352,6 +455,19 @@ namespace Summit.GpuDirectBinning
                 binCount,
                 scanBackend);
 
+            if (guaranteedInRange && hasDiscardKey)
+            {
+                throw new InvalidOperationException(
+                    "Guaranteed-in-range and discard-key modes are mutually " +
+                    "exclusive.");
+            }
+            if (hasDiscardKey && discardKey < (uint)binCount)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(discardKey),
+                    "Discard key must be outside the active bin range.");
+            }
+
             if (guaranteedInRange &&
                 (countBinsGuaranteedInRangeKernel < 0 ||
                  scatterValuesGuaranteedInRangeKernel < 0))
@@ -360,22 +476,40 @@ namespace Summit.GpuDirectBinning
                     "The injected compute shader does not provide the " +
                     "GuaranteedInRange Direct kernels.");
             }
+            if (hasDiscardKey &&
+                (countBinsWithDiscardKeyKernel < 0 ||
+                 scatterValuesWithDiscardKeyKernel < 0))
+            {
+                throw new InvalidOperationException(
+                    "The injected compute shader does not provide the " +
+                    "discard-key Direct kernels.");
+            }
 
-            int selectedCountKernel = guaranteedInRange
-                ? countBinsGuaranteedInRangeKernel
-                : countBinsKernel;
-            int selectedScatterKernel = guaranteedInRange
-                ? scatterValuesGuaranteedInRangeKernel
-                : scatterValuesKernel;
-            string selectedBinningSample = guaranteedInRange
-                ? TrustedBinningSample
-                : BinningSample;
-            string selectedCountSample = guaranteedInRange
-                ? TrustedCountSample
-                : CountSample;
-            string selectedScatterSample = guaranteedInRange
-                ? TrustedScatterSample
-                : ScatterSample;
+            int selectedCountKernel = hasDiscardKey
+                ? countBinsWithDiscardKeyKernel
+                : guaranteedInRange
+                    ? countBinsGuaranteedInRangeKernel
+                    : countBinsKernel;
+            int selectedScatterKernel = hasDiscardKey
+                ? scatterValuesWithDiscardKeyKernel
+                : guaranteedInRange
+                    ? scatterValuesGuaranteedInRangeKernel
+                    : scatterValuesKernel;
+            string selectedBinningSample = hasDiscardKey
+                ? FilteredBinningSample
+                : guaranteedInRange
+                    ? TrustedBinningSample
+                    : BinningSample;
+            string selectedCountSample = hasDiscardKey
+                ? FilteredCountSample
+                : guaranteedInRange
+                    ? TrustedCountSample
+                    : CountSample;
+            string selectedScatterSample = hasDiscardKey
+                ? FilteredScatterSample
+                : guaranteedInRange
+                    ? TrustedScatterSample
+                    : ScatterSample;
 
             BeginSample(commands, selectedBinningSample);
 
@@ -401,6 +535,13 @@ namespace Summit.GpuDirectBinning
                     shader,
                     BinCountId,
                     binCount);
+                if (hasDiscardKey)
+                {
+                    commands.SetComputeIntParam(
+                        shader,
+                        DiscardKeyId,
+                        unchecked((int)discardKey));
+                }
                 commands.SetComputeBufferParam(
                     shader,
                     selectedCountKernel,
@@ -471,6 +612,13 @@ namespace Summit.GpuDirectBinning
                     shader,
                     BinCountId,
                     binCount);
+                if (hasDiscardKey)
+                {
+                    commands.SetComputeIntParam(
+                        shader,
+                        DiscardKeyId,
+                        unchecked((int)discardKey));
+                }
                 commands.SetComputeBufferParam(
                     shader,
                     selectedScatterKernel,

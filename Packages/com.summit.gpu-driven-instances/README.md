@@ -20,7 +20,8 @@ The caller owns four read-only inputs:
 - one count and CSR offset per `(view, draw group)`;
 - a grouped instance-index stream whose visible prefix ends at
   `groupOffsets[VisibleBinCount]`;
-- a final culled bin containing every rejected view/instance pair;
+- either a final culled bin or a visible-only stream that discards rejected
+  pairs before atomic scatter;
 - five-word indexed-indirect arguments per visible bin;
 - fail-closed diagnostics for malformed instance or view contracts.
 
@@ -36,8 +37,8 @@ arguments are the stable public contract.
   nondecreasing.
 - `DrawGroupBase + LodCount` must not exceed the active draw-group count.
 - Frustum planes must be normalized and view LOD scale must be positive.
-- Malformed records are routed to the culled bin and set diagnostics rather
-  than producing an out-of-range key.
+- Malformed records set diagnostics and are routed to the culled bin or the
+  explicit non-error discard key, depending on `GpuDrivenInstanceOutputMode`.
 - Unknown/unsupported devices must retain a host-owned CPU or conventional
   renderer path. `SupportsCurrentDevice` is a capability gate, not a
   performance claim.
@@ -45,8 +46,9 @@ arguments are the stable public contract.
 ## Validation status
 
 Editor tests include an independent CPU oracle, dispatch boundaries, multiple
-views, view masks, LOD selection, culled membership, exact indirect arguments,
-zero work, invalid-contract diagnostics, argument validation, and disposal.
+views, view masks, LOD selection, culled-tail and visible-only membership,
+exact indirect arguments, zero work, invalid-contract diagnostics, argument
+validation, and disposal.
 
 This first package PR establishes correctness and a benchmarkable API. It does
 not claim a frame-time improvement. A later PR must add a frozen CPU-versus-GPU

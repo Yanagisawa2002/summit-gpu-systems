@@ -44,7 +44,9 @@ namespace Summit.GpuDrivenInstances.Tests
             GpuInstanceState[] instances,
             Vector4[] viewPlanes,
             Vector4[] viewParameters,
-            GpuDrawTemplate[] drawTemplates)
+            GpuDrawTemplate[] drawTemplates,
+            GpuDrivenInstanceOutputMode outputMode =
+                GpuDrivenInstanceOutputMode.CulledTail)
         {
             if (instances == null)
             {
@@ -80,11 +82,20 @@ namespace Summit.GpuDrivenInstances.Tests
                     "At least one draw template is required.",
                     nameof(drawTemplates));
             }
+            if (outputMode != GpuDrivenInstanceOutputMode.CulledTail &&
+                outputMode != GpuDrivenInstanceOutputMode.VisibleOnly)
+            {
+                throw new ArgumentOutOfRangeException(nameof(outputMode));
+            }
 
             int viewCount = viewParameters.Length;
             int drawGroupCount = drawTemplates.Length;
             int visibleBinCount = checked(viewCount * drawGroupCount);
-            int totalBinCount = checked(visibleBinCount + 1);
+            bool includeCulledTail =
+                outputMode == GpuDrivenInstanceOutputMode.CulledTail;
+            int totalBinCount = includeCulledTail
+                ? checked(visibleBinCount + 1)
+                : visibleBinCount;
             var bins = new List<uint>[totalBinCount];
             for (int bin = 0; bin < bins.Length; bin++)
             {
@@ -110,7 +121,11 @@ namespace Summit.GpuDrivenInstances.Tests
                             violationCount++;
                             errorFlags |= instanceErrors;
                         }
-                        bins[visibleBinCount].Add((uint)instanceIndex);
+                        AddRejected(
+                            bins,
+                            visibleBinCount,
+                            includeCulledTail,
+                            instanceIndex);
                         continue;
                     }
 
@@ -124,7 +139,11 @@ namespace Summit.GpuDrivenInstances.Tests
                                 GpuDrivenInstanceErrorFlags
                                     .InvalidViewLodScale;
                         }
-                        bins[visibleBinCount].Add((uint)instanceIndex);
+                        AddRejected(
+                            bins,
+                            visibleBinCount,
+                            includeCulledTail,
+                            instanceIndex);
                         continue;
                     }
 
@@ -140,7 +159,11 @@ namespace Summit.GpuDrivenInstances.Tests
                             viewPlanes,
                             viewIndex))
                     {
-                        bins[visibleBinCount].Add((uint)instanceIndex);
+                        AddRejected(
+                            bins,
+                            visibleBinCount,
+                            includeCulledTail,
+                            instanceIndex);
                         continue;
                     }
 
@@ -150,7 +173,11 @@ namespace Summit.GpuDrivenInstances.Tests
                     int selectedLod = SelectLod(instance, scaledDistance);
                     if (selectedLod < 0)
                     {
-                        bins[visibleBinCount].Add((uint)instanceIndex);
+                        AddRejected(
+                            bins,
+                            visibleBinCount,
+                            includeCulledTail,
+                            instanceIndex);
                         continue;
                     }
 
@@ -310,6 +337,18 @@ namespace Summit.GpuDrivenInstances.Tests
                     GpuDrivenInstanceErrorFlags.InvalidDrawGroupRange;
             }
             return flags;
+        }
+
+        private static void AddRejected(
+            List<uint>[] bins,
+            int visibleBinCount,
+            bool includeCulledTail,
+            int instanceIndex)
+        {
+            if (includeCulledTail)
+            {
+                bins[visibleBinCount].Add(checked((uint)instanceIndex));
+            }
         }
 
         private static bool IsSphereVisible(

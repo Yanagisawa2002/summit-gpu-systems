@@ -217,6 +217,114 @@ namespace Summit.GpuDirectBinning.Tests
         }
 
         [Test]
+        public void DiscardKeyExcludesPayloadWithoutInvalidDiagnostic()
+        {
+            const uint discardKey = uint.MaxValue;
+            uint[] keysData = { 0u, discardKey, 1u, discardKey, 7u };
+            uint[] valuesData = { 10u, 11u, 12u, 13u, 14u };
+            using (var binner = new GpuDirectSpatialBinner(5, 2))
+            using (var keys = CreateBuffer(keysData))
+            using (var values = CreateBuffer(valuesData))
+            using (var counts = CreateBuffer(2))
+            using (var offsets = CreateBuffer(3))
+            using (var output = CreateBuffer(5))
+            using (var diagnostics = CreateBuffer(
+                       GpuDirectSpatialBinner.DiagnosticWordCount))
+            using (var commands = new CommandBuffer())
+            {
+                binner.RecordWithDiscardKey(
+                    commands,
+                    keys,
+                    values,
+                    counts,
+                    offsets,
+                    output,
+                    diagnostics,
+                    keysData.Length,
+                    2,
+                    discardKey,
+                    GpuPrimitiveBackend.Portable);
+                Execute(commands);
+
+                Assert.That(
+                    ReadBuffer(counts, 2),
+                    Is.EqualTo(new[] { 1u, 1u }));
+                Assert.That(
+                    ReadBuffer(offsets, 3),
+                    Is.EqualTo(new[] { 0u, 1u, 2u }));
+                Assert.That(
+                    ReadBuffer(output, 2),
+                    Is.EqualTo(new[] { 10u, 12u }));
+                Assert.That(
+                    ReadBuffer(
+                        diagnostics,
+                        GpuDirectSpatialBinner.DiagnosticWordCount),
+                    Is.EqualTo(new[] { 1u, 1u }));
+            }
+        }
+
+        [Test]
+        public void DiscardKeyCanPreserveCallerOwnedDiagnostics()
+        {
+            const uint discardKey = uint.MaxValue;
+            using (var binner = new GpuDirectSpatialBinner(3, 2))
+            using (var keys = CreateBuffer(
+                       new[] { 0u, discardKey, 1u }))
+            using (var values = CreateBuffer(new[] { 4u, 5u, 6u }))
+            using (var counts = CreateBuffer(2))
+            using (var offsets = CreateBuffer(3))
+            using (var output = CreateBuffer(3))
+            using (var diagnostics = CreateBuffer(new[] { 9u, 10u }))
+            using (var commands = new CommandBuffer())
+            {
+                binner.RecordWithDiscardKeyWithoutDiagnosticClear(
+                    commands,
+                    keys,
+                    values,
+                    counts,
+                    offsets,
+                    output,
+                    diagnostics,
+                    3,
+                    2,
+                    discardKey,
+                    GpuPrimitiveBackend.Portable);
+                Execute(commands);
+
+                Assert.That(
+                    ReadBuffer(diagnostics, 2),
+                    Is.EqualTo(new[] { 9u, 10u }));
+            }
+        }
+
+        [Test]
+        public void DiscardKeyInsideBinRangeIsRejected()
+        {
+            using (var binner = new GpuDirectSpatialBinner(1, 2))
+            using (var keys = CreateBuffer(new[] { 0u }))
+            using (var values = CreateBuffer(new[] { 1u }))
+            using (var counts = CreateBuffer(2))
+            using (var offsets = CreateBuffer(3))
+            using (var output = CreateBuffer(1))
+            using (var diagnostics = CreateBuffer(2))
+            using (var commands = new CommandBuffer())
+            {
+                Assert.Throws<ArgumentOutOfRangeException>(
+                    () => binner.RecordWithDiscardKey(
+                        commands,
+                        keys,
+                        values,
+                        counts,
+                        offsets,
+                        output,
+                        diagnostics,
+                        1,
+                        2,
+                        1u));
+            }
+        }
+
+        [Test]
         public void SingleBinAtomicContentionPreservesEveryPayload()
         {
             const int elementCount = 4097;

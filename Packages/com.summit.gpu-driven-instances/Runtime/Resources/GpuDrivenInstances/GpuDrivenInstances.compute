@@ -39,6 +39,7 @@ int _InstanceCount;
 int _ViewCount;
 int _DrawGroupCount;
 int _VisibleBinCount;
+uint _CulledKey;
 
 static const uint ContractViolationCountWord = 0u;
 static const uint ErrorFlagsWord = 1u;
@@ -155,9 +156,8 @@ void ClassifyInstances(uint3 dispatchThreadId : SV_DispatchThreadID)
 
     uint instanceIndex = pairIndex % (uint)_InstanceCount;
     uint viewIndex = pairIndex / (uint)_InstanceCount;
-    uint culledBin = (uint)_VisibleBinCount;
     _Values[pairIndex] = instanceIndex;
-    _Keys[pairIndex] = culledBin;
+    _Keys[pairIndex] = _CulledKey;
 
     GpuInstanceState instance = _Instances[instanceIndex];
     uint instanceErrors = ValidateInstance(instance);

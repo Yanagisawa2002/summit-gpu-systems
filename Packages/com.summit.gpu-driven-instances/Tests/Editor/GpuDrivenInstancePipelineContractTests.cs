@@ -42,6 +42,18 @@ namespace Summit.GpuDrivenInstances.Tests
             Assert.That(
                 GpuDrivenInstancePipeline.GetCulledBinIndex(3, 7),
                 Is.EqualTo(21));
+            Assert.That(
+                GpuDrivenInstancePipeline.GetOutputBinCount(
+                    3,
+                    7,
+                    GpuDrivenInstanceOutputMode.CulledTail),
+                Is.EqualTo(22));
+            Assert.That(
+                GpuDrivenInstancePipeline.GetOutputBinCount(
+                    3,
+                    7,
+                    GpuDrivenInstanceOutputMode.VisibleOnly),
+                Is.EqualTo(21));
         }
 
         [Test]
@@ -68,7 +80,7 @@ namespace Summit.GpuDrivenInstances.Tests
                 .ToArray();
             Assert.That(records, Has.Length.EqualTo(1));
             ParameterInfo[] parameters = records[0].GetParameters();
-            Assert.That(parameters, Has.Length.EqualTo(14));
+            Assert.That(parameters, Has.Length.EqualTo(15));
             Assert.That(
                 parameters.Select(parameter => parameter.ParameterType),
                 Is.EqualTo(new[]
@@ -87,13 +99,18 @@ namespace Summit.GpuDrivenInstances.Tests
                     typeof(int),
                     typeof(int),
                     typeof(GpuPrimitiveBackend),
+                    typeof(GpuDrivenInstanceOutputMode),
                 }));
+            Assert.That(parameters[parameters.Length - 2].IsOptional, Is.True);
+            Assert.That(
+                parameters[parameters.Length - 2].DefaultValue,
+                Is.EqualTo(GpuPrimitiveBackend.Auto));
             Assert.That(parameters.Last().IsOptional, Is.True);
             Assert.That(
                 parameters.Last().DefaultValue,
-                Is.EqualTo(GpuPrimitiveBackend.Auto));
+                Is.EqualTo(GpuDrivenInstanceOutputMode.CulledTail));
             Assert.That(
-                parameters.Take(parameters.Length - 1)
+                parameters.Take(parameters.Length - 2)
                     .All(parameter => !parameter.IsOptional),
                 Is.True);
         }
@@ -136,6 +153,11 @@ namespace Summit.GpuDrivenInstances.Tests
                 () => GpuDrivenInstancePipeline.GetVisibleBinCount(
                     32,
                     int.MaxValue));
+            Assert.Throws<ArgumentOutOfRangeException>(
+                () => GpuDrivenInstancePipeline.GetOutputBinCount(
+                    1,
+                    1,
+                    (GpuDrivenInstanceOutputMode)99));
         }
     }
 }

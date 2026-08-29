@@ -124,6 +124,42 @@ namespace Summit.GpuDirectBinning.Tests
                 Is.EqualTo(GpuPrimitiveBackend.Auto));
         }
 
+        [TestCase("RecordWithDiscardKey")]
+        [TestCase("RecordWithDiscardKeyWithoutDiagnosticClear")]
+        public void DiscardKeyRecordsHaveExplicitShape(string methodName)
+        {
+            MethodInfo method = typeof(GpuDirectSpatialBinner)
+                .GetMethod(methodName);
+            Assert.That(method, Is.Not.Null);
+            Assert.That(method.ReturnType, Is.EqualTo(typeof(void)));
+            Assert.That(
+                method.GetParameters()
+                    .Select(parameter => parameter.ParameterType),
+                Is.EqualTo(new[]
+                {
+                    typeof(CommandBuffer),
+                    typeof(GraphicsBuffer),
+                    typeof(GraphicsBuffer),
+                    typeof(GraphicsBuffer),
+                    typeof(GraphicsBuffer),
+                    typeof(GraphicsBuffer),
+                    typeof(GraphicsBuffer),
+                    typeof(int),
+                    typeof(int),
+                    typeof(uint),
+                    typeof(GpuPrimitiveBackend),
+                }));
+            ParameterInfo[] parameters = method.GetParameters();
+            Assert.That(
+                parameters.Take(parameters.Length - 1)
+                    .All(parameter => !parameter.IsOptional),
+                Is.True);
+            Assert.That(parameters.Last().IsOptional, Is.True);
+            Assert.That(
+                parameters.Last().DefaultValue,
+                Is.EqualTo(GpuPrimitiveBackend.Auto));
+        }
+
         [Test]
         public void ProfilerMarkerConstructorOptionDefaultsToEnabled()
         {
