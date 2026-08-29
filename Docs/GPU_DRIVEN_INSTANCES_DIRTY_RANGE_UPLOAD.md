@@ -82,10 +82,10 @@ CPU submission time; exact ranges/calls/bytes; update hash; staging-slot wait;
 managed allocation; and Unity CPU total/main frame timing where available.
 
 Validation happens after completion fences and outside measured rows. It reads
-back the entire instance-state buffer and requires the same 48-byte-record state
-hash as the prepared slot. The integration test separately executes both full
-and dirty workloads at the same ordinal and requires exact final state-hash
-parity.
+back the entire instance-state buffer asynchronously and requires the same
+48-byte-record state hash as the prepared slot. The integration test separately
+executes both full and dirty workloads at the same ordinal and requires exact
+final state-hash parity.
 
 Run focused tests:
 
@@ -106,3 +106,11 @@ the tested Unity/D3D12 device. It does not measure physical bus traffic, replace
 the broader frame macrobenchmark, establish a SUMMIT scene result, or prove the
 best automatic threshold. Hierarchical culling and policy selection remain
 separate follow-up PRs.
+
+Formal RTX 4090 evidence at the tested implementation commit is summarized in
+`GPU_DRIVEN_INSTANCES_DIRTY_RANGE_UPLOAD_RTX4090_FORMAL_2026-08-30.md`.
+The `0%`, `1%`, and `10%` cells reduced API-requested upload bytes by
+`100%`, `99%`, and `90%` and reduced CPU submission P95 by
+`38.6%–96.1%`. The explicit `100%` dirty control requested the same bytes as
+full upload but regressed CPU submission P95 by `27.2%–30.7%`; this negative
+control is retained as the causal motivation for the later automatic selector.

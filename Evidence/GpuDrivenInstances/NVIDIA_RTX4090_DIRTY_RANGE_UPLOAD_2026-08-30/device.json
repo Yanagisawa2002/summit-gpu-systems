@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "suite": "summit.gpu-driven-instance-upload",
+  "operatingSystem": "Windows 11  (10.0.26200)",
+  "processorType": "Intel(R) Core(TM) Ultra 7 265K",
+  "processorCount": 20,
+  "systemMemorySizeMb": 32122,
+  "graphicsDeviceName": "NVIDIA GeForce RTX 4090",
+  "graphicsDeviceType": "Direct3D12",
+  "graphicsDeviceVendor": "NVIDIA",
+  "graphicsMemorySizeMb": 24138,
+  "graphicsApiVersion": "Direct3D 12 [level 12.2]",
+  "graphicsMultiThreaded": false,
+  "supportsGraphicsFence": true,
+  "frameTimingFeatureEnabled": true,
+  "unityVersion": "6000.5.2f1"
+}
