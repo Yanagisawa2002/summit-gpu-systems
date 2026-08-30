@@ -732,9 +732,13 @@ function Assert-PolicyBenchmarkEvidence {
         throw "$root did not accept its exact policy profile."
     }
     if ($RequireAcceptedPrimitiveProfile) {
+        if (-not (Test-PolicySha256Equal `
+                -Left (Get-RequiredPolicyMapValue `
+                    $summary 'primitiveProfileSha256' $root) `
+                -Right $ExpectedPrimitiveProfileSha256)) {
+            throw "$root has a mismatched primitive profile hash."
+        }
         foreach ($entry in @(
-                @('primitiveProfileSha256',
-                    $ExpectedPrimitiveProfileSha256),
                 @('primitiveProfileAccepted', '1'),
                 @('primitiveProfileStatus', 'accepted'),
                 @('primitiveWorkloadId', $ExpectedPrimitiveWorkloadId),
@@ -784,8 +788,9 @@ function Assert-PolicyBenchmarkEvidence {
         throw "$root configuration contract is not exact."
     }
     if ($RequireAcceptedPrimitiveProfile -and
-        ([string]$config.primitiveProfileSha256 -cne
-            $ExpectedPrimitiveProfileSha256 -or
+        (-not (Test-PolicySha256Equal `
+            -Left ([string]$config.primitiveProfileSha256) `
+            -Right $ExpectedPrimitiveProfileSha256) -or
          -not [bool]$config.primitiveProfileAccepted -or
          [string]$config.primitiveProfileStatus -cne 'accepted' -or
          [string]$config.primitiveWorkloadId -cne
