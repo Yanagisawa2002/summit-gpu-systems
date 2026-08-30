@@ -332,10 +332,11 @@ namespace Summit.GpuPrimitives
             ValidateUintBuffer(keys, count, nameof(keys));
             ValidateUintBuffer(histogram, binCount, nameof(histogram));
 
-            // The wave histogram intentionally specializes for small radix
-            // domains. Auto falls back instead of rejecting a large domain.
+            // Histogram contention is data-dependent, not a capability test.
+            // Keep Auto on the robust Portable reduction; a measured external
+            // resolver may still force WaveOps for a validated workload.
             GpuPrimitiveBackend resolved =
-                backend == GpuPrimitiveBackend.Auto && binCount > 16
+                backend == GpuPrimitiveBackend.Auto
                     ? GpuPrimitiveBackend.Portable
                     : ResolveBackend(backend);
             if (resolved == GpuPrimitiveBackend.WaveOps && binCount > 16)

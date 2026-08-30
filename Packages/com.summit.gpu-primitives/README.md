@@ -71,7 +71,9 @@ power of two and no larger than `GpuPrimitives.MaxElementCount`; with the
 current dispatch bound, the largest permitted power of two is 8,388,608 bins.
 The wave histogram supports up to 16 bins. The portable path uses a
 group-shared 16-bin reduction for the same small domain and retains the global
-atomic fallback for larger domains. Stable compaction defines order; append compaction only
+atomic fallback for larger domains. Histogram `Auto` conservatively selects
+Portable because contention is input-dependent; callers may still force a
+backend chosen by a measured device/workload profile. Stable compaction defines order; append compaction only
 defines membership and count. Radix sorting is a stable unsigned 32-bit
 key/value sort.
 
