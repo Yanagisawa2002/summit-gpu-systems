@@ -69,6 +69,39 @@ if (-not (Test-Path -LiteralPath $integrationRoot)) {
     $failures.Add('Missing isolated NYCGIS integration snapshot.')
 }
 
+$externalBrgRoot = Join-Path `
+    $RepositoryRoot 'ExternalBenchmarks\BRGShooter'
+foreach ($relativePath in @(
+        'BENCHMARK_CONTRACT.md',
+        'UPSTREAM_BENCHMARK_LOCK.json',
+        'Tools\Test-UpstreamBenchmarkLock.ps1')) {
+    $requiredPath = Join-Path $externalBrgRoot $relativePath
+    if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
+        $failures.Add("Missing external BRG contract file: $requiredPath")
+    }
+}
+foreach ($upstreamDirectory in @(
+        'Assets', 'Packages', 'ProjectSettings', 'UserSettings', 'img')) {
+    $vendoredPath = Join-Path $externalBrgRoot $upstreamDirectory
+    if (Test-Path -LiteralPath $vendoredPath) {
+        $failures.Add(
+            "External BRG fixture content must not be vendored: $vendoredPath")
+    }
+}
+if (Test-Path -LiteralPath (
+        Join-Path $externalBrgRoot 'UPSTREAM_BENCHMARK_LOCK.json')) {
+    $externalLock = Get-Content -Raw -LiteralPath (
+        Join-Path $externalBrgRoot 'UPSTREAM_BENCHMARK_LOCK.json') |
+        ConvertFrom-Json
+    if ([int]$externalLock.schemaVersion -ne 1 -or
+        [string]$externalLock.suite -cne
+            'gpu-systems.external-brg-shooter' -or
+        [string]$externalLock.upstream.commit -notmatch
+            '^[0-9a-f]{40}$') {
+        $failures.Add('External BRG lock schema, suite, or commit is invalid.')
+    }
+}
+
 if ($failures.Count -gt 0) {
     foreach ($failure in $failures) {
         Write-Error $failure -ErrorAction Continue
@@ -81,3 +114,4 @@ Write-Host "Repository layout validated."
 Write-Host "Packages: $($expectedPackages.Count)"
 Write-Host "Portable shader/C# files checked: $sourceCount"
 Write-Host "Project-specific integration is isolated under Integrations/NYCGIS."
+Write-Host "External BRG source is pinned without vendoring its Unity project."
