@@ -157,6 +157,7 @@ foreach ($requirement in @(
         @('actual-auto', 'Actual auto replay'),
         @('Test-PolicyReplayEquivalence', 'Replay equivalence gate'),
         @('Test-PolicyEndToEndReplay', 'End-to-end replay gate'),
+        @('Get-PolicyComparison', 'Typed comparison lookup'),
         @("suite = 'summit.gpu-driven-instance-policy-formal-v2'",
             'Self-describing amended formal receipt'),
         @('Test-PolicySha256Equal', 'Case-neutral SHA-256 identity gate'),
@@ -247,6 +248,7 @@ foreach ($requirement in @(
         @('pairedDelta', 'Paired delta summary'),
         @('pairedImprovementPercent', 'Paired percent summary'),
         @('Test-PolicyEndToEndReplay', 'End-to-end policy helper'),
+        @('Get-PolicyComparison', 'Typed comparison lookup helper'),
         @('Test-PolicySha256Equal', 'SHA-256 identity helper'),
         @('safeRejectedDecision', 'Rejected-rule safety evidence'),
         @('p95RegressionPercent', 'P95 comparison'),
@@ -268,6 +270,32 @@ foreach ($requirement in @(
 }
 
 Import-Module -Name $modulePath -Force
+
+$orderedComparison = [ordered]@{
+    totalCpuMs = [pscustomobject]@{ meanImprovementPercent = 12.5 }
+}
+$jsonComparison = $orderedComparison | ConvertTo-Json | ConvertFrom-Json
+foreach ($comparisonMap in @($orderedComparison, $jsonComparison)) {
+    $comparison = Get-PolicyComparison `
+        -Comparisons $comparisonMap `
+        -Metric 'totalCpuMs' `
+        -Context 'Synthetic summary'
+    if ([double]$comparison.meanImprovementPercent -ne 12.5) {
+        throw 'Typed comparison lookup returned the wrong metric value.'
+    }
+}
+Assert-Throws {
+    $null = Get-PolicyComparison `
+        -Comparisons $orderedComparison `
+        -Metric 'missingMetric' `
+        -Context 'Synthetic summary'
+} 'Missing ordered comparison'
+Assert-Throws {
+    $null = Get-PolicyComparison `
+        -Comparisons $jsonComparison `
+        -Metric 'missingMetric' `
+        -Context 'Synthetic summary'
+} 'Missing object comparison'
 
 $mixedCaseSha = 'A1b2C3d4' * 8
 if (-not (Test-PolicySha256Equal `

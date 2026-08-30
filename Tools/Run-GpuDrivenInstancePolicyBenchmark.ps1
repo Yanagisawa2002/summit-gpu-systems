@@ -1611,8 +1611,16 @@ else {
         }
         $endToEndPrimaryMetric =
             [string]$endToEndCell[0].performanceGate.primaryMetric
-        $endToEndPrimary = $endToEndCell[0].performanceGate.comparisons.
-            PSObject.Properties[$endToEndPrimaryMetric].Value
+        $endToEndPrimary = Get-PolicyComparison `
+            -Comparisons $endToEndCell[0].performanceGate.comparisons `
+            -Metric $endToEndPrimaryMetric `
+            -Context "End-to-end replay '$($cellReceipt.ruleId)'"
+        $holdoutPrimaryMetric =
+            [string]$cellReceipt.holdoutGate.primaryMetric
+        $holdoutPrimary = Get-PolicyComparison `
+            -Comparisons $cellReceipt.holdoutGate.comparisons `
+            -Metric $holdoutPrimaryMetric `
+            -Context "Holdout '$($cellReceipt.ruleId)'"
         [pscustomobject][ordered]@{
             ruleId = [string]$cellReceipt.ruleId
             candidateKind = [string]$cellReceipt.candidateKind
@@ -1624,58 +1632,27 @@ else {
             calibrationAccepted =
                 [bool]$cellReceipt.calibrationGate.accepted
             holdoutAccepted = [bool]$cellReceipt.holdoutGate.accepted
-            holdoutPrimaryMetric =
-                [string]$cellReceipt.holdoutGate.primaryMetric
+            holdoutPrimaryMetric = $holdoutPrimaryMetric
             holdoutMeanImprovementPercent =
-                [double]$cellReceipt.holdoutGate.comparisons.
-                    PSObject.Properties[
-                        [string]$cellReceipt.holdoutGate.primaryMetric].
-                    Value.meanImprovementPercent
+                [double]$holdoutPrimary.meanImprovementPercent
             holdoutPositiveWinPercent =
-                [double]$cellReceipt.holdoutGate.comparisons.
-                    PSObject.Properties[
-                        [string]$cellReceipt.holdoutGate.primaryMetric].
-                    Value.positiveWinPercent
+                [double]$holdoutPrimary.positiveWinPercent
             holdoutP95RegressionPercent =
-                [double]$cellReceipt.holdoutGate.comparisons.
-                    PSObject.Properties[
-                        [string]$cellReceipt.holdoutGate.primaryMetric].
-                    Value.p95RegressionPercent
+                [double]$holdoutPrimary.p95RegressionPercent
             holdoutP99RegressionPercent =
-                [double]$cellReceipt.holdoutGate.comparisons.
-                    PSObject.Properties[
-                        [string]$cellReceipt.holdoutGate.primaryMetric].
-                    Value.p99RegressionPercent
+                [double]$holdoutPrimary.p99RegressionPercent
             holdoutPairedDeltaMeanMs =
-                [double]$cellReceipt.holdoutGate.comparisons.
-                    PSObject.Properties[
-                        [string]$cellReceipt.holdoutGate.primaryMetric].
-                    Value.pairedDelta.mean
+                [double]$holdoutPrimary.pairedDelta.mean
             holdoutPairedDeltaP95Ms =
-                [double]$cellReceipt.holdoutGate.comparisons.
-                    PSObject.Properties[
-                        [string]$cellReceipt.holdoutGate.primaryMetric].
-                    Value.pairedDelta.p95
+                [double]$holdoutPrimary.pairedDelta.p95
             holdoutPairedDeltaP99Ms =
-                [double]$cellReceipt.holdoutGate.comparisons.
-                    PSObject.Properties[
-                        [string]$cellReceipt.holdoutGate.primaryMetric].
-                    Value.pairedDelta.p99
+                [double]$holdoutPrimary.pairedDelta.p99
             holdoutPairedImprovementMeanPercent =
-                [double]$cellReceipt.holdoutGate.comparisons.
-                    PSObject.Properties[
-                        [string]$cellReceipt.holdoutGate.primaryMetric].
-                    Value.pairedImprovementPercent.mean
+                [double]$holdoutPrimary.pairedImprovementPercent.mean
             holdoutPairedImprovementP95Percent =
-                [double]$cellReceipt.holdoutGate.comparisons.
-                    PSObject.Properties[
-                        [string]$cellReceipt.holdoutGate.primaryMetric].
-                    Value.pairedImprovementPercent.p95
+                [double]$holdoutPrimary.pairedImprovementPercent.p95
             holdoutPairedImprovementP99Percent =
-                [double]$cellReceipt.holdoutGate.comparisons.
-                    PSObject.Properties[
-                        [string]$cellReceipt.holdoutGate.primaryMetric].
-                    Value.pairedImprovementPercent.p99
+                [double]$holdoutPrimary.pairedImprovementPercent.p99
             endToEndAccepted = [bool]$endToEndCell[0].accepted
             endToEndRequiredGate =
                 [string]$endToEndCell[0].requiredGate

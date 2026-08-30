@@ -97,6 +97,34 @@ function Get-RequiredPolicyMapValue {
     return [string]$Map[$Name]
 }
 
+function Get-PolicyComparison {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]$Comparisons,
+        [Parameter(Mandatory = $true)][string]$Metric,
+        [string]$Context = 'Policy comparisons'
+    )
+
+    $value = $null
+    if ($Comparisons -is [Collections.IDictionary]) {
+        if (-not $Comparisons.Contains($Metric)) {
+            throw "$Context is missing comparison '$Metric'."
+        }
+        $value = $Comparisons[$Metric]
+    }
+    else {
+        $property = $Comparisons.PSObject.Properties[$Metric]
+        if ($null -eq $property) {
+            throw "$Context is missing comparison '$Metric'."
+        }
+        $value = $property.Value
+    }
+    if ($null -eq $value) {
+        throw "$Context has a null comparison '$Metric'."
+    }
+    return $value
+}
+
 function ConvertTo-PolicyBoolean {
     [CmdletBinding()]
     param([Parameter(Mandatory = $true)]$Value)
@@ -1450,6 +1478,7 @@ Export-ModuleMember -Function @(
     'Get-PolicyCombinedSha256',
     'Read-PolicyKeyValueFile',
     'Get-RequiredPolicyMapValue',
+    'Get-PolicyComparison',
     'ConvertTo-PolicyBoolean',
     'ConvertTo-PolicyDouble',
     'Assert-PolicyCsvColumns',
