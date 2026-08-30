@@ -634,7 +634,7 @@ namespace Summit.GpuAutotuning.Tests
         }
 
         [Test]
-        public void CapabilityLossHardGatesActiveHierarchyAndWaveOps()
+        public void CapabilityLossHardGatesActiveHierarchy()
         {
             GpuDrivenInstancePolicySelector selector = HierarchySelector();
             GpuDrivenInstancePolicyObservation observation =
@@ -646,7 +646,7 @@ namespace Summit.GpuAutotuning.Tests
             Assert.That(active.CullingMode,
                 Is.EqualTo(GpuDrivenInstanceCullingMode.Hierarchy));
             Assert.That(active.PrimitiveBackend,
-                Is.EqualTo(GpuPrimitiveBackend.WaveOps));
+                Is.EqualTo(GpuPrimitiveBackend.Portable));
 
             observation.SupportsHierarchy = false;
             observation.SupportsWaveOps = false;
@@ -661,9 +661,6 @@ namespace Summit.GpuAutotuning.Tests
             AssertFlag(
                 gated,
                 GpuDrivenInstancePolicyDecisionFlags.CullingGateFallback);
-            AssertFlag(
-                gated,
-                GpuDrivenInstancePolicyDecisionFlags.BackendGateFallback);
             Assert.That(state.ActiveRuleIndex, Is.EqualTo(-1));
         }
 
@@ -963,8 +960,7 @@ namespace Summit.GpuAutotuning.Tests
                         maxVisibleBasisPoints: 3000,
                         outputMode: GpuDrivenInstanceOutputMode.VisibleOnly,
                         cullingMode:
-                            GpuDrivenInstanceCullingMode.Hierarchy,
-                        primitiveBackend: GpuPrimitiveBackend.WaveOps)));
+                            GpuDrivenInstanceCullingMode.Hierarchy)));
         }
 
         private static GpuDrivenInstancePolicyObservation

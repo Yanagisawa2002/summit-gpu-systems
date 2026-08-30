@@ -15,7 +15,7 @@ does not silently become the default.
 | 4 | CPU-vs-GPU procedural macrobenchmark | Strong CPU/engine-native baseline for 10K/100K instances | CPU submission P95 `>=20%` and `>=0.20 ms`; native GPU-region P99 no worse than `-5%` | implemented; formal evidence valid but overall NO-GO (3/4 + 3/4 gates) |
 | 5 | Dirty-range state mirroring | Merge changed ranges and avoid full-buffer upload | upload bytes and CPU P95 improve at 0/1/10% motion; 100% motion remains an explicit one-command control | implemented; formal D3D12 quality evidence valid, sparse cells win and 100% control regresses |
 | 6 | Hierarchical multi-view culling | Coarse cluster visibility before per-instance classification | wins at low visibility and many views; all-visible fallback protected | queued |
-| 7 | Device/workload policy integration | Select flat/hierarchical, filtered/full, and primitive backends by measured profile | calibration choice confirmed on untouched rounds | queued |
+| 7 | Device/workload upload/culling policy | Select `None/Dirty/Full` upload and `Flat/Hierarchy` culling by measured profile; preserve output as caller semantics and compose PR1 for primitives | calibration choice confirmed on untouched holdout/replay plus complete sealed phase receipts | implemented locally; fresh formal pending |
 | 8 | External macrobenchmark adapter | Consume the package in a pinned engine-native sample without vendoring it | directionally consistent result in at least two cells | queued |
 
 ## Why this order
@@ -50,3 +50,19 @@ does not establish CPU submission savings, end-to-end FPS, visual parity, or an
 external-engine result. Until PR 8 completes, the package is asset-independent
 but not externally macro-validated. New AMD results remain unavailable until
 that hardware is accessible.
+
+## PR7 corrected boundary
+
+PR7 does not calibrate four axes. Its frozen matrix changes exactly one of two
+measured mechanisms per cell: state upload or culling. `VisibleOnly` is a fixed
+caller-required output contract in every formal cell, and `Portable` is fixed in
+this matrix. Primitive `Portable/WaveOps` choice remains owned by the independent
+PR1 device/workload profile and is combined only after the instance selector.
+
+The formal workflow is resumable only through evidence created by the new
+checkpoint contract. It seals an immutable run manifest, EditMode/Player setup,
+and every `cell x phase` result. Resume must revalidate commit, source/tool
+hashes, Unity, Player payload, profile, phase specification, and evidence files;
+duplicate, missing, unexpected, corrupted, or foreign receipts fail closed.
+The interrupted pre-checkpoint 16/32 artifact is retained for diagnosis but is
+not resumable and cannot become formal evidence.

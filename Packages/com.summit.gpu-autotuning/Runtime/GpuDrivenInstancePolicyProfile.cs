@@ -72,12 +72,15 @@ namespace Summit.GpuAutotuning
         public string holdoutEvidenceId = string.Empty;
         public int holdoutSampleCount;
 
+        // Semantic match constraint supplied by the caller; not a tuned axis.
         public GpuDrivenInstanceOutputMode requiredOutputMode =
             GpuDrivenInstanceOutputMode.CulledTail;
         public GpuDrivenInstanceUploadMode uploadMode =
             GpuDrivenInstanceUploadMode.Full;
         public GpuDrivenInstanceCullingMode cullingMode =
             GpuDrivenInstanceCullingMode.Flat;
+        // Contract-v2 compatibility field. Profiles must leave this Portable;
+        // GpuPrimitiveBackendResolver owns independently measured selection.
         public GpuPrimitiveBackend primitiveBackend =
             GpuPrimitiveBackend.Portable;
 

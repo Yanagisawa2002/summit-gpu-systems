@@ -40,7 +40,9 @@ param(
     [string]$RightCase = 'dirty-flat',
     [ValidateSet('visible-only', 'culled-tail')]
     [string]$RequiredOutput = 'visible-only',
-    [string]$ProfilePath
+    [string]$ProfilePath,
+    [switch]$Resume,
+    [switch]$RecoverInterrupted
 )
 
 $ErrorActionPreference = 'Stop'
@@ -51,9 +53,9 @@ $calibrationSeed = 20260830
 $holdoutSeed = 20260831
 $replaySeed = 20260833
 $calibrationProtocol =
-    'gpu-driven-policy-calibration-v1-holdout-v1-replay-amendment-v2'
+    'gpu-driven-policy-upload-culling-v2-holdout-v1-replay-v2-checkpoint-v1'
 $protocolAmendmentReason =
-    'selector-equivalence-isolates-direct-cost-after-exploratory-20260832-tail-noise'
+    'two-measured-axes-plus-atomic-resumable-phase-evidence'
 $formalSampleFrames = 900
 $formalWarmupFrames = 60
 $suite = 'summit.gpu-driven-instance-policy-runner'
@@ -86,22 +88,28 @@ endToEndReplayGate=accepted:candidate-gate;rejected:full-flat-portable+no-materi
 $projectRoot = [IO.Path]::GetFullPath(
     (Split-Path -Parent $PSScriptRoot))
 $provenanceModulePath = Join-Path $PSScriptRoot 'GpuBenchmarkProvenance.psm1'
+$checkpointModulePath = Join-Path $PSScriptRoot 'GpuBenchmarkCheckpoint.psm1'
 $policyModulePath =
     Join-Path $PSScriptRoot 'GpuDrivenInstancePolicyBenchmark.psm1'
 $selectorScriptPath =
     Join-Path $PSScriptRoot 'Select-GpuDrivenInstancePolicyProfile.ps1'
 $runnerTestPath = Join-Path $PSScriptRoot (
     'Tests\Test-GpuDrivenInstancePolicyBenchmarkProvenance.ps1')
+$checkpointTestPath = Join-Path $PSScriptRoot (
+    'Tests\Test-GpuBenchmarkCheckpoint.ps1')
 foreach ($path in @(
         $provenanceModulePath,
+        $checkpointModulePath,
         $policyModulePath,
         $selectorScriptPath,
-        $runnerTestPath)) {
+        $runnerTestPath,
+        $checkpointTestPath)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Required policy benchmark tool is missing: $path"
     }
 }
 Import-Module -Name $provenanceModulePath -Force
+Import-Module -Name $checkpointModulePath -Force
 Import-Module -Name $policyModulePath -Force
 
 function Quote-PolicyProcessArgument {
@@ -115,10 +123,10 @@ function Write-Utf8Json {
         [Parameter(Mandatory = $true)][string]$Path,
         [int]$Depth = 20
     )
-    [IO.File]::WriteAllText(
-        $Path,
-        ($Value | ConvertTo-Json -Depth $Depth) + [Environment]::NewLine,
-        [Text.UTF8Encoding]::new($false))
+    [void](Write-GpuBenchmarkAtomicJson `
+        -Value $Value `
+        -Path $Path `
+        -Depth $Depth)
 }
 
 function Wait-PolicyProcess {
@@ -190,9 +198,11 @@ function Get-PolicySourceFiles {
     }
     foreach ($path in @(
             $PSCommandPath,
+            $checkpointModulePath,
             $policyModulePath,
             $selectorScriptPath,
             $runnerTestPath,
+            $checkpointTestPath,
             $provenanceModulePath,
             (Join-Path $projectRoot 'ProjectSettings\ProjectVersion.txt'),
             (Join-Path $projectRoot 'Packages\manifest.json'),
@@ -268,6 +278,182 @@ function New-FormalPolicyCells {
     return [object[]]$cells.ToArray()
 }
 
+function New-PolicyPhaseSpecification {
+    param(
+        [Parameter(Mandatory = $true)]$Scenario,
+        [Parameter(Mandatory = $true)][string]$Phase,
+        [Parameter(Mandatory = $true)][int]$RunSeed,
+        [Parameter(Mandatory = $true)][string]$RunLeftCase,
+        [Parameter(Mandatory = $true)][string]$RunRightCase
+    )
+
+    return [pscustomobject][ordered]@{
+        schemaVersion = 1
+        phaseId = $Phase + '/' + [string]$Scenario.ruleId
+        phase = $Phase
+        ruleId = [string]$Scenario.ruleId
+        seed = $RunSeed
+        instanceCount = [int]$Scenario.instanceCount
+        viewCount = [int]$Scenario.viewCount
+        visibilityBasisPoints = [int]$Scenario.visibilityBasisPoints
+        dirtyBasisPoints = [int]$Scenario.dirtyBasisPoints
+        requiredOutput = [string]$Scenario.requiredOutput
+        leftCaseId = Get-CanonicalCaseId $RunLeftCase
+        rightCaseId = Get-CanonicalCaseId $RunRightCase
+        requiresAcceptedProfile =
+            $RunLeftCase -in @('forced-selected', 'actual-auto') -or
+            $RunRightCase -in @('forced-selected', 'actual-auto')
+    }
+}
+
+function Get-PolicyPhaseReceiptPath {
+    param([Parameter(Mandatory = $true)][string]$PhaseId)
+
+    $safeName = $PhaseId -replace '[^A-Za-z0-9_.-]', '--'
+    $identity = Get-GpuBenchmarkObjectSha256 $PhaseId
+    return Join-Path $script:phaseReceiptsRoot (
+        $safeName + '--' + $identity.Substring(0, 16) + '.json')
+}
+
+function Get-PolicyEvidenceFileSetReceipt {
+    param([Parameter(Mandatory = $true)][string]$Directory)
+
+    return Get-GpuBenchmarkFileSetReceipt `
+        -Root $Directory `
+        -RelativePaths @(
+            'run-summary.txt',
+            'config.json',
+            'device.json',
+            'raw-frames.csv',
+            'block-summary.csv',
+            'validation.csv',
+            'selector-overhead.csv')
+}
+
+function Get-PolicyEvidenceAssertionParameters {
+    param(
+        [Parameter(Mandatory = $true)][string]$Directory,
+        [Parameter(Mandatory = $true)]$PhaseSpecification
+    )
+
+    $parameters = @{
+        Directory = $Directory
+        ExpectedSampleFrames = $SampleFrames
+        ExpectedSeed = [int]$PhaseSpecification.seed
+        ExpectedBuildCommit = $gitCommit
+        ExpectedUnityVersion = $expectedUnityVersion
+        ExpectedPipelineFingerprint = $pipelineContractFingerprint
+        ExpectedShaderFingerprint = $shaderContractFingerprint
+        ExpectedMeasurementFingerprint = $measurementContractFingerprint
+        ExpectedCalibrationProtocol = $calibrationProtocol
+        ExpectedLeftCaseId = [string]$PhaseSpecification.leftCaseId
+        ExpectedRightCaseId = [string]$PhaseSpecification.rightCaseId
+    }
+    if ([bool]$PhaseSpecification.requiresAcceptedProfile) {
+        $parameters['RequireAcceptedProfile'] = $true
+    }
+    return $parameters
+}
+
+function Update-PolicyRunnerProgress {
+    if ($null -eq $script:runnerConfig -or
+        [string]::IsNullOrWhiteSpace($script:runnerConfigPath)) {
+        return
+    }
+    $script:runnerConfig['playerRuns'] =
+        [object[]]$script:playerRuns.ToArray()
+    $script:runnerConfig['checkpoint']['executedPhaseCount'] =
+        $script:executedPhaseCount
+    $script:runnerConfig['checkpoint']['resumedPhaseCount'] =
+        $script:resumedPhaseCount
+    $script:runnerConfig['checkpoint']['lastProgressUtc'] =
+        (Get-Date).ToUniversalTime().ToString('O')
+    Write-Utf8Json $script:runnerConfig $script:runnerConfigPath 40
+}
+
+function Read-CompletedPolicyPhase {
+    param(
+        [Parameter(Mandatory = $true)]$PhaseSpecification,
+        [Parameter(Mandatory = $true)][string]$RunDirectory,
+        [Parameter(Mandatory = $true)][string]$ReceiptPath,
+        [string]$RunProfilePath
+    )
+
+    $receipt = Read-GpuBenchmarkSealedJson `
+        -Path $ReceiptPath `
+        -ExpectedSuite 'summit.gpu-benchmark-phase' `
+        -ExpectedSchemaVersion 1
+    $specificationSha256 =
+        Get-GpuBenchmarkObjectSha256 $PhaseSpecification
+    $expectedProfileSha256 = if (
+        [bool]$PhaseSpecification.requiresAcceptedProfile) {
+        (Get-FileHash -LiteralPath $RunProfilePath -Algorithm SHA256).Hash
+    }
+    else { '' }
+    $resolvedEvidenceDirectory = [IO.Path]::GetFullPath($RunDirectory)
+    $expectedScenarioId = [string]$PhaseSpecification.phase + '-' +
+        [string]$PhaseSpecification.ruleId + '-seed' +
+        [string]$PhaseSpecification.seed
+    if (-not (Test-PolicySha256Equal `
+            -Left ([string]$receipt.runContractFingerprint) `
+            -Right $script:runContractFingerprint) -or
+        [string]$receipt.phaseId -cne
+            [string]$PhaseSpecification.phaseId -or
+        [string]$receipt.scenarioId -cne $expectedScenarioId -or
+        [int]$receipt.exitCode -ne 0 -or
+        [string]::IsNullOrWhiteSpace([string]$receipt.startedUtc) -or
+        [string]::IsNullOrWhiteSpace([string]$receipt.finishedUtc) -or
+        -not (Test-PolicySha256Equal `
+            -Left ([string]$receipt.phaseSpecificationSha256) `
+            -Right $specificationSha256) -or
+        -not (Test-PolicySha256Equal `
+            -Left ([string]$receipt.playerPayloadSha256) `
+            -Right ([string]$initialPayload.sha256)) -or
+        -not [string]::Equals(
+            [IO.Path]::GetFullPath([string]$receipt.evidenceDirectory),
+            $resolvedEvidenceDirectory,
+            [StringComparison]::OrdinalIgnoreCase) -or
+        [string]$receipt.profileSha256 -cne $expectedProfileSha256) {
+        throw "Phase receipt is not bound to the current run: $ReceiptPath"
+    }
+    $null = Assert-GpuBenchmarkFileSetReceipt `
+        -Root $resolvedEvidenceDirectory `
+        -Receipt $receipt.evidenceFileSet
+    $assertionParameters = Get-PolicyEvidenceAssertionParameters `
+        $resolvedEvidenceDirectory $PhaseSpecification
+    $evidence = Assert-PolicyBenchmarkEvidence @assertionParameters
+    if (-not (Test-PolicySha256Equal `
+            -Left ([string]$receipt.evidenceSha256) `
+            -Right ([string]$evidence.evidenceSha256))) {
+        throw "Phase evidence identity changed after sealing: $ReceiptPath"
+    }
+    $currentPayload =
+        Get-GpuBenchmarkPlayerPayload -PlayerPath $resolvedPlayerPath
+    if ([string]$currentPayload.sha256 -cne [string]$initialPayload.sha256) {
+        throw "Frozen Player payload changed before resuming '$($receipt.phaseId)'."
+    }
+    $script:playerRuns.Add([pscustomobject][ordered]@{
+        scenarioId = [string]$receipt.scenarioId
+        phaseId = [string]$receipt.phaseId
+        phase = [string]$PhaseSpecification.phase
+        seed = [int]$PhaseSpecification.seed
+        leftCase = [string]$PhaseSpecification.leftCaseId
+        rightCase = [string]$PhaseSpecification.rightCaseId
+        startedUtc = [string]$receipt.startedUtc
+        finishedUtc = [string]$receipt.finishedUtc
+        exitCode = 0
+        evidenceDirectory = $resolvedEvidenceDirectory
+        evidenceSha256 = [string]$evidence.evidenceSha256
+        playerPayloadSha256 = [string]$currentPayload.sha256
+        phaseReceiptPath = [IO.Path]::GetFullPath($ReceiptPath)
+        phaseReceiptSha256 = [string]$receipt.recordSha256
+        resumed = $true
+    })
+    $script:resumedPhaseCount++
+    Update-PolicyRunnerProgress
+    return $evidence
+}
+
 function Invoke-PolicyPlayer {
     param(
         [Parameter(Mandatory = $true)]$Scenario,
@@ -294,14 +480,51 @@ function Invoke-PolicyPlayer {
         throw 'Player payload changed before a policy Player run.'
     }
 
+    $phaseSpecification = New-PolicyPhaseSpecification `
+        $Scenario $Phase $RunSeed $RunLeftCase $RunRightCase
     $scenarioId = $Phase + '-' + [string]$Scenario.ruleId +
         '-seed' + [string]$RunSeed
     $runDirectory = Join-Path $outputRoot (
         (Join-Path $Phase ([string]$Scenario.ruleId)))
+    $phaseReceiptPath = Get-PolicyPhaseReceiptPath `
+        ([string]$phaseSpecification.phaseId)
+    $requireProfile = [bool]$phaseSpecification.requiresAcceptedProfile
+    if ($requireProfile) {
+        if (-not (Test-Path -LiteralPath $RunProfilePath -PathType Leaf)) {
+            throw "Policy profile is missing: $RunProfilePath"
+        }
+        if (-not [string]::IsNullOrWhiteSpace($script:frozenProfileSha256) -and
+            -not (Test-PolicySha256Equal `
+                -Left (Get-FileHash -LiteralPath $RunProfilePath `
+                    -Algorithm SHA256).Hash `
+                -Right $script:frozenProfileSha256)) {
+            throw 'Frozen policy profile changed before replay.'
+        }
+    }
+    if (Test-Path -LiteralPath $phaseReceiptPath -PathType Leaf) {
+        if (-not $Resume) {
+            throw "Fresh workflow found an unexpected phase receipt: $phaseReceiptPath"
+        }
+        return Read-CompletedPolicyPhase `
+            $phaseSpecification $runDirectory $phaseReceiptPath $RunProfilePath
+    }
     New-Item -ItemType Directory -Path $runDirectory -Force | Out-Null
     if ($null -ne (Get-ChildItem -LiteralPath $runDirectory -Force |
             Select-Object -First 1)) {
-        throw "Run directory is not empty: $runDirectory"
+        if (-not ($Resume -and $RecoverInterrupted)) {
+            throw "Unsealed phase directory requires -Resume -RecoverInterrupted: $runDirectory"
+        }
+        $interruptedRoot = Join-Path $script:checkpointRoot `
+            'interruptions\phases'
+        New-Item -ItemType Directory -Path $interruptedRoot -Force | Out-Null
+        $archivePath = Join-Path $interruptedRoot (
+            (($phaseSpecification.phaseId -replace '[^A-Za-z0-9_.-]', '--')) +
+            '--' + (Get-Date -Format 'yyyyMMdd-HHmmss-fffffff'))
+        Move-Item `
+            -LiteralPath $runDirectory `
+            -Destination $archivePath `
+            -ErrorAction Stop
+        New-Item -ItemType Directory -Path $runDirectory | Out-Null
     }
     $playerLog = Join-Path $runDirectory 'player.log'
     $arguments = @(
@@ -345,9 +568,6 @@ function Invoke-PolicyPlayer {
             (Quote-PolicyProcessArgument $gitCommit),
         '-logFile', (Quote-PolicyProcessArgument $playerLog))
     if (-not [string]::IsNullOrWhiteSpace($RunProfilePath)) {
-        if (-not (Test-Path -LiteralPath $RunProfilePath -PathType Leaf)) {
-            throw "Policy profile is missing: $RunProfilePath"
-        }
         if (-not [string]::IsNullOrWhiteSpace($script:frozenProfileSha256) -and
             -not (Test-PolicySha256Equal `
                 -Left (Get-FileHash -LiteralPath $RunProfilePath `
@@ -378,24 +598,8 @@ function Invoke-PolicyPlayer {
     if ($process.ExitCode -ne 0) {
         throw "$scenarioId failed with exit code $($process.ExitCode); see $playerLog"
     }
-    $requireProfile = $RunLeftCase -in @('forced-selected', 'actual-auto') -or
-        $RunRightCase -in @('forced-selected', 'actual-auto')
-    $receiptParameters = @{
-        Directory = $runDirectory
-        ExpectedSampleFrames = $SampleFrames
-        ExpectedSeed = $RunSeed
-        ExpectedBuildCommit = $gitCommit
-        ExpectedUnityVersion = $expectedUnityVersion
-        ExpectedPipelineFingerprint = $pipelineContractFingerprint
-        ExpectedShaderFingerprint = $shaderContractFingerprint
-        ExpectedMeasurementFingerprint = $measurementContractFingerprint
-        ExpectedCalibrationProtocol = $calibrationProtocol
-        ExpectedLeftCaseId = Get-CanonicalCaseId $RunLeftCase
-        ExpectedRightCaseId = Get-CanonicalCaseId $RunRightCase
-    }
-    if ($requireProfile) {
-        $receiptParameters['RequireAcceptedProfile'] = $true
-    }
+    $receiptParameters = Get-PolicyEvidenceAssertionParameters `
+        $runDirectory $phaseSpecification
     $evidence = Assert-PolicyBenchmarkEvidence @receiptParameters
     if ($requireProfile) {
         $expectedProfileSha = (Get-FileHash -LiteralPath $RunProfilePath `
@@ -411,19 +615,50 @@ function Invoke-PolicyPlayer {
     if ([string]$currentPayload.sha256 -cne [string]$initialPayload.sha256) {
         throw "$scenarioId changed the frozen Player payload."
     }
+    $finishedUtc = (Get-Date).ToUniversalTime().ToString('O')
+    $phaseReceipt = Write-GpuBenchmarkSealedJson `
+        -Value ([ordered]@{
+            schemaVersion = 1
+            suite = 'summit.gpu-benchmark-phase'
+            runContractFingerprint = $script:runContractFingerprint
+            phaseSpecificationSha256 =
+                Get-GpuBenchmarkObjectSha256 $phaseSpecification
+            phaseId = [string]$phaseSpecification.phaseId
+            scenarioId = $scenarioId
+            startedUtc = $startedUtc
+            finishedUtc = $finishedUtc
+            exitCode = 0
+            evidenceDirectory = [IO.Path]::GetFullPath($runDirectory)
+            evidenceSha256 = [string]$evidence.evidenceSha256
+            evidenceFileSet = Get-PolicyEvidenceFileSetReceipt $runDirectory
+            playerPayloadSha256 = [string]$currentPayload.sha256
+            profileSha256 = if ($requireProfile) {
+                (Get-FileHash -LiteralPath $RunProfilePath `
+                    -Algorithm SHA256).Hash
+            }
+            else { '' }
+        }) `
+        -Path $phaseReceiptPath `
+        -CreateNew
     $playerRuns.Add([pscustomobject][ordered]@{
         scenarioId = $scenarioId
+        phaseId = [string]$phaseSpecification.phaseId
         phase = $Phase
         seed = $RunSeed
         leftCase = Get-CanonicalCaseId $RunLeftCase
         rightCase = Get-CanonicalCaseId $RunRightCase
         startedUtc = $startedUtc
-        finishedUtc = (Get-Date).ToUniversalTime().ToString('O')
+        finishedUtc = $finishedUtc
         exitCode = $process.ExitCode
         evidenceDirectory = $runDirectory
         evidenceSha256 = $evidence.evidenceSha256
         playerPayloadSha256 = $currentPayload.sha256
+        phaseReceiptPath = [IO.Path]::GetFullPath($phaseReceiptPath)
+        phaseReceiptSha256 = [string]$phaseReceipt.recordSha256
+        resumed = $false
     })
+    $script:executedPhaseCount++
+    Update-PolicyRunnerProgress
     return $evidence
 }
 
@@ -484,6 +719,8 @@ $expectedTestIdentities = @(
     'Summit.GpuAutotuning.Tests.Editor.dll',
     'Summit.GpuAutotuning.Tests.GpuDrivenInstancePolicyProfileTests',
     'Summit.GpuAutotuning.Tests.GpuDrivenInstancePolicySelectorTests',
+    'Summit.GpuAutotuning.Tests.GpuDrivenInstancePolicyCompositionTests',
+    'Summit.GpuAutotuning.Tests.GpuDrivenInstancePolicyCompositionTests.OutputMismatchFailsClosedInsteadOfBecomingTunable',
     'Summit.GpuAutotuning.Tests.GpuDrivenInstancePolicySelectorTests.WarmSelectPathAllocatesZeroBytesAcrossOneHundredThousandCalls',
     'Summit.GpuAutotuning.Tests.GpuDrivenInstancePolicyProfileStoreTests',
     'Summit.GpuDrivenInstances.Tests.Editor.dll',
@@ -494,6 +731,12 @@ $expectedTestIdentities = @(
     'Summit.GpuDrivenInstances.Tests.GpuInstanceStateUploaderTests.WarmPlannedRecordingDoesNotAllocateManagedMemory')
 
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+if ($RecoverInterrupted -and -not $Resume) {
+    throw '-RecoverInterrupted is valid only together with -Resume.'
+}
+if ($Resume -and [string]::IsNullOrWhiteSpace($OutputDirectory)) {
+    throw '-Resume requires the exact existing -OutputDirectory.'
+}
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
     $OutputDirectory = Join-Path $projectRoot (
         "Reports\GpuDrivenInstancePolicyBenchmark\$Workflow-$stamp")
@@ -502,18 +745,38 @@ elseif (-not [IO.Path]::IsPathRooted($OutputDirectory)) {
     $OutputDirectory = Join-Path $projectRoot $OutputDirectory
 }
 $outputRoot = [IO.Path]::GetFullPath($OutputDirectory)
-if (Test-Path -LiteralPath $outputRoot) {
+if ($Resume) {
+    if (-not (Test-Path -LiteralPath $outputRoot -PathType Container)) {
+        throw "Resume output directory is missing: $outputRoot"
+    }
+}
+elseif (Test-Path -LiteralPath $outputRoot) {
     if ($null -ne (Get-ChildItem -LiteralPath $outputRoot -Force |
             Select-Object -First 1)) {
         throw 'Benchmark output directory must be new or empty.'
     }
 }
 New-Item -ItemType Directory -Path $outputRoot -Force | Out-Null
+$script:checkpointRoot = Join-Path $outputRoot 'checkpoint'
+$script:phaseReceiptsRoot = Join-Path $script:checkpointRoot 'phases'
+$runContractPath = Join-Path $script:checkpointRoot 'run-contract.json'
+$existingRunContract = if ($Resume) {
+    Read-GpuBenchmarkSealedJson `
+        -Path $runContractPath `
+        -ExpectedSuite 'summit.gpu-driven-instance-policy-run-contract' `
+        -ExpectedSchemaVersion 1
+}
+else { $null }
 
 if ([string]::IsNullOrWhiteSpace($PlayerPath)) {
-    $PlayerPath = Join-Path $projectRoot (
-        "Builds\GpuDrivenInstancePolicyBenchmark\$stamp\" +
-        'GpuDrivenInstancePolicyBenchmark.exe')
+    $PlayerPath = if ($Resume) {
+        [string]$existingRunContract.playerPath
+    }
+    else {
+        Join-Path $projectRoot (
+            "Builds\GpuDrivenInstancePolicyBenchmark\$stamp\" +
+            'GpuDrivenInstancePolicyBenchmark.exe')
+    }
 }
 elseif (-not [IO.Path]::IsPathRooted($PlayerPath)) {
     $PlayerPath = Join-Path $projectRoot $PlayerPath
@@ -528,13 +791,20 @@ if ($outputRoot.Equals(
         [StringComparison]::OrdinalIgnoreCase)) {
     throw 'Report output may not be inside the Player payload.'
 }
-if (Test-Path -LiteralPath $playerPayloadRoot) {
+if (-not $Resume -and (Test-Path -LiteralPath $playerPayloadRoot)) {
     if ($null -ne (Get-ChildItem -LiteralPath $playerPayloadRoot -Force |
             Select-Object -First 1)) {
         throw 'Fresh Player payload directory must be new or empty.'
     }
 }
-New-Item -ItemType Directory -Path $playerPayloadRoot -Force | Out-Null
+if ($Resume) {
+    if (-not (Test-Path -LiteralPath $playerPayloadRoot -PathType Container)) {
+        throw "Resume Player payload directory is missing: $playerPayloadRoot"
+    }
+}
+else {
+    New-Item -ItemType Directory -Path $playerPayloadRoot -Force | Out-Null
+}
 
 $sourceFiles = Get-PolicySourceFiles
 $sourceSnapshotSha256 =
@@ -545,11 +815,127 @@ $shaderContractFingerprint = Get-PolicyCombinedSha256 `
     (Get-ShaderContractFiles) $projectRoot
 $measurementContractFingerprint = Get-PolicyTextSha256 $measurementContract
 
+$formalCells = if ($Workflow -ceq 'FormalMatrix') {
+    New-FormalPolicyCells
+}
+else { [object[]]@() }
+$singleCell = [pscustomobject][ordered]@{
+    ruleId = 'single-scenario'
+    instanceCount = $InstanceCount
+    viewCount = $ViewCount
+    visibilityBasisPoints = $VisibilityBasisPoints
+    dirtyBasisPoints = $DirtyBasisPoints
+    requiredOutput = $RequiredOutput
+}
+$expectedPhaseSpecifications = [Collections.Generic.List[object]]::new()
+if ($Workflow -ceq 'FormalMatrix') {
+    foreach ($cell in $formalCells) {
+        $expectedPhaseSpecifications.Add((New-PolicyPhaseSpecification `
+            $cell 'calibration' $calibrationSeed `
+            $cell.baselineCase $cell.candidateCase))
+        $expectedPhaseSpecifications.Add((New-PolicyPhaseSpecification `
+            $cell 'holdout' $holdoutSeed `
+            $cell.baselineCase $cell.candidateCase))
+    }
+    foreach ($cell in $formalCells) {
+        $expectedPhaseSpecifications.Add((New-PolicyPhaseSpecification `
+            $cell 'replay' $replaySeed 'forced-selected' 'actual-auto'))
+        $expectedPhaseSpecifications.Add((New-PolicyPhaseSpecification `
+            $cell 'replay-end-to-end' $replaySeed `
+            'full-flat' 'actual-auto'))
+    }
+}
+else {
+    $expectedPhaseSpecifications.Add((New-PolicyPhaseSpecification `
+        $singleCell 'single' $Seed $LeftCase $RightCase))
+}
+$resolvedInputProfilePath = if (
+    [string]::IsNullOrWhiteSpace($ProfilePath)) { '' }
+else { [IO.Path]::GetFullPath($ProfilePath) }
+$inputProfileSha256 = if (
+    [string]::IsNullOrWhiteSpace($resolvedInputProfilePath)) { '' }
+else {
+    if (-not (Test-Path -LiteralPath $resolvedInputProfilePath -PathType Leaf)) {
+        throw "Input policy profile is missing: $resolvedInputProfilePath"
+    }
+    (Get-FileHash -LiteralPath $resolvedInputProfilePath -Algorithm SHA256).Hash
+}
+$runContract = [ordered]@{
+    schemaVersion = 1
+    suite = 'summit.gpu-driven-instance-policy-run-contract'
+    workflow = $Workflow
+    projectRoot = $projectRoot
+    outputDirectory = $outputRoot
+    playerPath = $resolvedPlayerPath
+    unityPath = $resolvedUnityPath
+    unityVersion = $expectedUnityVersion
+    graphicsApi = 'Direct3D12'
+    gitCommit = $gitCommit
+    gitBranch = [string]$gitStart.branch
+    sourceSnapshotSha256 = $sourceSnapshotSha256
+    pipelineContractFingerprint = $pipelineContractFingerprint
+    shaderContractFingerprint = $shaderContractFingerprint
+    measurementContractFingerprint = $measurementContractFingerprint
+    calibrationProtocol = $calibrationProtocol
+    protocolAmendmentReason = $protocolAmendmentReason
+    deviceIndex = $DeviceIndex
+    warmupFrames = $WarmupFrames
+    sampleFrames = $SampleFrames
+    playerTimeoutMinutes = $PlayerTimeoutMinutes
+    editModeTimeoutMinutes = $EditModeTimeoutMinutes
+    calibrationSeed = $calibrationSeed
+    holdoutSeed = $holdoutSeed
+    replaySeed = $replaySeed
+    optimizedAxes = [string[]]@('Upload', 'Culling')
+    semanticConstraints = [ordered]@{
+        output = 'caller-required;not-calibrated'
+        primitiveBackend =
+            'portable-in-this-matrix;compose-with-primitive-autotuner'
+    }
+    formalCells = [object[]]$formalCells
+    singleScenario = $singleCell
+    singleSeed = $Seed
+    singleLeftCase = $LeftCase
+    singleRightCase = $RightCase
+    inputProfilePath = $resolvedInputProfilePath
+    inputProfileSha256 = $inputProfileSha256
+    expectedPhases = [object[]]$expectedPhaseSpecifications.ToArray()
+}
+$expectedRunContractFingerprint =
+    Get-GpuBenchmarkObjectSha256 $runContract
+if ($Resume) {
+    if (-not (Test-PolicySha256Equal `
+            -Left ([string]$existingRunContract.recordSha256) `
+            -Right $expectedRunContractFingerprint)) {
+        throw 'Resume parameters, source, commit, paths, or protocol do not match the immutable run contract.'
+    }
+    $script:runContractFingerprint =
+        [string]$existingRunContract.recordSha256
+}
+else {
+    $sealedRunContract = Write-GpuBenchmarkSealedJson `
+        -Value $runContract `
+        -Path $runContractPath `
+        -CreateNew
+    $script:runContractFingerprint =
+        [string]$sealedRunContract.recordSha256
+}
+New-Item -ItemType Directory -Path $script:phaseReceiptsRoot -Force |
+    Out-Null
+$runLockPath = Join-Path $script:checkpointRoot 'run.lock.json'
+$runLockHandle = Enter-GpuBenchmarkRunLock `
+    -Path $runLockPath `
+    -RunContractFingerprint $script:runContractFingerprint `
+    -RecoverInterrupted:$RecoverInterrupted
+
+try {
+
 $preflightRoot = Join-Path $outputRoot 'preflight'
 New-Item -ItemType Directory -Path $preflightRoot -Force | Out-Null
 $generatedEditModeResultsPath =
     Join-Path $preflightRoot 'editmode-results.xml'
 $editModeLogPath = Join-Path $preflightRoot 'unity-editmode.log'
+if (-not $Resume) {
 if (Test-Path -LiteralPath $generatedEditModeResultsPath) {
     throw 'Commit-bound EditMode XML path was not fresh.'
 }
@@ -617,14 +1003,72 @@ $editModeProvenance = [ordered]@{
     -ExpectedUnityVersion $expectedUnityVersion)
 Write-Utf8Json $editModeProvenance (
     Join-Path $preflightRoot 'editmode-provenance.json') 30
+}
+else {
+    $editModeProvenancePath =
+        Join-Path $preflightRoot 'editmode-provenance.json'
+    if (-not (Test-Path -LiteralPath $generatedEditModeResultsPath `
+            -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $editModeProvenancePath -PathType Leaf)) {
+        throw 'Resume requires the completed commit-bound EditMode receipt.'
+    }
+    $editModeReceipt = Get-PolicyNUnitReceipt `
+        -Path $generatedEditModeResultsPath `
+        -ExpectedIdentities $expectedTestIdentities
+    $editModeProvenance = Get-Content `
+        -LiteralPath $editModeProvenancePath `
+        -Raw | ConvertFrom-Json -DateKind String
+    if (-not [string]::Equals(
+            [IO.Path]::GetFullPath([string]$editModeProvenance.resultPath),
+            [IO.Path]::GetFullPath($generatedEditModeResultsPath),
+            [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Resume EditMode provenance points to another XML receipt.'
+    }
+    [void](Assert-PolicyPreflightBinding `
+        -Provenance $editModeProvenance `
+        -ExpectedCommit $gitCommit `
+        -ExpectedSourceSha256 $sourceSnapshotSha256 `
+        -ExpectedXmlSha256 $editModeReceipt.sha256 `
+        -ExpectedUnityVersion $expectedUnityVersion)
+    $postTestGit = Get-GpuBenchmarkGitSnapshot -ProjectRoot $projectRoot
+    if ($postTestGit.head -ine $gitCommit -or [bool]$postTestGit.dirty) {
+        throw 'Git state changed before resuming commit-bound evidence.'
+    }
+    $postTestSourceSha256 =
+        Get-PolicyCombinedSha256 (Get-PolicySourceFiles) $projectRoot
+    if ($postTestSourceSha256 -cne $sourceSnapshotSha256) {
+        throw 'Policy source hash changed before resume.'
+    }
+}
 
-$playerRuns = [Collections.Generic.List[object]]::new()
+$script:playerRuns = [Collections.Generic.List[object]]::new()
+$script:executedPhaseCount = 0
+$script:resumedPhaseCount = 0
 $script:frozenProfileSha256 = ''
-$runnerConfig = [ordered]@{
-    schemaVersion = 1
+$previousRunnerConfig = if ($Resume -and
+    (Test-Path -LiteralPath (Join-Path $outputRoot 'runner-config.json') `
+        -PathType Leaf)) {
+    Get-Content -LiteralPath (Join-Path $outputRoot 'runner-config.json') -Raw |
+        ConvertFrom-Json -DateKind String
+}
+else { $null }
+$startedUtc = if ($null -ne $previousRunnerConfig -and
+    -not [string]::IsNullOrWhiteSpace(
+        [string]$previousRunnerConfig.startedUtc)) {
+    [string]$previousRunnerConfig.startedUtc
+}
+else { (Get-Date).ToUniversalTime().ToString('O') }
+$previousResumeInvocationCount = if ($null -ne $previousRunnerConfig -and
+    $null -ne $previousRunnerConfig.PSObject.Properties[
+        'resumeInvocationCount']) {
+    [int]$previousRunnerConfig.resumeInvocationCount
+}
+else { 0 }
+$script:runnerConfig = [ordered]@{
+    schemaVersion = 2
     suite = $suite
     workflow = $Workflow
-    startedUtc = (Get-Date).ToUniversalTime().ToString('O')
+    startedUtc = $startedUtc
     finalizedUtc = ''
     projectRoot = $projectRoot
     unityPath = $resolvedUnityPath
@@ -651,16 +1095,37 @@ $runnerConfig = [ordered]@{
     warmupFrames = $WarmupFrames
     sampleFrames = $SampleFrames
     freshPlayerBuild = $true
+    playerBuildCreatedByRun = $true
+    currentInvocationBuiltPlayer = -not $Resume
+    resumed = [bool]$Resume
+    resumeInvocationCount = $previousResumeInvocationCount + [int][bool]$Resume
     sourceHashesStableAcrossBuild = $false
     playerPayload = $null
     playerPayloadStableThroughRun = $false
     playerRuns = @()
     evidenceValid = $false
     formalContractSatisfied = $false
+    checkpoint = [ordered]@{
+        schemaVersion = 1
+        runContractPath = $runContractPath
+        runContractFingerprint = $script:runContractFingerprint
+        setupReceiptPath = Join-Path $script:checkpointRoot 'setup.json'
+        phaseReceiptsDirectory = $script:phaseReceiptsRoot
+        expectedPhaseCount = $expectedPhaseSpecifications.Count
+        executedPhaseCount = 0
+        resumedPhaseCount = 0
+        recoveryRequested = [bool]$RecoverInterrupted
+        recoveredLockPath = [string]$runLockHandle.RecoveredLockPath
+        lastProgressUtc = ''
+    }
 }
-$runnerConfigPath = Join-Path $outputRoot 'runner-config.json'
+$script:runnerConfigPath = Join-Path $outputRoot 'runner-config.json'
 Write-Utf8Json $runnerConfig $runnerConfigPath 30
 
+$playerPayloadManifestPath =
+    Join-Path $outputRoot 'player-payload-manifest.json'
+$setupReceiptPath = Join-Path $script:checkpointRoot 'setup.json'
+if (-not $Resume) {
 $buildLog = Join-Path $outputRoot 'unity-build.log'
 $buildArguments = @(
     '-batchmode',
@@ -702,26 +1167,78 @@ $initialPayload =
     Get-GpuBenchmarkPlayerPayload -PlayerPath $resolvedPlayerPath
 $runnerConfig['sourceHashesStableAcrossBuild'] = $true
 $runnerConfig['playerPayload'] = $initialPayload
-Write-Utf8Json $initialPayload (
-    Join-Path $outputRoot 'player-payload-manifest.json') 30
+$playerPayloadRecord = Write-GpuBenchmarkSealedJson `
+    -Value $initialPayload `
+    -Path $playerPayloadManifestPath `
+    -CreateNew
+$setupReceipt = Write-GpuBenchmarkSealedJson `
+    -Value ([ordered]@{
+        schemaVersion = 1
+        suite = 'summit.gpu-driven-instance-policy-setup'
+        runContractFingerprint = $script:runContractFingerprint
+        sourceSnapshotSha256 = $sourceSnapshotSha256
+        editModeResultSha256 = [string]$editModeReceipt.sha256
+        preflightFileSet = Get-GpuBenchmarkFileSetReceipt `
+            -Root $preflightRoot `
+            -RelativePaths @(
+                'editmode-results.xml',
+                'editmode-provenance.json')
+        playerPayloadRecordSha256 =
+            [string]$playerPayloadRecord.recordSha256
+        playerPayloadSha256 = [string]$initialPayload.sha256
+        completedUtc = (Get-Date).ToUniversalTime().ToString('O')
+    }) `
+    -Path $setupReceiptPath `
+    -CreateNew
+}
+else {
+    $playerPayloadRecord = Read-GpuBenchmarkSealedJson `
+        -Path $playerPayloadManifestPath `
+        -ExpectedSchemaVersion 1
+    $setupReceipt = Read-GpuBenchmarkSealedJson `
+        -Path $setupReceiptPath `
+        -ExpectedSuite 'summit.gpu-driven-instance-policy-setup' `
+        -ExpectedSchemaVersion 1
+    $initialPayload =
+        Get-GpuBenchmarkPlayerPayload -PlayerPath $resolvedPlayerPath
+    $currentPayloadRecordSha256 =
+        Get-GpuBenchmarkObjectSha256 $initialPayload
+    if (-not (Test-PolicySha256Equal `
+            -Left ([string]$playerPayloadRecord.recordSha256) `
+            -Right $currentPayloadRecordSha256) -or
+        -not (Test-PolicySha256Equal `
+            -Left ([string]$setupReceipt.runContractFingerprint) `
+            -Right $script:runContractFingerprint) -or
+        -not (Test-PolicySha256Equal `
+            -Left ([string]$setupReceipt.sourceSnapshotSha256) `
+            -Right $sourceSnapshotSha256) -or
+        -not (Test-PolicySha256Equal `
+            -Left ([string]$setupReceipt.editModeResultSha256) `
+            -Right ([string]$editModeReceipt.sha256)) -or
+        -not (Test-PolicySha256Equal `
+            -Left ([string]$setupReceipt.playerPayloadRecordSha256) `
+            -Right ([string]$playerPayloadRecord.recordSha256)) -or
+        -not (Test-PolicySha256Equal `
+            -Left ([string]$setupReceipt.playerPayloadSha256) `
+            -Right ([string]$initialPayload.sha256))) {
+        throw 'Resume setup receipt, source, preflight, or Player payload changed.'
+    }
+    $null = Assert-GpuBenchmarkFileSetReceipt `
+        -Root $preflightRoot `
+        -Receipt $setupReceipt.preflightFileSet
+    $runnerConfig['sourceHashesStableAcrossBuild'] = $true
+    $runnerConfig['playerPayload'] = $initialPayload
+}
 Write-Utf8Json $runnerConfig $runnerConfigPath 30
 
 if ($Workflow -ceq 'SingleScenario') {
-    $single = [pscustomobject][ordered]@{
-        ruleId = 'single-scenario'
-        instanceCount = $InstanceCount
-        viewCount = $ViewCount
-        visibilityBasisPoints = $VisibilityBasisPoints
-        dirtyBasisPoints = $DirtyBasisPoints
-        requiredOutput = $RequiredOutput
-    }
     $singleEvidence = Invoke-PolicyPlayer `
-        -Scenario $single `
+        -Scenario $singleCell `
         -Phase 'single' `
         -RunSeed $Seed `
         -RunLeftCase $LeftCase `
         -RunRightCase $RightCase `
-        -RunProfilePath $ProfilePath
+        -RunProfilePath $resolvedInputProfilePath
     Write-Utf8Json ([ordered]@{
         schemaVersion = 1
         evidenceDirectory = $singleEvidence.directory
@@ -735,7 +1252,7 @@ if ($Workflow -ceq 'SingleScenario') {
     }) (Join-Path $outputRoot 'single-scenario-receipt.json') 12
 }
 else {
-    $cells = New-FormalPolicyCells
+    $cells = $formalCells
     $manifestCells = [Collections.Generic.List[object]]::new()
     foreach ($cell in $cells) {
         $calibrationEvidence = Invoke-PolicyPlayer `
@@ -796,17 +1313,97 @@ else {
     }
     $selectionManifestPath =
         Join-Path $outputRoot 'policy-selection-manifest.json'
-    Write-Utf8Json $selectionManifest $selectionManifestPath 20
     $generatedProfilePath =
         Join-Path $outputRoot 'gpu-driven-instance-policy.json'
     $selectionReceiptPath =
         Join-Path $outputRoot 'policy-selection-receipt.json'
-    $profileResult = & $selectorScriptPath `
-        -ManifestPath $selectionManifestPath `
-        -OutputPath $generatedProfilePath `
-        -SelectionReceiptPath $selectionReceiptPath
-    $selectionReceipt = Get-Content -LiteralPath $selectionReceiptPath -Raw |
-        ConvertFrom-Json
+    $selectionCheckpointPath =
+        Join-Path $script:checkpointRoot 'selection.json'
+    $selectionManifestObjectSha256 =
+        Get-GpuBenchmarkObjectSha256 $selectionManifest
+    if ($Resume -and
+        (Test-Path -LiteralPath $selectionCheckpointPath -PathType Leaf)) {
+        $selectionCheckpoint = Read-GpuBenchmarkSealedJson `
+            -Path $selectionCheckpointPath `
+            -ExpectedSuite 'summit.gpu-driven-instance-policy-selection-stage' `
+            -ExpectedSchemaVersion 1
+        if (-not (Test-PolicySha256Equal `
+                -Left ([string]$selectionCheckpoint.runContractFingerprint) `
+                -Right $script:runContractFingerprint) -or
+            -not (Test-PolicySha256Equal `
+                -Left ([string]$selectionCheckpoint.
+                    selectionManifestObjectSha256) `
+                -Right $selectionManifestObjectSha256)) {
+            throw 'Selection checkpoint does not match current sealed evidence.'
+        }
+        $null = Assert-GpuBenchmarkFileSetReceipt `
+            -Root $outputRoot `
+            -Receipt $selectionCheckpoint.fileSet
+        $selectionReceipt =
+            Get-Content -LiteralPath $selectionReceiptPath -Raw |
+                ConvertFrom-Json -DateKind String
+        $profileResult = [pscustomobject][ordered]@{
+            profilePath = $generatedProfilePath
+            profileSha256 = [string]$selectionCheckpoint.profileSha256
+            selectionReceiptPath = $selectionReceiptPath
+            holdoutEvidenceSetId =
+                [string]$selectionReceipt.holdoutEvidenceSetId
+            ruleCount = [int]$selectionCheckpoint.ruleCount
+        }
+    }
+    else {
+        $selectionOutputs = @(
+            $selectionManifestPath,
+            $generatedProfilePath,
+            $selectionReceiptPath) | Where-Object {
+                Test-Path -LiteralPath $_
+            }
+        if ($selectionOutputs.Count -ne 0) {
+            if (-not ($Resume -and $RecoverInterrupted)) {
+                throw 'Unsealed selection outputs require -Resume -RecoverInterrupted.'
+            }
+            $selectionArchive = Join-Path $script:checkpointRoot (
+                'interruptions\selection-' +
+                (Get-Date -Format 'yyyyMMdd-HHmmss-fffffff'))
+            New-Item -ItemType Directory -Path $selectionArchive -Force |
+                Out-Null
+            foreach ($path in $selectionOutputs) {
+                Move-Item `
+                    -LiteralPath $path `
+                    -Destination (Join-Path $selectionArchive (
+                        Split-Path -Leaf $path)) `
+                    -ErrorAction Stop
+            }
+        }
+        Write-Utf8Json $selectionManifest $selectionManifestPath 20
+        $profileResult = & $selectorScriptPath `
+            -ManifestPath $selectionManifestPath `
+            -OutputPath $generatedProfilePath `
+            -SelectionReceiptPath $selectionReceiptPath
+        $selectionReceipt =
+            Get-Content -LiteralPath $selectionReceiptPath -Raw |
+                ConvertFrom-Json -DateKind String
+        $selectionCheckpoint = Write-GpuBenchmarkSealedJson `
+            -Value ([ordered]@{
+                schemaVersion = 1
+                suite =
+                    'summit.gpu-driven-instance-policy-selection-stage'
+                runContractFingerprint = $script:runContractFingerprint
+                selectionManifestObjectSha256 =
+                    $selectionManifestObjectSha256
+                profileSha256 = [string]$profileResult.profileSha256
+                ruleCount = [int]$profileResult.ruleCount
+                fileSet = Get-GpuBenchmarkFileSetReceipt `
+                    -Root $outputRoot `
+                    -RelativePaths @(
+                        'policy-selection-manifest.json',
+                        'gpu-driven-instance-policy.json',
+                        'policy-selection-receipt.json')
+                completedUtc = (Get-Date).ToUniversalTime().ToString('O')
+            }) `
+            -Path $selectionCheckpointPath `
+            -CreateNew
+    }
     if ([int]$selectionReceipt.cells.Count -ne $cells.Count -or
         -not [bool]$selectionReceipt.allRulesHoldoutAccepted -or
         -not [bool]$selectionReceipt.
@@ -818,7 +1415,14 @@ else {
             -Algorithm SHA256).Hash
     if (-not (Test-PolicySha256Equal `
             -Left $script:frozenProfileSha256 `
-            -Right ([string]$profileResult.profileSha256))) {
+            -Right ([string]$profileResult.profileSha256)) -or
+        -not (Test-PolicySha256Equal `
+            -Left ([string]$selectionReceipt.profileSha256) `
+            -Right $script:frozenProfileSha256) -or
+        -not (Test-PolicySha256Equal `
+            -Left ([string]$selectionReceipt.manifestSha256) `
+            -Right (Get-FileHash -LiteralPath $selectionManifestPath `
+                -Algorithm SHA256).Hash)) {
         throw 'Generated policy profile hash does not match its receipt.'
     }
 
@@ -919,6 +1523,10 @@ else {
     $formalReceipt = [ordered]@{
         schemaVersion = 2
         suite = 'summit.gpu-driven-instance-policy-formal-v2'
+        optimizedAxes = [string[]]@('Upload', 'Culling')
+        outputContractRole = 'caller-semantic-match-constraint'
+        primitiveBackendRole =
+            'portable-in-this-matrix;compose-pr1-resolver'
         sourceCommit = $gitCommit
         sourceSnapshotSha256 = $sourceSnapshotSha256
         unityVersion = $expectedUnityVersion
@@ -1083,6 +1691,7 @@ else {
         $expectedUnityVersion))
     $report.Add(('- Seeds: calibration `{0}`, holdout `{1}`, replay `{2}`' -f
         $calibrationSeed, $holdoutSeed, $replaySeed))
+    $report.Add('- Scope: this matrix calibrates upload and culling only. Output is a caller semantic constraint; primitive backend stays Portable here and composes with the independent PR1 resolver.')
     $report.Add("- Formal runs: $($cells.Count * 4) total ($($cells.Count) calibration, $($cells.Count) holdout, $($cells.Count) selector-equivalence replay, $($cells.Count) end-to-end replay).")
     $report.Add("- Raw measured rows: $($cells.Count * 4 * 8 * $SampleFrames)")
     $report.Add('- Candidate failure policy: retain evidence and reuse the measured baseline decision (formal baseline is Full + Flat + Portable).')
@@ -1109,6 +1718,25 @@ else {
         [Text.UTF8Encoding]::new($false))
 }
 
+$expectedPhaseIds = [string[]]@(
+    $expectedPhaseSpecifications | ForEach-Object {
+        [string]$_.phaseId
+    })
+$completedPhaseRecords = Assert-GpuBenchmarkPhaseCoverage `
+    -ReceiptsDirectory $script:phaseReceiptsRoot `
+    -ExpectedPhaseIds $expectedPhaseIds `
+    -RunContractFingerprint $script:runContractFingerprint
+$phaseReceiptIdentities = [object[]]@(
+    $completedPhaseRecords | Sort-Object phaseId | ForEach-Object {
+        [pscustomobject][ordered]@{
+            phaseId = [string]$_.phaseId
+            recordSha256 = [string]$_.recordSha256
+            evidenceSha256 = [string]$_.evidenceSha256
+        }
+    })
+$phaseReceiptSetSha256 =
+    Get-GpuBenchmarkObjectSha256 $phaseReceiptIdentities
+
 $finalPayload =
     Get-GpuBenchmarkPlayerPayload -PlayerPath $resolvedPlayerPath
 if ([string]$finalPayload.sha256 -cne [string]$initialPayload.sha256) {
@@ -1127,6 +1755,11 @@ $runnerConfig['playerRuns'] = [object[]]$playerRuns.ToArray()
 $runnerConfig['playerPayloadStableThroughRun'] = $true
 $runnerConfig['sourceHashesStableThroughRun'] = $true
 $runnerConfig['gitFinal'] = $gitFinal
+$runnerConfig['checkpoint']['phaseCoverageAccepted'] = $true
+$runnerConfig['checkpoint']['phaseReceiptSetSha256'] =
+    $phaseReceiptSetSha256
+$runnerConfig['checkpoint']['completedPhaseCount'] =
+    $completedPhaseRecords.Count
 $runnerConfig['evidenceValid'] = $true
 $runnerConfig['formalContractSatisfied'] =
     $Workflow -ceq 'FormalMatrix'
@@ -1134,7 +1767,13 @@ $runnerConfig['finalizedUtc'] = (Get-Date).ToUniversalTime().ToString('O')
 Write-Utf8Json $runnerConfig $runnerConfigPath 40
 
 $hashFiles = Get-ChildItem -LiteralPath $outputRoot -Recurse -File |
-    Where-Object { $_.Name -cne 'SHA256SUMS' } |
+    Where-Object {
+        $_.Name -cne 'SHA256SUMS' -and
+        -not [string]::Equals(
+            $_.FullName,
+            $runLockPath,
+            [StringComparison]::OrdinalIgnoreCase)
+    } |
     Sort-Object FullName
 $hashLines = foreach ($file in $hashFiles) {
     $relative = $file.FullName.Substring($outputRoot.Length).
@@ -1142,9 +1781,13 @@ $hashLines = foreach ($file in $hashFiles) {
     (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash +
         '  ' + $relative
 }
-[IO.File]::WriteAllLines(
-    (Join-Path $outputRoot 'SHA256SUMS'),
-    $hashLines,
-    [Text.UTF8Encoding]::new($false))
+[void](Write-GpuBenchmarkAtomicText `
+    -Path (Join-Path $outputRoot 'SHA256SUMS') `
+    -Text (($hashLines -join [Environment]::NewLine) +
+        [Environment]::NewLine))
 
 Write-Host "GPU-driven instance policy workflow passed: $outputRoot"
+}
+finally {
+    Exit-GpuBenchmarkRunLock $runLockHandle
+}

@@ -66,6 +66,12 @@ Anti-claim to rule out: the gain comes only from SUMMIT city data, fewer rendere
 - Target: device-policy table
 - Priority: MUST-RUN on NVIDIA, NICE-TO-HAVE on AMD this week
 
+PR7 scope clarification: the instance-policy matrix calibrates only upload
+(`None/Dirty/Full`) and culling (`Flat/Hierarchy`). Output is a caller-owned
+semantic match constraint. Primitive backend selection is independently
+calibrated by the PR1 `GpuPrimitiveBackendResolver`; PR7 keeps `Portable` fixed
+and tests only the composition boundary.
+
 ### B5: Failure and stress analysis
 
 - Cases: capacity overflow, zero instances, all invisible, all visible, camera teleport, scene reload, device loss/recreate, unsupported WaveOps, 32-bit indirect-argument overflow, and allocation soak
@@ -96,6 +102,9 @@ Anti-claim to rule out: the gain comes only from SUMMIT city data, fewer rendere
 
 - Ownership boundary: use a clean-room API and generated workloads; do not copy project assets, symbols, formats, constants, or comments.
 - Benchmark gaming: freeze the matrix before formal runs and retain negative cells.
+- Interruption integrity: require an immutable run contract, an exclusive lock,
+  atomic sealed setup/phase receipts, and exact duplicate/missing/unexpected
+  receipt rejection before any resume or final aggregation.
 - CPU baseline weakness: include engine-native instancing/Entities Graphics where applicable.
 - Hardware overclaim: keep results per device and mark unrun hardware unavailable.
 - Timing ambiguity: report native GPU scopes separately from CPU markers and end-to-end frame tails.
@@ -106,6 +115,7 @@ Anti-claim to rule out: the gain comes only from SUMMIT city data, fewer rendere
 - [x] Correctness and visual parity are exact for the procedural anchor
 - [ ] Novelty is isolated through deletion studies
 - [ ] Portable retention is accepted when a candidate misses the gate
+- [x] Formal runner has strict checkpoint/resume and rejects legacy partial runs
 - [ ] External macrobenchmark is pinned and licensed
 - [ ] AMD new-workload evidence is measured or explicitly unavailable
 - [ ] Nice-to-have runs do not delay resume-ready evidence

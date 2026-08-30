@@ -684,7 +684,10 @@ namespace Summit.GpuAutotuning
                 !IsOutputModeValid(rule.requiredOutputMode) ||
                 !IsUploadModeValid(rule.uploadMode) ||
                 !IsCullingModeValid(rule.cullingMode) ||
-                !IsPrimitiveBackendValid(rule.primitiveBackend) ||
+                // Contract v2 calibrates only upload and culling. The retained
+                // schema field must stay Portable; PR1 owns measured primitive
+                // selection through GpuPrimitiveBackendResolver.
+                rule.primitiveBackend != GpuPrimitiveBackend.Portable ||
                 (rule.cullingMode ==
                     GpuDrivenInstanceCullingMode.Hierarchy &&
                  rule.requiredOutputMode !=

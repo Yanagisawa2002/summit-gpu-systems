@@ -22,5 +22,19 @@ namespace Summit.GpuAutotuning
                     ? backend
                     : GpuPrimitiveBackend.Auto;
         }
+
+        /// <summary>
+        /// Resolves only holdout-accepted, exact-device profile choices. A
+        /// missing or stale choice remains on Portable instead of delegating to
+        /// capability-only Auto selection.
+        /// </summary>
+        public GpuPrimitiveBackend ResolveMeasuredOrPortable(string workloadId)
+        {
+            GpuPrimitiveBackend resolved = Resolve(workloadId);
+            return resolved == GpuPrimitiveBackend.Portable ||
+                resolved == GpuPrimitiveBackend.WaveOps
+                    ? resolved
+                    : GpuPrimitiveBackend.Portable;
+        }
     }
 }

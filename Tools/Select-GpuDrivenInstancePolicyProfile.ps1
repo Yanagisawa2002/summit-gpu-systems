@@ -557,7 +557,7 @@ foreach ($receipt in $cellReceipts) {
 $holdoutEvidenceSetId = Get-PolicyTextSha256 $evidenceSetBuilder.ToString()
 $profile = [ordered]@{
     schemaVersion = 1
-    policyContractVersion = 1
+    policyContractVersion = 2
     profileRevision = 1
     generatedUtc = (Get-Date).ToUniversalTime().ToString('O')
     sourceCommit = ([string]$manifest.sourceCommit).ToLowerInvariant()
@@ -567,7 +567,7 @@ $profile = [ordered]@{
     holdoutEvidenceSetId = $holdoutEvidenceSetId
     holdoutAccepted = $true
     unityVersion = [string]$manifest.unityVersion
-    autotuningPackageVersion = '0.2.0'
+    autotuningPackageVersion = '0.3.0'
     gpuDrivenInstancesPackageVersion = '0.4.0'
     processorType = [string]$environmentDevice.processorType
     operatingSystem = [string]$environmentDevice.operatingSystem
@@ -609,6 +609,10 @@ New-Item -ItemType Directory -Path $receiptDirectory -Force | Out-Null
 $selectionReceipt = [ordered]@{
     schemaVersion = 1
     suite = 'summit.gpu-driven-instance-policy-selection'
+    optimizedAxes = [string[]]@('Upload', 'Culling')
+    outputContractRole = 'caller-semantic-match-constraint'
+    primitiveBackendRole =
+        'portable-compatibility-field;compose-pr1-resolver'
     generatedUtc = (Get-Date).ToUniversalTime().ToString('O')
     sourceCommit = [string]$manifest.sourceCommit
     manifestPath = $resolvedManifest

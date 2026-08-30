@@ -11,7 +11,16 @@ $selectorPath =
     Join-Path $toolsRoot 'Select-GpuDrivenInstancePolicyProfile.ps1'
 $modulePath =
     Join-Path $toolsRoot 'GpuDrivenInstancePolicyBenchmark.psm1'
-foreach ($path in @($runnerPath, $selectorPath, $modulePath)) {
+$checkpointModulePath =
+    Join-Path $toolsRoot 'GpuBenchmarkCheckpoint.psm1'
+$checkpointTestPath =
+    Join-Path $PSScriptRoot 'Test-GpuBenchmarkCheckpoint.ps1'
+foreach ($path in @(
+        $runnerPath,
+        $selectorPath,
+        $modulePath,
+        $checkpointModulePath,
+        $checkpointTestPath)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Policy tooling is missing: $path"
     }
@@ -73,7 +82,13 @@ function Assert-Throws {
 $runner = Get-Content -LiteralPath $runnerPath -Raw
 $selector = Get-Content -LiteralPath $selectorPath -Raw
 $module = Get-Content -LiteralPath $modulePath -Raw
-foreach ($path in @($runnerPath, $selectorPath, $modulePath)) {
+$checkpointModule = Get-Content -LiteralPath $checkpointModulePath -Raw
+foreach ($path in @(
+        $runnerPath,
+        $selectorPath,
+        $modulePath,
+        $checkpointModulePath,
+        $checkpointTestPath)) {
     Assert-Parses $path
 }
 
@@ -92,8 +107,8 @@ foreach ($requirement in @(
         @('$calibrationSeed = 20260830', 'Calibration seed'),
         @('$holdoutSeed = 20260831', 'Holdout seed'),
         @('$replaySeed = 20260833', 'Unseen amended replay seed'),
-        @('gpu-driven-policy-calibration-v1-holdout-v1-replay-amendment-v2',
-            'Amended replay protocol'),
+        @('gpu-driven-policy-upload-culling-v2-holdout-v1-replay-v2-checkpoint-v1',
+            'Scoped resumable replay protocol'),
         @('$formalSampleFrames = 900', 'Formal sample cardinality'),
         @('[ValidateSet(500, 2500, 7500, 10000)]',
             'Controller-compatible visibility set'),
@@ -145,6 +160,20 @@ foreach ($requirement in @(
         @('formal-matrix-summary.csv', 'Formal summary'),
         @('formal-matrix-receipt.json', 'Formal receipt'),
         @('BENCHMARK_REPORT.md', 'Human report'),
+        @('[switch]$Resume', 'Explicit resume switch'),
+        @('[switch]$RecoverInterrupted', 'Explicit interruption recovery'),
+        @('run-contract.json', 'Immutable run contract'),
+        @('Enter-GpuBenchmarkRunLock', 'Exclusive run lock'),
+        @('Write-GpuBenchmarkSealedJson', 'Atomic sealed receipts'),
+        @('Read-CompletedPolicyPhase', 'Validated phase reuse'),
+        @('Assert-GpuBenchmarkPhaseCoverage',
+            'Duplicate and missing phase rejection'),
+        @("optimizedAxes = [string[]]@('Upload', 'Culling')",
+            'Measured two-axis scope'),
+        @('caller-required;not-calibrated',
+            'Output semantic-constraint boundary'),
+        @('compose-with-primitive-autotuner',
+            'Primitive autotuner composition boundary'),
         @('SHA256SUMS', 'Evidence hashes'))) {
     Assert-Contains $runner $requirement[0] $requirement[1]
 }
@@ -203,6 +232,18 @@ foreach ($requirement in @(
     Assert-Contains $module $requirement[0] $requirement[1]
 }
 
+foreach ($requirement in @(
+        @('FileMode]::CreateNew', 'Exclusive file creation'),
+        @('FileShare]::Read', 'Held readable run lock'),
+        @('File]::Replace', 'Atomic replacement'),
+        @('recordSha256', 'Canonical record seal'),
+        @('Test-GpuBenchmarkLockOwnerActive', 'PID/start-time lock identity'),
+        @('interruptions', 'Recoverable interruption archive'),
+        @('duplicate, missing, or unexpected',
+            'Exact phase coverage rejection'))) {
+    Assert-Contains $checkpointModule $requirement[0] $requirement[1]
+}
+
 Import-Module -Name $modulePath -Force
 
 $mixedCaseSha = 'A1b2C3d4' * 8
@@ -230,7 +271,7 @@ try {
     $shaderHash = 'c' * 64
     $measurementHash = 'd' * 64
     $protocol =
-        'gpu-driven-policy-calibration-v1-holdout-v1-replay-amendment-v2'
+        'gpu-driven-policy-upload-culling-v2-holdout-v1-replay-v2-checkpoint-v1'
     $unity = '6000.5.2f1'
     $sampleFrames = 20
 

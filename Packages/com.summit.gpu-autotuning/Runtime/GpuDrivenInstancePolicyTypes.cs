@@ -124,8 +124,9 @@ namespace Summit.GpuAutotuning
 
     public static class GpuDrivenInstancePolicyContract
     {
-        public const int CurrentPolicyContractVersion = 1;
-        public const string CurrentAutotuningPackageVersion = "0.2.0";
+        public const int CurrentPolicyContractVersion = 2;
+        public const string CurrentAutotuningPackageVersion = "0.3.0";
+        public const int MeasuredInstancePolicyAxisCount = 2;
         public const string CurrentGpuDrivenInstancesPackageVersion = "0.4.0";
         public const int BasisPointScale = 10000;
         public const int MaximumRuleCount = 1024;
