@@ -42,6 +42,32 @@ namespace Summit.GpuDrivenInstances.Tests
                 draws);
         }
 
+        [Test]
+        public void GlobalBinCountFallbackAboveSharedCapacityMatchesOracle()
+        {
+            const int viewCount = 32;
+            GpuInstanceState[] instances =
+                CreateStates(129, viewCount, uint.MaxValue);
+            Vector4[] planes =
+                CpuGpuDrivenInstanceOracle.CreateBoxPlanes(viewCount, 1000f);
+            var views = new Vector4[viewCount];
+            for (int viewIndex = 0; viewIndex < viewCount; viewIndex++)
+            {
+                views[viewIndex] = new Vector4(
+                    viewIndex - viewCount / 2,
+                    0f,
+                    0f,
+                    1f);
+            }
+
+            AssertHierarchicalFlatAndOracleParity(
+                instances,
+                BuildClusters(instances, 64),
+                planes,
+                views,
+                CreateDrawTemplates(4));
+        }
+
         [TestCase(1, 1)]
         [TestCase(64, 1)]
         [TestCase(65, 2)]
