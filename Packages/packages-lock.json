@@ -129,6 +129,18 @@
       },
       "url": "https://packages.unity.com"
     },
+    "com.yanagisawa.gpu-systems-toolkit": {
+      "version": "file:com.yanagisawa.gpu-systems-toolkit",
+      "depth": 0,
+      "source": "embedded",
+      "dependencies": {
+        "com.summit.gpu-primitives": "0.1.0",
+        "com.summit.gpu-direct-binning": "0.2.0",
+        "com.summit.gpu-adaptive-binning": "0.3.0",
+        "com.summit.gpu-driven-instances": "0.4.0",
+        "com.summit.gpu-autotuning": "0.4.0"
+      }
+    },
     "com.unity.modules.audio": {
       "version": "1.0.0",
       "depth": 0,
