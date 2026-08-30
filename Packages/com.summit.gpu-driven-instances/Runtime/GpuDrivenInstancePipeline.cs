@@ -36,10 +36,8 @@ namespace Summit.GpuDrivenInstances
             "Summit.GpuDrivenInstances/BuildIndirectArguments";
         private const string HierarchicalSample =
             "Summit.GpuDrivenInstances/HierarchicalVisibleOnly";
-        private const string HierarchicalValidationSample =
-            "Summit.GpuDrivenInstances/HierarchicalValidate";
         private const string HierarchicalCoarseSample =
-            "Summit.GpuDrivenInstances/HierarchicalCoarse";
+            "Summit.GpuDrivenInstances/HierarchicalValidateAndCoarse";
         private const string HierarchicalFineSample =
             "Summit.GpuDrivenInstances/HierarchicalFine";
 
@@ -75,6 +73,8 @@ namespace Summit.GpuDrivenInstances
             Shader.PropertyToID("_HierarchyValidity");
         private static readonly int BinningDiagnosticsId =
             Shader.PropertyToID("_BinningDiagnostics");
+        private static readonly int HierarchyBinningDiagnosticsId =
+            Shader.PropertyToID("_HierarchyBinningDiagnostics");
         private static readonly int ViewPlanesId =
             Shader.PropertyToID("_ViewPlanes");
         private static readonly int ViewParametersId =
@@ -99,8 +99,8 @@ namespace Summit.GpuDrivenInstances
         private readonly int classifyInstancesKernel;
         private readonly int buildIndirectArgumentsKernel;
         private readonly int buildHierarchicalIndirectArgumentsKernel;
-        private readonly int validateHierarchyKernel;
-        private readonly int classifyClustersKernel;
+        private readonly int initializeHierarchyFrameKernel;
+        private readonly int validateAndClassifyClustersKernel;
         private readonly int classifyClusterInstancesKernel;
         private readonly int mergeHierarchyDiagnosticsKernel;
         private readonly GpuDirectSpatialBinner binner;
@@ -196,8 +196,8 @@ namespace Summit.GpuDrivenInstances
             int selectedArgumentsKernel =
                 selectedShader.FindKernel("BuildIndirectArguments");
             int selectedHierarchicalArgumentsKernel = -1;
-            int selectedValidateHierarchyKernel = -1;
-            int selectedClassifyClustersKernel = -1;
+            int selectedInitializeHierarchyFrameKernel = -1;
+            int selectedValidateAndClassifyClustersKernel = -1;
             int selectedClassifyClusterInstancesKernel = -1;
             int selectedMergeHierarchyDiagnosticsKernel = -1;
             if (hierarchicalClusterCapacity > 0)
@@ -205,10 +205,10 @@ namespace Summit.GpuDrivenInstances
                 selectedHierarchicalArgumentsKernel =
                     selectedShader.FindKernel(
                         "BuildHierarchicalIndirectArguments");
-                selectedValidateHierarchyKernel =
-                    selectedShader.FindKernel("ValidateHierarchy");
-                selectedClassifyClustersKernel =
-                    selectedShader.FindKernel("ClassifyClusters");
+                selectedInitializeHierarchyFrameKernel =
+                    selectedShader.FindKernel("InitializeHierarchyFrame");
+                selectedValidateAndClassifyClustersKernel =
+                    selectedShader.FindKernel("ValidateAndClassifyClusters");
                 selectedClassifyClusterInstancesKernel =
                     selectedShader.FindKernel("ClassifyClusterInstances");
                 selectedMergeHierarchyDiagnosticsKernel =
@@ -302,8 +302,10 @@ namespace Summit.GpuDrivenInstances
             buildIndirectArgumentsKernel = selectedArgumentsKernel;
             buildHierarchicalIndirectArgumentsKernel =
                 selectedHierarchicalArgumentsKernel;
-            validateHierarchyKernel = selectedValidateHierarchyKernel;
-            classifyClustersKernel = selectedClassifyClustersKernel;
+            initializeHierarchyFrameKernel =
+                selectedInitializeHierarchyFrameKernel;
+            validateAndClassifyClustersKernel =
+                selectedValidateAndClassifyClustersKernel;
             classifyClusterInstancesKernel =
                 selectedClassifyClusterInstancesKernel;
             mergeHierarchyDiagnosticsKernel =
@@ -661,33 +663,50 @@ namespace Summit.GpuDrivenInstances
                 scanBackend);
 
             int pairCount = checked(instanceCount * viewCount);
-            int clusterViewCount = checked(clusterCount * viewCount);
             int visibleBinCount = checked(viewCount * drawGroupCount);
 
             BeginSample(commands, PipelineSample);
             BeginSample(commands, HierarchicalSample);
-            RecordClearBuffer(
-                commands,
-                diagnostics,
-                DiagnosticWordCount);
-            RecordClearBuffer(commands, groupCounts, visibleBinCount);
-            RecordClearBuffer(
-                commands,
-                hierarchyStatistics,
-                HierarchyStatisticWordCount);
-            RecordClearBuffer(commands, hierarchyValidity, 1);
-            RecordClearBuffer(
-                commands,
-                hierarchyBinningDiagnostics,
-                DiagnosticWordCount);
+            commands.SetComputeIntParam(
+                shader,
+                VisibleBinCountId,
+                visibleBinCount);
+            commands.SetComputeBufferParam(
+                shader,
+                initializeHierarchyFrameKernel,
+                BinCountsId,
+                groupCounts);
+            commands.SetComputeBufferParam(
+                shader,
+                initializeHierarchyFrameKernel,
+                HierarchyStatisticsId,
+                hierarchyStatistics);
+            commands.SetComputeBufferParam(
+                shader,
+                initializeHierarchyFrameKernel,
+                HierarchyValidityId,
+                hierarchyValidity);
+            commands.SetComputeBufferParam(
+                shader,
+                initializeHierarchyFrameKernel,
+                HierarchyBinningDiagnosticsId,
+                hierarchyBinningDiagnostics);
+            commands.SetComputeBufferParam(
+                shader,
+                initializeHierarchyFrameKernel,
+                DiagnosticsId,
+                diagnostics);
+            commands.DispatchCompute(
+                shader,
+                initializeHierarchyFrameKernel,
+                DivideRoundUp(
+                    Math.Max(visibleBinCount, HierarchyStatisticWordCount),
+                    ThreadGroupSize),
+                1,
+                1);
             if (clusterCount > 0)
             {
-                RecordClearBuffer(
-                    commands,
-                    clusterViewMasks,
-                    clusterCount);
-
-                BeginSample(commands, HierarchicalValidationSample);
+                BeginSample(commands, HierarchicalCoarseSample);
                 commands.SetComputeIntParam(
                     shader,
                     InstanceCountId,
@@ -698,67 +717,39 @@ namespace Summit.GpuDrivenInstances
                     clusterCount);
                 commands.SetComputeBufferParam(
                     shader,
-                    validateHierarchyKernel,
+                    validateAndClassifyClustersKernel,
                     ClustersId,
                     clusters);
                 commands.SetComputeBufferParam(
                     shader,
-                    validateHierarchyKernel,
+                    validateAndClassifyClustersKernel,
                     HierarchyValidityId,
                     hierarchyValidity);
                 commands.SetComputeBufferParam(
                     shader,
-                    validateHierarchyKernel,
+                    validateAndClassifyClustersKernel,
                     DiagnosticsId,
                     diagnostics);
-                commands.DispatchCompute(
-                    shader,
-                    validateHierarchyKernel,
-                    DivideRoundUp(clusterCount, ThreadGroupSize),
-                    1,
-                    1);
-                EndSample(commands, HierarchicalValidationSample);
-
-                BeginSample(commands, HierarchicalCoarseSample);
-                commands.SetComputeIntParam(
-                    shader,
-                    ClusterCountId,
-                    clusterCount);
                 commands.SetComputeIntParam(shader, ViewCountId, viewCount);
                 commands.SetComputeBufferParam(
                     shader,
-                    classifyClustersKernel,
-                    ClustersId,
-                    clusters);
-                commands.SetComputeBufferParam(
-                    shader,
-                    classifyClustersKernel,
+                    validateAndClassifyClustersKernel,
                     ViewPlanesId,
                     viewPlanes);
                 commands.SetComputeBufferParam(
                     shader,
-                    classifyClustersKernel,
+                    validateAndClassifyClustersKernel,
                     ViewParametersId,
                     viewParameters);
                 commands.SetComputeBufferParam(
                     shader,
-                    classifyClustersKernel,
+                    validateAndClassifyClustersKernel,
                     ClusterViewMasksId,
                     clusterViewMasks);
-                commands.SetComputeBufferParam(
-                    shader,
-                    classifyClustersKernel,
-                    HierarchyValidityId,
-                    hierarchyValidity);
-                commands.SetComputeBufferParam(
-                    shader,
-                    classifyClustersKernel,
-                    DiagnosticsId,
-                    diagnostics);
                 commands.DispatchCompute(
                     shader,
-                    classifyClustersKernel,
-                    DivideRoundUp(clusterViewCount, ThreadGroupSize),
+                    validateAndClassifyClustersKernel,
+                    DivideRoundUp(clusterCount, ThreadGroupSize),
                     1,
                     1);
                 EndSample(commands, HierarchicalCoarseSample);
