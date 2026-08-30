@@ -8,6 +8,7 @@ param(
     [ValidateSet(
         'single',
         'discovery-amd-r9700-v1',
+        'calibration-nvidia-rtx4090-v1',
         'formal-amd-r9700-v1',
         'formal-amd-r9700-contention-v1')]
     [string]$MatrixPreset = 'single',
@@ -290,6 +291,14 @@ $contentionFormalScenarios = @(
     [ordered]@{ scenarioId='hotset4-n1048576-c16'; elementCount=1048576; binCount=16; distribution='hotset4'; seed=20261002; exactSingleBinKey=-1 },
     [ordered]@{ scenarioId='uniform-n1048576-c16'; elementCount=1048576; binCount=16; distribution='uniform'; seed=20261002; exactSingleBinKey=-1 },
     [ordered]@{ scenarioId='uniform-n1048576-c65536'; elementCount=1048576; binCount=65536; distribution='uniform'; seed=20261005; exactSingleBinKey=-1 }
+)
+$nvidiaCalibrationScenarios = @(
+    [ordered]@{ scenarioId='cal-singlebin-n262144-c16'; elementCount=262144; binCount=16; distribution='singlebin'; seed=20261111 },
+    [ordered]@{ scenarioId='cal-singlebin-n1048576-c16'; elementCount=1048576; binCount=16; distribution='singlebin'; seed=20261112 },
+    [ordered]@{ scenarioId='cal-hotset4-n1048576-c16'; elementCount=1048576; binCount=16; distribution='hotset4'; seed=20261113 },
+    [ordered]@{ scenarioId='cal-uniform-n1048576-c16'; elementCount=1048576; binCount=16; distribution='uniform'; seed=20261114 },
+    [ordered]@{ scenarioId='cal-uniform-n1048576-c4096'; elementCount=1048576; binCount=4096; distribution='uniform'; seed=20261115 },
+    [ordered]@{ scenarioId='cal-uniform-n1048576-c65536'; elementCount=1048576; binCount=65536; distribution='uniform'; seed=20261116 }
 )
 
 if ($FormalAcceptanceMode) {
@@ -827,6 +836,10 @@ $scenarios = switch ($MatrixPreset) {
     'formal-amd-r9700-v1' { $legacyFormalScenarios; break }
     'formal-amd-r9700-contention-v1' { $contentionFormalScenarios; break }
     'discovery-amd-r9700-v1' { $discoveryScenarios; break }
+    'calibration-nvidia-rtx4090-v1' {
+        $nvidiaCalibrationScenarios
+        break
+    }
     default {
         @([ordered]@{
             scenarioId = $ScenarioId
@@ -885,6 +898,9 @@ $matrixRole = if ($MatrixPreset -in @(
 }
 elseif ($MatrixPreset -ceq 'discovery-amd-r9700-v1') {
     'discovery'
+}
+elseif ($MatrixPreset -ceq 'calibration-nvidia-rtx4090-v1') {
+    'calibration'
 }
 else {
     'custom'

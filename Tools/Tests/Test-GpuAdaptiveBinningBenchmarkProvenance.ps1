@@ -605,6 +605,7 @@ Assert-True (
 Assert-Contains $runner "[int]`$SuperRounds = 4" 'Runner defaults'
 foreach ($matrixToken in @(
     'discovery-amd-r9700-v1',
+    'calibration-nvidia-rtx4090-v1',
     'formal-amd-r9700-v1',
     'formal-amd-r9700-contention-v1',
     "matrixRole = 'holdout'")) {
