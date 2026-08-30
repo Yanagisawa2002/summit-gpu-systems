@@ -218,6 +218,12 @@ foreach ($requirement in @(
             'Measured baseline fail-safe receipt'),
         @('holdoutEvidenceId', 'Per-rule evidence hash'),
         @('holdoutEvidenceSetId', 'Profile evidence set hash'),
+        @('ExpectedExecutionPrimitiveBackend',
+            'Independent primitive execution input'),
+        @('measuredExecutionPrimitiveBackend',
+            'Measured primitive execution receipt'),
+        @("profileCompatibilityBackend = 'Portable'",
+            'Portable instance-profile compatibility field'),
         @('requiredConsecutiveFrames = 2', 'Hysteresis contract'),
         @('sourceCommit', 'Build commit provenance'),
         @("ToString('O')", 'Canonical UTC provenance'))) {
@@ -424,6 +430,8 @@ try {
             [switch]$AcceptedProfile,
             [switch]$SlowCandidate,
             [switch]$GpuFrameCoverageBoundary,
+            [ValidateSet('Portable', 'WaveOps')]
+            [string]$PrimitiveBackend = 'Portable',
             [string]$RuleId = 'synthetic-rule'
         )
         New-Item -ItemType Directory -Path $Directory -Force | Out-Null
@@ -655,7 +663,7 @@ try {
                     decisionUploadMode = $decisionUpload
                     decisionOutputMode = 'VisibleOnly'
                     decisionCullingMode = 'Flat'
-                    decisionPrimitiveBackend = 'Portable'
+                    decisionPrimitiveBackend = $PrimitiveBackend
                     decisionProfileRuleIndex = if ($AcceptedProfile) { 0 } else { -1 }
                     decisionRuleId = if ($AcceptedProfile) { $RuleId } else { '' }
                     decisionFlags = 0
@@ -1355,6 +1363,52 @@ try {
     $profileGeneratedUtc = [DateTimeOffset]$profile.generatedUtc
     if ($profileGeneratedUtc.Offset -ne [TimeSpan]::Zero) {
         throw 'Profile generatedUtc is not canonical UTC provenance.'
+    }
+
+    $waveCalibrationDirectory =
+        Join-Path $temporaryRoot 'wave-calibration'
+    $waveHoldoutDirectory = Join-Path $temporaryRoot 'wave-holdout'
+    Write-SyntheticEvidence `
+        $waveCalibrationDirectory 20260830 `
+        $leftCalibration $rightCalibration -PrimitiveBackend WaveOps
+    Write-SyntheticEvidence `
+        $waveHoldoutDirectory 20260831 `
+        $leftCalibration $rightCalibration -PrimitiveBackend WaveOps
+    $waveManifest = $baseManifestJson | ConvertFrom-Json
+    $waveManifest | Add-Member `
+        -NotePropertyName executionPrimitiveBackend `
+        -NotePropertyValue 'WaveOps'
+    $waveManifest.cells[0].calibrationDirectory = $waveCalibrationDirectory
+    $waveManifest.cells[0].holdoutDirectory = $waveHoldoutDirectory
+    $waveManifestPath = Join-Path $temporaryRoot 'wave-manifest.json'
+    [IO.File]::WriteAllText(
+        $waveManifestPath,
+        ($waveManifest | ConvertTo-Json -Depth 20),
+        [Text.UTF8Encoding]::new($false))
+    Assert-Throws {
+        $null = & $selectorPath `
+            $waveManifestPath `
+            (Join-Path $temporaryRoot 'wave-default-profile.json') `
+            (Join-Path $temporaryRoot 'wave-default-selection.json')
+    } 'Manifest/selector primitive-backend mismatch'
+    $waveProfilePath = Join-Path $temporaryRoot 'wave-profile.json'
+    $waveSelectionPath = Join-Path $temporaryRoot 'wave-selection.json'
+    $null = & $selectorPath `
+        -ManifestPath $waveManifestPath `
+        -OutputPath $waveProfilePath `
+        -SelectionReceiptPath $waveSelectionPath `
+        -ExpectedExecutionPrimitiveBackend WaveOps
+    $waveProfile = Get-Content -LiteralPath $waveProfilePath -Raw |
+        ConvertFrom-Json
+    $waveSelection = Get-Content -LiteralPath $waveSelectionPath -Raw |
+        ConvertFrom-Json
+    if ([int]$waveProfile.rules[0].primitiveBackend -ne 1 -or
+        [string]$waveSelection.executionPrimitiveBackend -cne 'WaveOps' -or
+        [string]$waveSelection.cells[0].
+            measuredExecutionPrimitiveBackend -cne 'WaveOps' -or
+        [string]$waveSelection.cells[0].selectedPrimitiveBackend -cne
+            'Portable') {
+        throw 'WaveOps execution was not separated from profile compatibility.'
     }
 
     $hierarchyCalibrationDirectory =

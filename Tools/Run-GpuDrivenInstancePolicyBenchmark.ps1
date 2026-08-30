@@ -1389,6 +1389,7 @@ else {
         shaderContractFingerprint = $shaderContractFingerprint
         measurementContractFingerprint = $measurementContractFingerprint
         calibrationProtocol = $calibrationProtocol
+        executionPrimitiveBackend = $expectedPrimitiveBackend
         protocolAmendmentReason = $protocolAmendmentReason
         calibrationSeed = $calibrationSeed
         holdoutSeed = $holdoutSeed
@@ -1485,7 +1486,8 @@ else {
         $profileResult = & $selectorScriptPath `
             -ManifestPath $selectionManifestPath `
             -OutputPath $generatedProfilePath `
-            -SelectionReceiptPath $selectionReceiptPath
+            -SelectionReceiptPath $selectionReceiptPath `
+            -ExpectedExecutionPrimitiveBackend $expectedPrimitiveBackend
         $selectionReceipt =
             Get-Content -LiteralPath $selectionReceiptPath -Raw |
                 ConvertFrom-Json -DateKind String

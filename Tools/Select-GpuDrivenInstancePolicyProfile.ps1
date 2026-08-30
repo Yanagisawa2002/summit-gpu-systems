@@ -4,7 +4,9 @@ param(
     [string]$ManifestPath,
     [Parameter(Mandatory = $true)]
     [string]$OutputPath,
-    [string]$SelectionReceiptPath
+    [string]$SelectionReceiptPath,
+    [ValidateSet('Portable', 'WaveOps')]
+    [string]$ExpectedExecutionPrimitiveBackend = 'Portable'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -366,6 +368,11 @@ foreach ($name in @(
 if ([string]$manifest.unityVersion -cne '6000.5.2f1') {
     throw 'Profile selection requires the frozen Unity 6000.5.2f1 contract.'
 }
+if ($null -ne $manifest.PSObject.Properties['executionPrimitiveBackend'] -and
+    [string]$manifest.executionPrimitiveBackend -cne
+        $ExpectedExecutionPrimitiveBackend) {
+    throw 'Manifest executionPrimitiveBackend does not match the selector input.'
+}
 $seeds = @(
     [int]$manifest.calibrationSeed,
     [int]$manifest.holdoutSeed,
@@ -466,11 +473,13 @@ foreach ($cell in @($manifest.cells)) {
         ([string]$cell.ruleId)
     if ([string]$holdoutBaselineDecision.uploadMode -cne 'Full' -or
         [string]$holdoutBaselineDecision.cullingMode -cne 'Flat' -or
-        [string]$holdoutBaselineDecision.primitiveBackend -cne 'Portable' -or
+        [string]$holdoutBaselineDecision.primitiveBackend -cne
+            $ExpectedExecutionPrimitiveBackend -or
         [string]$holdoutBaselineDecision.outputMode -cne
             [string]$holdout.config.requiredOutputMode) {
         throw "Cell '$($cell.ruleId)' measured baseline is not the frozen " +
-            'Full + caller output + Flat + Portable safety policy.'
+            'Full + caller output + Flat policy with the independently ' +
+            'selected execution primitive backend.'
     }
     if ([string]$holdoutCandidateDecision.uploadMode -cne
             [string]$cell.candidateUploadMode -or
@@ -479,7 +488,7 @@ foreach ($cell in @($manifest.cells)) {
         [string]$holdoutCandidateDecision.outputMode -cne
             [string]$holdout.config.requiredOutputMode -or
         [string]$holdoutCandidateDecision.primitiveBackend -cne
-            'Portable') {
+            $ExpectedExecutionPrimitiveBackend) {
         throw "Cell '$($cell.ruleId)' manifest candidate decision does not " +
             'match the unique measured raw decision.'
     }
@@ -491,7 +500,8 @@ foreach ($cell in @($manifest.cells)) {
     }
     $selectedUpload = [string]$selectedDecision.uploadMode
     $selectedCulling = [string]$selectedDecision.cullingMode
-    $selectedBackend = [string]$selectedDecision.primitiveBackend
+    $measuredExecutionBackend = [string]$selectedDecision.primitiveBackend
+    $profileCompatibilityBackend = 'Portable'
     $selectedOutput = [string]$selectedDecision.outputMode
     $calibrationMetrics = Get-ExactSelectorMetrics $calibration `
         ([string]$cell.candidateCaseId)
@@ -513,7 +523,7 @@ foreach ($cell in @($manifest.cells)) {
         requiredOutputMode = Get-EnumValue Output $selectedOutput
         uploadMode = Get-EnumValue Upload $selectedUpload
         cullingMode = Get-EnumValue Culling $selectedCulling
-        primitiveBackend = Get-EnumValue Backend $selectedBackend
+        primitiveBackend = Get-EnumValue Backend $profileCompatibilityBackend
         requiredConsecutiveFrames = 2
         enter = New-ObservedRuleRange $calibrationMetrics $holdoutMetrics
         exit = New-ObservedRuleRange `
@@ -539,7 +549,8 @@ foreach ($cell in @($manifest.cells)) {
         selectedUploadMode = $selectedUpload
         selectedOutputMode = $selectedOutput
         selectedCullingMode = $selectedCulling
-        selectedPrimitiveBackend = $selectedBackend
+        measuredExecutionPrimitiveBackend = $measuredExecutionBackend
+        selectedPrimitiveBackend = $profileCompatibilityBackend
         calibrationSelectorMetrics = $calibrationMetrics
         holdoutSelectorMetrics = $holdoutMetrics
         holdoutEvidenceId = $evidenceId
@@ -567,7 +578,7 @@ $profile = [ordered]@{
     holdoutEvidenceSetId = $holdoutEvidenceSetId
     holdoutAccepted = $true
     unityVersion = [string]$manifest.unityVersion
-    autotuningPackageVersion = '0.3.0'
+    autotuningPackageVersion = '0.4.0'
     gpuDrivenInstancesPackageVersion = '0.4.0'
     processorType = [string]$environmentDevice.processorType
     operatingSystem = [string]$environmentDevice.operatingSystem
@@ -613,6 +624,7 @@ $selectionReceipt = [ordered]@{
     outputContractRole = 'caller-semantic-match-constraint'
     primitiveBackendRole =
         'portable-compatibility-field;compose-pr1-resolver'
+    executionPrimitiveBackend = $ExpectedExecutionPrimitiveBackend
     generatedUtc = (Get-Date).ToUniversalTime().ToString('O')
     sourceCommit = [string]$manifest.sourceCommit
     manifestPath = $resolvedManifest
