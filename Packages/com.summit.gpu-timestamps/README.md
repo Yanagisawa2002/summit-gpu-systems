@@ -1,4 +1,4 @@
-# SUMMIT GPU Timestamps
+# GPU Systems D3D12 Timestamps
 
 `com.summit.gpu-timestamps` provides queue-local GPU interval timing for Unity
 work submitted to the Direct3D 12 direct graphics queue. It is intended to

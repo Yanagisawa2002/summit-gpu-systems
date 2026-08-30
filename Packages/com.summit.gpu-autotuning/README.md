@@ -1,4 +1,4 @@
-# SUMMIT GPU Autotuning
+# GPU Systems Device Policy
 
 This package turns measured timing distributions into device-keyed runtime
 profiles. The original primitive-backend API remains available: unsupported or

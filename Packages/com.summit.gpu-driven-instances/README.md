@@ -1,4 +1,4 @@
-# SUMMIT GPU Driven Instances
+# GPU Systems Driven Instances
 
 `com.summit.gpu-driven-instances` records a scene-independent GPU pipeline for
 multi-view sphere visibility, distance LOD selection, view/group binning, and

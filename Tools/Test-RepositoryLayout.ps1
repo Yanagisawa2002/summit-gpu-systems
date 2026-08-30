@@ -69,6 +69,22 @@ if (-not (Test-Path -LiteralPath $integrationRoot)) {
     $failures.Add('Missing isolated NYCGIS integration snapshot.')
 }
 
+$stableBoundaryScript = Join-Path `
+    $RepositoryRoot 'Tools\Test-StablePackageBoundary.ps1'
+foreach ($relativePath in @(
+        'Packages\com.yanagisawa.gpu-systems-toolkit.meta',
+        'Packages\com.yanagisawa.gpu-systems-toolkit\package.json',
+        'Packages\com.yanagisawa.gpu-systems-toolkit\README.md',
+        'Packages\com.yanagisawa.gpu-systems-toolkit\CHANGELOG.md',
+        'Tools\Install-GpuSystemsToolkit.ps1',
+        'Tools\Test-StablePackageBoundary.ps1',
+        'Tools\Tests\Test-GpuSystemsToolkitInstaller.ps1')) {
+    $requiredPath = Join-Path $RepositoryRoot $relativePath
+    if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
+        $failures.Add("Missing stable toolkit packaging file: $requiredPath")
+    }
+}
+
 $externalBrgRoot = Join-Path `
     $RepositoryRoot 'ExternalBenchmarks\BRGShooter'
 foreach ($relativePath in @(
@@ -110,6 +126,8 @@ if ($failures.Count -gt 0) {
     }
     throw "Repository validation failed with $($failures.Count) issue(s)."
 }
+
+& $stableBoundaryScript -RepositoryRoot $RepositoryRoot
 
 $sourceCount = $portableFiles.Count
 Write-Host "Repository layout validated."

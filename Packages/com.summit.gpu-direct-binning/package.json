@@ -1,7 +1,7 @@
 {
   "name": "com.summit.gpu-direct-binning",
   "version": "0.2.0",
-  "displayName": "SUMMIT GPU Direct Binning",
+  "displayName": "GPU Systems Direct CSR Binning (Legacy ID)",
   "description": "Scene-agnostic GPU count or producer-precounted indirect-prefix binning from uint key/value streams to CSR.",
   "unity": "6000.0",
   "dependencies": {
@@ -16,6 +16,6 @@
     "scatter"
   ],
   "author": {
-    "name": "SUMMIT"
+    "name": "GPU Systems Toolkit Contributors"
   }
 }

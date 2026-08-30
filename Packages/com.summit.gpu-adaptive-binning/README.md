@@ -1,4 +1,4 @@
-# SUMMIT GPU Adaptive Binning
+# GPU Systems Spatial / CSR Policy
 
 This package provides a backend-neutral uint key/value to CSR binning
 contract and two independently forceable GPU implementations:

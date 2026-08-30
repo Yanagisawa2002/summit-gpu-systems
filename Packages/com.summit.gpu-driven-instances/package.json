@@ -1,7 +1,7 @@
 {
   "name": "com.summit.gpu-driven-instances",
   "version": "0.4.0",
-  "displayName": "SUMMIT GPU Driven Instances",
+  "displayName": "GPU Systems Driven Instances (Legacy ID)",
   "description": "Scene-agnostic instance-state upload, multi-view GPU visibility, LOD grouping, CSR compaction, and indirect argument generation.",
   "unity": "6000.5",
   "dependencies": {
@@ -17,6 +17,6 @@
     "indirect-rendering"
   ],
   "author": {
-    "name": "SUMMIT"
+    "name": "GPU Systems Toolkit Contributors"
   }
 }

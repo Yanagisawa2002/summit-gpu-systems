@@ -1,0 +1,24 @@
+{
+  "name": "com.yanagisawa.gpu-systems-toolkit",
+  "version": "0.1.0",
+  "displayName": "GPU Systems Toolkit",
+  "description": "Stable aggregation surface for GPU primitives, CSR spatial binning, GPU-driven instances, and device policy. Diagnostics and experimental labs are opt-in.",
+  "unity": "6000.5",
+  "dependencies": {
+    "com.summit.gpu-primitives": "0.1.0",
+    "com.summit.gpu-direct-binning": "0.2.0",
+    "com.summit.gpu-adaptive-binning": "0.3.0",
+    "com.summit.gpu-driven-instances": "0.4.0",
+    "com.summit.gpu-autotuning": "0.4.0"
+  },
+  "keywords": [
+    "gpu",
+    "compute",
+    "indirect-rendering",
+    "spatial-binning",
+    "autotuning"
+  ],
+  "author": {
+    "name": "GPU Systems Toolkit Contributors"
+  }
+}

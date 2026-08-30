@@ -1,7 +1,7 @@
 {
   "name": "com.summit.gpu-timestamps",
   "version": "0.1.0",
-  "displayName": "SUMMIT GPU Timestamps",
+  "displayName": "GPU Systems D3D12 Timestamps (Optional)",
   "description": "Optional nonblocking Direct3D 12 timestamp-query scopes for Unity CommandBuffers.",
   "unity": "6000.0",
   "keywords": [
@@ -12,6 +12,6 @@
     "benchmark"
   ],
   "author": {
-    "name": "SUMMIT"
+    "name": "GPU Systems Toolkit Contributors"
   }
 }

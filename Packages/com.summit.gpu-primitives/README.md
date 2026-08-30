@@ -1,4 +1,4 @@
-# SUMMIT GPU Primitives
+# GPU Systems Primitives
 
 `com.summit.gpu-primitives` is a small Unity/D3D12-oriented library for reusable
 GPU data-parallel building blocks. It separates algorithms such as histogram,

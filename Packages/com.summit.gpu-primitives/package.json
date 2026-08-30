@@ -1,7 +1,7 @@
 {
   "name": "com.summit.gpu-primitives",
   "version": "0.1.0",
-  "displayName": "SUMMIT GPU Primitives",
+  "displayName": "GPU Systems Primitives (Legacy ID)",
   "description": "Scene-agnostic, CommandBuffer-first GPU scan, histogram, compaction, and radix-sort primitives.",
   "unity": "6000.0",
   "keywords": [
@@ -12,6 +12,6 @@
     "radix-sort"
   ],
   "author": {
-    "name": "SUMMIT"
+    "name": "GPU Systems Toolkit Contributors"
   }
 }

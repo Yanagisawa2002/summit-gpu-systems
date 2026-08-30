@@ -1,7 +1,7 @@
 {
   "name": "com.summit.gpu-adaptive-binning",
   "version": "0.3.0",
-  "displayName": "SUMMIT GPU Adaptive Binning",
+  "displayName": "GPU Systems Spatial / CSR Policy (Legacy ID)",
   "description": "Backend-neutral GPU CSR binning with forceable Direct/Radix paths and bounded device-keyed selection.",
   "unity": "6000.0",
   "dependencies": {
@@ -17,6 +17,6 @@
     "adaptive"
   ],
   "author": {
-    "name": "SUMMIT"
+    "name": "GPU Systems Toolkit Contributors"
   }
 }

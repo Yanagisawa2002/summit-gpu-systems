@@ -1,4 +1,4 @@
-# SUMMIT GPU Direct Binning
+# GPU Systems Direct CSR Binning
 
 `com.summit.gpu-direct-binning` records a scene-independent GPU pipeline that
 turns a `uint` key/value stream into a compressed-sparse-row (CSR) bin layout:
