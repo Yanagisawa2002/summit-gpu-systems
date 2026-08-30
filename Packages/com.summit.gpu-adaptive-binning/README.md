@@ -50,6 +50,16 @@ device, API, primitive backend, or marker state selects `Direct`. That
 fail-closed fallback is a safety policy, not evidence that Direct is optimal
 for every unmeasured input.
 
+A separate schema-v3 RTX 4090 / D3D12 calibration and disjoint holdout is
+documented in
+`Docs/GPU_ADAPTIVE_BINNING_NVIDIA_RTX4090_FORMAL_2026-08-31.md`. At
+`N=1048576`, the frozen holdout selected Radix for C16 single-bin, hotset4,
+and uniform cells, then Direct for C4096 and C65536 uniform cells. Offline
+policy replay matched the accepted forced winner in 5/5 cells. The selected
+GPU-average improvements were 45.69%–93.84%; this remains exact-cell,
+single-device evidence. An extra worst-pair P99 tail guard passed only 4/5
+cells, so the result does not support an all-pairs tail claim.
+
 The package ships policy mechanics but no built-in universal profile. A
 caller-owned profile matching the validated exact-cell policy can be
 constructed explicitly:
@@ -137,7 +147,8 @@ or overlapping cells and older schema versions invalidate the entire profile.
 The runtime does not inspect the graphics driver version, Unity version, or
 shader hashes. After a driver, Unity, or shader change, rerun the forced A/B,
 rotate the profile ID or revision, and revalidate each exact cell before using
-it again. Repeat the calibration on NVIDIA before making a cross-vendor claim.
+it again. Repeat disjoint calibration/holdout on every newly claimed device;
+the AMD and NVIDIA results do not establish a universal cross-vendor rule.
 
 Cache `CaptureCurrent()` outside the frame loop. Profile construction copies
 its bounded cell list once. Selection is a pure, allocation-free

@@ -1,0 +1,11 @@
+{
+  "graphicsDeviceName": "NVIDIA GeForce RTX 4090",
+  "graphicsDeviceVendorId": 4318,
+  "graphicsDeviceId": 9860,
+  "graphicsDeviceType": "Direct3D12",
+  "driverVersion": "32.0.15.9186",
+  "unityVersion": "6000.5.2f1",
+  "operatingSystem": "Windows 11 (10.0.26200)",
+  "processorType": "Intel(R) Core(TM) Ultra 7 265K",
+  "graphicsMemoryMiB": 24138
+}

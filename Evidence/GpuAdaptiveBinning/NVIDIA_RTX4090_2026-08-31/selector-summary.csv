@@ -1,0 +1,6 @@
+scenarioId,elementCount,binCount,distribution,seed,exactSingleBinKey,selectedBackend,policyPrediction,predictionMatches,selectedGpuAverageImprovementMedianPercent,selectedGpuAverageAbsoluteReductionMedianMs,selectedGpuP99ImprovementMedianPercent,averageWinningPairs,winnerP99WinningPairs,winnerWorstPairP99ImprovementPercent,materialGatePassed,strictTailPassed
+hold-singlebin-n1048576-c16,1048576,16,singlebin,20261221,5,radix,radix,1,67.67750103863278,1.048428764444444,21.560923493522637,8,8,7.474701011959536,1,1
+hold-hotset4-n1048576-c16,1048576,16,hotset4,20261222,-1,radix,radix,1,56.17202193069478,0.6169811200000012,17.730572288101687,8,8,12.041432887354345,1,1
+hold-uniform-n1048576-c16,1048576,16,uniform,20261223,-1,radix,radix,1,45.68950490631316,0.43507200000000146,8.909101648428374,8,7,-11.060467942874498,1,0
+hold-uniform-n1048576-c4096,1048576,4096,uniform,20261224,-1,direct,direct,1,88.29312077356279,1.5308259733333336,28.56864493757987,8,8,24.427782162588784,1,1
+hold-uniform-n1048576-c65536,1048576,65536,uniform,20261225,-1,direct,direct,1,93.83996633210751,1.9155672888888882,37.14542794565777,8,8,23.110195674562302,1,1
