@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "suite": "gpu-systems.external-brg-shooter",
+  "status": "pinned-not-yet-migrated-or-measured",
+  "upstream": {
+    "repository": "https://github.com/Unity-Technologies/brg-shooter.git",
+    "branch": "main",
+    "commit": "f55f6e985bf73b0a3c23b95030e890874e552c45",
+    "projectEditor": "2022.3.5f1",
+    "renderPipeline": "com.unity.render-pipelines.universal@14.0.8",
+    "license": "Unity Companion License",
+    "licensePath": "LICENCE.md",
+    "licenseGitBlobSha1": "a806075c19c4297f9bf983b13d73c468e14764a8",
+    "licenseCanonicalSha256": "A69479C5AB2FFA837B805BE5E12876FA23C23DD1AE16C9F2112A9F4617F6D1E3"
+  },
+  "upstreamFileReceipts": [
+    {
+      "path": "README.md",
+      "repositoryBytes": 374,
+      "gitBlobSha1": "9b6f3b567538f97894b1d265b8fbbbab2002cdde",
+      "canonicalSha256": "3933CC7F46F97171505A0DBB3037D265D6F22DFF000D60148DE3DD49E4604145"
+    },
+    {
+      "path": "Packages/manifest.json",
+      "repositoryBytes": 963,
+      "gitBlobSha1": "cae7fadd8dfb9278a92225600a4bba626ef73388",
+      "canonicalSha256": "72EEAA5840EADFA7976BA2B0553DA1EDCC563B54A4ACA88C23789600853222F8"
+    },
+    {
+      "path": "Packages/packages-lock.json",
+      "repositoryBytes": 7847,
+      "gitBlobSha1": "b975a93e3006e1e9abca40c72e71fd23b0eca155",
+      "canonicalSha256": "BCD519D68D4EF99E8C407D15DC5681169821C9659F0310BA8D3DEEF7B3BFED8D"
+    },
+    {
+      "path": "ProjectSettings/ProjectVersion.txt",
+      "repositoryBytes": 83,
+      "gitBlobSha1": "55fa2681ec702eea615753c1c28bf590d9f49fe3",
+      "canonicalSha256": "81B5A1FE6907ABCA396489888FDD7A309FAE5984F584B00FDF8CC8EEEFD150FA"
+    },
+    {
+      "path": "Assets/Scenes/brg_shooter.unity",
+      "repositoryBytes": 24106,
+      "gitBlobSha1": "c4e10d7ab522c72cac54dd79da0744d442e42577",
+      "canonicalSha256": "1522D607DBE38DF8D86A81B2EDF0666CE6F7111953C3B3A5A9B19175AA55BFDA"
+    }
+  ],
+  "integration": {
+    "targetEditor": "6000.5.2f1",
+    "gpuSystemsRepository": "https://github.com/Yanagisawa2002/summit-gpu-systems.git",
+    "gpuSystemsCommit": "73a55fac428e44c137674a6faf859693a0c0492f",
+    "fixtureTransport": "local pinned checkout; upstream files are not vendored",
+    "packageTransport": "commit-pinned UPM dependencies; no machine-local paths in sealed evidence",
+    "migrationReceipt": "pending",
+    "formalEvidenceReceipt": "pending"
+  }
+}
