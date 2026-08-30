@@ -3,7 +3,9 @@
   "rootNamespace": "Summit.GpuAutotuning.Tests",
   "references": [
     "Summit.GpuAutotuning",
-    "Summit.GpuPrimitives"
+    "Summit.GpuDrivenInstances",
+    "Summit.GpuPrimitives",
+    "Unity.Collections"
   ],
   "optionalUnityReferences": ["TestAssemblies"],
   "includePlatforms": ["Editor"],

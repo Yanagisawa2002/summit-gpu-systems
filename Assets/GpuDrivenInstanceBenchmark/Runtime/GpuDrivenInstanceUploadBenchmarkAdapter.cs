@@ -94,6 +94,9 @@ internal readonly struct GpuDrivenInstanceUploadRecordReceipt
 /// </remarks>
 internal sealed class GpuDrivenInstanceUploadBenchmarkAdapter : IDisposable
 {
+    internal const GraphicsFenceType LifetimeFenceType =
+        GraphicsFenceType.AsyncQueueSynchronisation;
+
     internal const int DefaultStagingSlotCount = 8;
     internal const int FixedDrawGroupCount = 8;
     internal const int RenderTargetSize = 512;
@@ -442,7 +445,7 @@ internal sealed class GpuDrivenInstanceUploadBenchmarkAdapter : IDisposable
         WorkSlot slot = GetSlot(slotIndex);
         slot.RequireWorkloadRecorded();
         GraphicsFence fence = slot.Commands.CreateGraphicsFence(
-            GraphicsFenceType.AsyncQueueSynchronisation,
+            LifetimeFenceType,
             SynchronisationStageFlags.AllGPUOperations);
         slot.MarkFenceAppended();
         return fence;
@@ -833,11 +836,13 @@ internal sealed class GpuDrivenInstanceUploadBenchmarkAdapter : IDisposable
         if (!SystemInfo.supportsComputeShaders ||
             !SystemInfo.supportsInstancing ||
             !SystemInfo.supportsIndirectArgumentsBuffer ||
-            !SystemInfo.supportsGraphicsFence)
+            !SystemInfo.supportsGraphicsFence ||
+            !SystemInfo.supportsAsyncCompute)
         {
             throw new NotSupportedException(
                 "The upload macrobenchmark requires compute shaders, " +
-                "instancing, indirect arguments, and graphics fences.");
+                "instancing, indirect arguments, graphics fences, and " +
+                "CPU-queryable asynchronous-compute fences.");
         }
     }
 

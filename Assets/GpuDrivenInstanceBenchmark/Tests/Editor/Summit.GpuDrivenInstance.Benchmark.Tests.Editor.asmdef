@@ -3,7 +3,9 @@
   "rootNamespace": "Summit.GpuDrivenInstance.Benchmark.Tests",
   "references": [
     "Summit.GpuDrivenInstance.Benchmark",
+    "Summit.GpuAutotuning",
     "Summit.GpuDrivenInstances",
+    "Summit.GpuPrimitives",
     "Unity.Collections"
   ],
   "includePlatforms": [

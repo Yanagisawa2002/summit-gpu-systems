@@ -14,6 +14,7 @@
       "depth": 0,
       "source": "embedded",
       "dependencies": {
+        "com.summit.gpu-driven-instances": "0.4.0",
         "com.summit.gpu-primitives": "0.1.0"
       }
     },

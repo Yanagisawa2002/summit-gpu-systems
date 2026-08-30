@@ -2,6 +2,7 @@
   "name": "Summit.GpuAutotuning",
   "rootNamespace": "Summit.GpuAutotuning",
   "references": [
+    "Summit.GpuDrivenInstances",
     "Summit.GpuPrimitives"
   ],
   "autoReferenced": true

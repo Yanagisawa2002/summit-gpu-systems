@@ -2,6 +2,7 @@
   "name": "Summit.GpuDrivenInstance.Benchmark",
   "rootNamespace": "",
   "references": [
+    "Summit.GpuAutotuning",
     "Summit.GpuDrivenInstances",
     "Summit.GpuPrimitives",
     "Summit.GpuTimestamps",
