@@ -105,6 +105,12 @@ and tests only the composition boundary.
 - Interruption integrity: require an immutable run contract, an exclusive lock,
   atomic sealed setup/phase receipts, and exact duplicate/missing/unexpected
   receipt rejection before any resume or final aggregation.
+- Environment timing gate: a short `SingleScenario` run is diagnostic only;
+  sample count cannot guarantee that Unity will publish whole-frame GPU values.
+  Before a new formal matrix, replay one frozen formal-equivalent cell and
+  require all existing coverage gates. If the same frozen Player loses GPU
+  timing availability, classify the environment as invalid and do not start or
+  resume the matrix, relax the gates, or substitute zero for `unavailable`.
 - CPU baseline weakness: include engine-native instancing/Entities Graphics where applicable.
 - Hardware overclaim: keep results per device and mark unrun hardware unavailable.
 - Timing ambiguity: report native GPU scopes separately from CPU markers and end-to-end frame tails.
