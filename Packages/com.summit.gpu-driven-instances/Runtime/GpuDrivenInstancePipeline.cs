@@ -93,10 +93,16 @@ namespace Summit.GpuDrivenInstances
             Shader.PropertyToID("_IndirectArguments");
         private static readonly int DiagnosticsId =
             Shader.PropertyToID("_Diagnostics");
+        private static readonly int FastBinOffsetsId =
+            Shader.PropertyToID("_FastBinOffsets");
+        private static readonly int GroupedInstanceIndicesId =
+            Shader.PropertyToID("_GroupedInstanceIndices");
 
         private readonly ComputeShader shader;
         private readonly int clearUintKernel;
         private readonly int classifyInstancesKernel;
+        private readonly int initializeSingleBinVisibleOnlyKernel;
+        private readonly int classifyAndCompactSingleBinVisibleOnlyKernel;
         private readonly int buildIndirectArgumentsKernel;
         private readonly int buildHierarchicalIndirectArgumentsKernel;
         private readonly int validateHierarchyKernel;
@@ -193,6 +199,18 @@ namespace Summit.GpuDrivenInstances
             int selectedClearKernel = selectedShader.FindKernel("ClearUint");
             int selectedClassifyKernel =
                 selectedShader.FindKernel("ClassifyInstances");
+            int selectedInitializeSingleBinKernel = -1;
+            int selectedClassifyAndCompactSingleBinKernel = -1;
+            if (selectedShader.HasKernel("InitializeSingleBinVisibleOnly") &&
+                selectedShader.HasKernel(
+                    "ClassifyAndCompactSingleBinVisibleOnly"))
+            {
+                selectedInitializeSingleBinKernel = selectedShader.FindKernel(
+                    "InitializeSingleBinVisibleOnly");
+                selectedClassifyAndCompactSingleBinKernel =
+                    selectedShader.FindKernel(
+                        "ClassifyAndCompactSingleBinVisibleOnly");
+            }
             int selectedArgumentsKernel =
                 selectedShader.FindKernel("BuildIndirectArguments");
             int selectedHierarchicalArgumentsKernel = -1;
@@ -299,6 +317,10 @@ namespace Summit.GpuDrivenInstances
             this.shader = selectedShader;
             clearUintKernel = selectedClearKernel;
             classifyInstancesKernel = selectedClassifyKernel;
+            initializeSingleBinVisibleOnlyKernel =
+                selectedInitializeSingleBinKernel;
+            classifyAndCompactSingleBinVisibleOnlyKernel =
+                selectedClassifyAndCompactSingleBinKernel;
             buildIndirectArgumentsKernel = selectedArgumentsKernel;
             buildHierarchicalIndirectArgumentsKernel =
                 selectedHierarchicalArgumentsKernel;
@@ -502,6 +524,27 @@ namespace Summit.GpuDrivenInstances
                 : checked((uint)visibleBinCount);
 
             BeginSample(commands, PipelineSample);
+            if (visibleOnly &&
+                viewCount == 1 &&
+                drawGroupCount == 1 &&
+                initializeSingleBinVisibleOnlyKernel >= 0 &&
+                classifyAndCompactSingleBinVisibleOnlyKernel >= 0)
+            {
+                RecordSingleBinVisibleOnly(
+                    commands,
+                    instances,
+                    viewPlanes,
+                    viewParameters,
+                    drawTemplates,
+                    groupCounts,
+                    groupOffsets,
+                    groupedInstanceIndices,
+                    indirectArguments,
+                    diagnostics,
+                    instanceCount);
+                EndSample(commands, PipelineSample);
+                return;
+            }
             RecordClearDiagnostics(commands, diagnostics);
 
             BeginSample(commands, ClassifySample);
@@ -602,6 +645,106 @@ namespace Summit.GpuDrivenInstances
                 visibleBinCount,
                 drawGroupCount);
             EndSample(commands, PipelineSample);
+        }
+
+        private void RecordSingleBinVisibleOnly(
+            CommandBuffer commands,
+            GraphicsBuffer instances,
+            GraphicsBuffer viewPlanes,
+            GraphicsBuffer viewParameters,
+            GraphicsBuffer drawTemplates,
+            GraphicsBuffer groupCounts,
+            GraphicsBuffer groupOffsets,
+            GraphicsBuffer groupedInstanceIndices,
+            GraphicsBuffer indirectArguments,
+            GraphicsBuffer diagnostics,
+            int instanceCount)
+        {
+            commands.SetComputeBufferParam(
+                shader,
+                initializeSingleBinVisibleOnlyKernel,
+                DrawTemplatesId,
+                drawTemplates);
+            commands.SetComputeBufferParam(
+                shader,
+                initializeSingleBinVisibleOnlyKernel,
+                BinCountsId,
+                groupCounts);
+            commands.SetComputeBufferParam(
+                shader,
+                initializeSingleBinVisibleOnlyKernel,
+                FastBinOffsetsId,
+                groupOffsets);
+            commands.SetComputeBufferParam(
+                shader,
+                initializeSingleBinVisibleOnlyKernel,
+                IndirectArgumentsId,
+                indirectArguments);
+            commands.SetComputeBufferParam(
+                shader,
+                initializeSingleBinVisibleOnlyKernel,
+                DiagnosticsId,
+                diagnostics);
+            commands.DispatchCompute(
+                shader,
+                initializeSingleBinVisibleOnlyKernel,
+                1,
+                1,
+                1);
+
+            if (instanceCount <= 0)
+            {
+                return;
+            }
+
+            commands.SetComputeIntParam(shader, InstanceCountId, instanceCount);
+            commands.SetComputeIntParam(shader, DrawGroupCountId, 1);
+            commands.SetComputeBufferParam(
+                shader,
+                classifyAndCompactSingleBinVisibleOnlyKernel,
+                InstancesId,
+                instances);
+            commands.SetComputeBufferParam(
+                shader,
+                classifyAndCompactSingleBinVisibleOnlyKernel,
+                ViewPlanesId,
+                viewPlanes);
+            commands.SetComputeBufferParam(
+                shader,
+                classifyAndCompactSingleBinVisibleOnlyKernel,
+                ViewParametersId,
+                viewParameters);
+            commands.SetComputeBufferParam(
+                shader,
+                classifyAndCompactSingleBinVisibleOnlyKernel,
+                BinCountsId,
+                groupCounts);
+            commands.SetComputeBufferParam(
+                shader,
+                classifyAndCompactSingleBinVisibleOnlyKernel,
+                FastBinOffsetsId,
+                groupOffsets);
+            commands.SetComputeBufferParam(
+                shader,
+                classifyAndCompactSingleBinVisibleOnlyKernel,
+                GroupedInstanceIndicesId,
+                groupedInstanceIndices);
+            commands.SetComputeBufferParam(
+                shader,
+                classifyAndCompactSingleBinVisibleOnlyKernel,
+                IndirectArgumentsId,
+                indirectArguments);
+            commands.SetComputeBufferParam(
+                shader,
+                classifyAndCompactSingleBinVisibleOnlyKernel,
+                DiagnosticsId,
+                diagnostics);
+            commands.DispatchCompute(
+                shader,
+                classifyAndCompactSingleBinVisibleOnlyKernel,
+                DivideRoundUp(instanceCount, ThreadGroupSize),
+                1,
+                1);
         }
 
         /// <summary>

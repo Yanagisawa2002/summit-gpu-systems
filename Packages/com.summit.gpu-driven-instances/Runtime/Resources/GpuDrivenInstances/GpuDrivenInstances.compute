@@ -1,5 +1,7 @@
 #pragma kernel ClearUint
 #pragma kernel ClassifyInstances
+#pragma kernel InitializeSingleBinVisibleOnly
+#pragma kernel ClassifyAndCompactSingleBinVisibleOnly
 #pragma kernel ValidateHierarchy
 #pragma kernel ClassifyClusters
 #pragma kernel ClassifyClusterInstances
@@ -52,6 +54,8 @@ RWStructuredBuffer<uint> _HierarchyStatistics;
 RWStructuredBuffer<uint> _HierarchyValidity;
 RWStructuredBuffer<uint> _IndirectArguments;
 RWStructuredBuffer<uint> _Diagnostics;
+RWStructuredBuffer<uint> _FastBinOffsets;
+RWStructuredBuffer<uint> _GroupedInstanceIndices;
 
 int _ClearCount;
 int _InstanceCount;
@@ -76,6 +80,9 @@ static const uint MaximumClusterInstanceCount = 64u;
 static const uint CoarseVisibleClusterViewCountWord = 0u;
 static const uint CandidateInstanceViewCountWord = 1u;
 static const uint HierarchicalVisiblePairCountWord = 2u;
+
+groupshared uint SingleBinVisibilityPrefix[256];
+groupshared uint SingleBinOutputBase;
 
 float LodDistance(float4 distances, uint lod)
 {
@@ -244,6 +251,117 @@ void ClassifyInstances(uint3 dispatchThreadId : SV_DispatchThreadID)
 
     uint drawGroup = instance.DrawGroupBase + selectedLod;
     _Keys[pairIndex] = viewIndex * (uint)_DrawGroupCount + drawGroup;
+}
+
+[numthreads(1, 1, 1)]
+void InitializeSingleBinVisibleOnly(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    _BinCounts[0] = 0u;
+    _FastBinOffsets[0] = 0u;
+    _FastBinOffsets[1] = 0u;
+    _Diagnostics[ContractViolationCountWord] = 0u;
+    _Diagnostics[ErrorFlagsWord] = 0u;
+
+    GpuDrawTemplate draw = _DrawTemplates[0];
+    _IndirectArguments[0] = draw.IndexCountPerInstance;
+    _IndirectArguments[1] = 0u;
+    _IndirectArguments[2] = draw.StartIndex;
+    _IndirectArguments[3] = draw.BaseVertex;
+    _IndirectArguments[4] = 0u;
+}
+
+[numthreads(256, 1, 1)]
+void ClassifyAndCompactSingleBinVisibleOnly(
+    uint3 dispatchThreadId : SV_DispatchThreadID,
+    uint groupIndex : SV_GroupIndex)
+{
+    uint instanceIndex = dispatchThreadId.x;
+    bool visible = instanceIndex < (uint)_InstanceCount;
+
+    if (visible)
+    {
+        GpuInstanceState instance = _Instances[instanceIndex];
+        uint instanceErrors = ValidateInstance(instance);
+        if (instanceErrors != 0u)
+        {
+            ReportError(instanceErrors);
+            visible = false;
+        }
+        else
+        {
+            float4 view = _ViewParameters[0];
+            if (!(view.w > 0.0f))
+            {
+                if (instanceIndex == 0u)
+                {
+                    ReportError(InvalidViewLodScale);
+                }
+                visible = false;
+            }
+            else if ((instance.ViewMask & 1u) == 0u ||
+                     !IsSphereVisible(
+                         instance.PositionRadius.xyz,
+                         instance.PositionRadius.w,
+                         0u))
+            {
+                visible = false;
+            }
+            else
+            {
+                float scaledDistance =
+                    length(instance.PositionRadius.xyz - view.xyz) * view.w;
+                uint selectedLod = instance.LodCount;
+                [unroll]
+                for (uint lod = 0u; lod < 4u; ++lod)
+                {
+                    if (lod >= instance.LodCount)
+                    {
+                        break;
+                    }
+                    if (scaledDistance <=
+                        LodDistance(instance.LodDistances, lod))
+                    {
+                        selectedLod = lod;
+                        break;
+                    }
+                }
+                visible = selectedLod < instance.LodCount;
+            }
+        }
+    }
+
+    SingleBinVisibilityPrefix[groupIndex] = visible ? 1u : 0u;
+    GroupMemoryBarrierWithGroupSync();
+    [unroll]
+    for (uint offset = 1u; offset < 256u; offset <<= 1u)
+    {
+        uint prefix = groupIndex >= offset
+            ? SingleBinVisibilityPrefix[groupIndex - offset]
+            : 0u;
+        GroupMemoryBarrierWithGroupSync();
+        if (groupIndex >= offset)
+        {
+            SingleBinVisibilityPrefix[groupIndex] += prefix;
+        }
+        GroupMemoryBarrierWithGroupSync();
+    }
+
+    uint groupVisibleCount = SingleBinVisibilityPrefix[255];
+    if (groupIndex == 0u)
+    {
+        uint ignored;
+        InterlockedAdd(_BinCounts[0], groupVisibleCount, SingleBinOutputBase);
+        InterlockedAdd(_FastBinOffsets[1], groupVisibleCount, ignored);
+        InterlockedAdd(_IndirectArguments[1], groupVisibleCount, ignored);
+    }
+    GroupMemoryBarrierWithGroupSync();
+
+    if (visible)
+    {
+        uint localOffset = SingleBinVisibilityPrefix[groupIndex] - 1u;
+        _GroupedInstanceIndices[SingleBinOutputBase + localOffset] =
+            instanceIndex;
+    }
 }
 
 [numthreads(256, 1, 1)]

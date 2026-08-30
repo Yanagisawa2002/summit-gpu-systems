@@ -110,6 +110,74 @@ namespace Summit.GpuDrivenInstances.Tests
                 Has.Length.LessThan(instances.Length * views.Length));
         }
 
+        [TestCase(0)]
+        [TestCase(1)]
+        [TestCase(255)]
+        [TestCase(256)]
+        [TestCase(257)]
+        [TestCase(4097)]
+        public void SingleBinVisibleOnlyMatchesOracleAcrossDispatchBoundaries(
+            int instanceCount)
+        {
+            var instances = new GpuInstanceState[instanceCount];
+            for (int index = 0; index < instances.Length; index++)
+            {
+                instances[index] = CreateInstance(
+                    new Vector3(index % 7 == 0 ? 100f : index % 17 - 8, 0f, 0f),
+                    0.25f,
+                    new Vector4(1000f, 0f, 0f, 0f),
+                    0u,
+                    1u,
+                    index % 11 == 0 ? 0u : 1u);
+            }
+
+            AssertGpuMatchesOracle(
+                instances,
+                CpuGpuDrivenInstanceOracle.CreateBoxPlanes(1, 10f),
+                new[] { new Vector4(0f, 0f, 0f, 1f) },
+                CreateDrawTemplates(1),
+                GpuDrivenInstanceOutputMode.VisibleOnly);
+        }
+
+        [Test]
+        public void SingleBinVisibleOnlyPreservesContractDiagnostics()
+        {
+            var instances = new[]
+            {
+                CreateInstance(
+                    Vector3.zero,
+                    1f,
+                    new Vector4(10f, 0f, 0f, 0f),
+                    0u,
+                    1u,
+                    1u),
+                CreateInstance(
+                    Vector3.zero,
+                    -1f,
+                    new Vector4(10f, 0f, 0f, 0f),
+                    0u,
+                    1u,
+                    1u),
+                CreateInstance(
+                    Vector3.zero,
+                    1f,
+                    new Vector4(10f, 0f, 0f, 0f),
+                    1u,
+                    1u,
+                    1u),
+            };
+
+            CpuGpuDrivenInstanceResult result = AssertGpuMatchesOracle(
+                instances,
+                CpuGpuDrivenInstanceOracle.CreateBoxPlanes(1, 10f),
+                new[] { new Vector4(0f, 0f, 0f, 1f) },
+                CreateDrawTemplates(1),
+                GpuDrivenInstanceOutputMode.VisibleOnly);
+
+            Assert.That(result.ContractViolationCount, Is.EqualTo(2u));
+            Assert.That(result.ErrorFlags, Is.EqualTo(5u));
+        }
+
         [TestCase(1)]
         [TestCase(255)]
         [TestCase(256)]

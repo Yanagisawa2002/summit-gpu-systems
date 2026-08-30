@@ -30,6 +30,16 @@ Gameplay and simulation authority remain with the host. Atomic scatter leaves
 order within a draw group unspecified; membership, counts, offsets, and
 arguments are the stable public contract.
 
+For the visible-only `1 view / 1 draw group` shape, the default package shader
+uses a semantics-preserving fast path instead of constructing a general CSR.
+One initialization dispatch clears diagnostics and output metadata and writes
+the invariant draw arguments. One classification dispatch performs a
+group-shared visibility prefix, reserves one output span per thread group, and
+writes the compact visible-index stream while updating the count, terminal
+offset, and indirect instance count. Injected shaders that do not provide both
+fast-path kernels automatically retain the general path. This optimization
+does not change the public API or make order within the single bin stable.
+
 ## Hierarchical multi-view visible-only path
 
 Version 0.3 adds an explicit, opt-in hierarchy capacity and
