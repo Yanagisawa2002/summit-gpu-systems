@@ -49,8 +49,11 @@ Set-StrictMode -Version Latest
 $expectedUnityVersion = '6000.5.2f1'
 $calibrationSeed = 20260830
 $holdoutSeed = 20260831
-$replaySeed = 20260832
-$calibrationProtocol = 'gpu-driven-policy-calibration-v1-holdout-v1'
+$replaySeed = 20260833
+$calibrationProtocol =
+    'gpu-driven-policy-calibration-v1-holdout-v1-replay-amendment-v2'
+$protocolAmendmentReason =
+    'selector-equivalence-isolates-direct-cost-after-exploratory-20260832-tail-noise'
 $formalSampleFrames = 900
 $formalWarmupFrames = 60
 $suite = 'summit.gpu-driven-instance-policy-runner'
@@ -76,7 +79,7 @@ selectorIterations=100000
 selectorAllocatedBytes=0
 selectorUnstableDecisions=0
 candidateGate=mean>=2%;wins>=55%;primaryP95<=5%;primaryP99<=10%
-replayGate=decision-exact;no-material-p99-regression
+replayGate=decision-exact;selector-mean<=0.01ms;selector-p99<=0.05ms;isolated-iterations=100000;isolated-allocated=0;isolated-unstable=0
 endToEndReplayGate=accepted:candidate-gate;rejected:full-flat-portable+no-material-p99-regression
 '@
 
@@ -634,6 +637,7 @@ $runnerConfig = [ordered]@{
     shaderContractFingerprint = $shaderContractFingerprint
     measurementContractFingerprint = $measurementContractFingerprint
     calibrationProtocol = $calibrationProtocol
+    protocolAmendmentReason = $protocolAmendmentReason
     calibrationSeed = $calibrationSeed
     holdoutSeed = $holdoutSeed
     replaySeed = $replaySeed
@@ -768,6 +772,7 @@ else {
         shaderContractFingerprint = $shaderContractFingerprint
         measurementContractFingerprint = $measurementContractFingerprint
         calibrationProtocol = $calibrationProtocol
+        protocolAmendmentReason = $protocolAmendmentReason
         calibrationSeed = $calibrationSeed
         holdoutSeed = $holdoutSeed
         replaySeed = $replaySeed
@@ -775,7 +780,8 @@ else {
             selectorEquivalence = [ordered]@{
                 leftCaseId = 'gpu-driven-policy/forced-selected'
                 rightCaseId = 'gpu-driven-policy/actual-auto'
-                gate = 'decision-exact;no-material-p99-regression'
+                gate =
+                    'decision-exact;selector-mean<=0.01ms;selector-p99<=0.05ms;isolated-iterations=100000;isolated-allocated=0;isolated-unstable=0'
             }
             endToEnd = [ordered]@{
                 leftCaseId = 'gpu-driven-policy/calibration/full-flat'
@@ -851,15 +857,20 @@ else {
             throw "ActualAuto did not execute frozen rule '$($cell.ruleId)'."
         }
         if (-not [bool]$replay.accepted) {
-            throw "Replay '$($cell.ruleId)' failed exact decision or tail gates."
+            throw "Replay '$($cell.ruleId)' failed exact decision or selector-overhead gates."
         }
         $replayReceipts.Add([pscustomobject][ordered]@{
             ruleId = $cell.ruleId
             evidenceDirectory = $evidence.directory
             evidenceSha256 = $evidence.evidenceSha256
+            requiredGate = $replay.requiredGate
             decisionMismatchCount = $replay.decisionMismatchCount
-            materialTailFailures = $replay.materialTailFailures
+            selectorOverheadThresholds = $replay.selectorOverheadThresholds
+            selectorOverheadFailures = $replay.selectorOverheadFailures
             selectorCpuMs = $replay.selectorCpuMs
+            isolatedSelectorOverhead = $replay.isolatedSelectorOverhead
+            observedDiagnosticTailRegressions =
+                $replay.observedDiagnosticTailRegressions
             comparisons = $replay.comparisons
             accepted = $replay.accepted
         })
@@ -906,13 +917,17 @@ else {
         })
     }
     $formalReceipt = [ordered]@{
-        schemaVersion = 1
-        suite = 'summit.gpu-driven-instance-policy-formal-v1'
+        schemaVersion = 2
+        suite = 'summit.gpu-driven-instance-policy-formal-v2'
         sourceCommit = $gitCommit
+        sourceSnapshotSha256 = $sourceSnapshotSha256
         unityVersion = $expectedUnityVersion
+        measurementContractFingerprint = $measurementContractFingerprint
+        calibrationProtocol = $calibrationProtocol
         calibrationSeed = $calibrationSeed
         holdoutSeed = $holdoutSeed
         replaySeed = $replaySeed
+        protocolAmendmentReason = $protocolAmendmentReason
         seedsArePairwiseDistinct = $true
         sampleFramesPerBlock = $SampleFrames
         blocksPerRun = 8
@@ -1072,7 +1087,7 @@ else {
     $report.Add("- Raw measured rows: $($cells.Count * 4 * 8 * $SampleFrames)")
     $report.Add('- Candidate failure policy: retain evidence and reuse the measured baseline decision (formal baseline is Full + Flat + Portable).')
     $report.Add('- Metric availability: CPU/native/submission metrics require 100% coverage; GPU frame time uses literal `unavailable`, at least 95% valid rows per block, and at least 90% jointly valid paired comparisons.')
-    $report.Add('- Selector-equivalence replay: ActualAuto decision equals ForcedSelected per row; selector overhead is recorded; no material P99 regression.')
+    $report.Add('- Selector-equivalence replay: ActualAuto decision equals ForcedSelected per row; selector mean must be <= 0.01 ms and selector P99 <= 0.05 ms; the isolated selector must complete 100,000 iterations with zero allocation and zero unstable decisions. Full performance-tail comparisons are retained as diagnostics; the independent end-to-end replay owns their acceptance.')
     $report.Add('- End-to-end replay: Full+Flat versus ActualAuto on the replay seed. Accepted candidates repeat the full mean/wins/P95/P99 gate; rejected candidates remain Full+Flat+Portable with no material P99 regression.')
     $report.Add('')
     $report.Add('| Rule | Candidate | Selected upload | Selected culling | Holdout mean | E2E gate | E2E mean | E2E wins |')

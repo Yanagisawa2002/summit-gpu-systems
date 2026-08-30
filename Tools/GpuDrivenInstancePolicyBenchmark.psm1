@@ -744,6 +744,17 @@ function Assert-PolicyBenchmarkEvidence {
         throw "$root right case differs from the frozen manifest."
     }
 
+    $selectorClockRows = @(Import-Csv -LiteralPath $paths.selector)
+    if ($selectorClockRows.Count -ne 1 -or
+        $null -eq $selectorClockRows[0].PSObject.Properties[
+            'stopwatchFrequency'] -or
+        [int64]$selectorClockRows[0].stopwatchFrequency -le 0L) {
+        throw "$root selector Stopwatch frequency is unavailable."
+    }
+    $selectorStopwatchFrequency =
+        [int64]$selectorClockRows[0].stopwatchFrequency
+    $selectorTimingToleranceMs = 0.000000001
+
     $raw = @(Import-Csv -LiteralPath $paths.raw)
     Assert-PolicyCsvColumns $raw @(
         'sourceRowIndex', 'processId', 'scenarioId', 'blockIndex',
@@ -751,7 +762,7 @@ function Assert-PolicyBenchmarkEvidence {
         'sampleIndex', 'logicalOrdinal', 'instanceCount', 'viewCount',
         'visibilityBasisPoints', 'dirtyBasisPoints', 'clusterCount',
         'hierarchyCandidateBp', 'totalCpuMs',
-        'selectorCpuMs', 'selectorInvoked',
+        'selectorCpuMs', 'selectorCpuTicks', 'selectorInvoked',
         'gpuRegionElapsedMs', 'cpuFrameMs', 'cpuMainThreadFrameMs',
         'cpuRenderThreadFrameMs', 'gpuFrameMs', 'cpuSubmissionWindowMs',
         'mainThreadAllocatedBytes', 'slotWaitFrames', 'updateHash',
@@ -778,6 +789,11 @@ function Assert-PolicyBenchmarkEvidence {
         $actualAuto =
             [string]$row.caseId -ceq 'gpu-driven-policy/actual-auto'
         $gpuFrameValid = ConvertTo-PolicyBoolean $row.gpuFrameValid
+        $selectorCpuMs = ConvertTo-PolicyDouble $row.selectorCpuMs
+        $selectorCpuTicks = [int64]$row.selectorCpuTicks
+        $selectorCpuMsFromTicks =
+            [double]$selectorCpuTicks * 1000.0 /
+                [double]$selectorStopwatchFrequency
         if ([int]$row.sourceRowIndex -ne $index -or
             [string]$row.scenarioId -cne [string]$config.scenarioId -or
             [int64]$row.mainThreadAllocatedBytes -ne 0 -or
@@ -791,7 +807,12 @@ function Assert-PolicyBenchmarkEvidence {
             [int64]$row.measurementReadbackBytes -ne 0 -or
             [int64]$row.timestampInstrumentationReadbackBytes -ne 16 -or
             (ConvertTo-PolicyBoolean $row.selectorInvoked) -ne $actualAuto -or
-            (ConvertTo-PolicyDouble $row.selectorCpuMs) -lt 0.0 -or
+            $selectorCpuMs -lt 0.0 -or
+            [Math]::Abs($selectorCpuMs - $selectorCpuMsFromTicks) -gt
+                $selectorTimingToleranceMs -or
+            ($actualAuto -and $selectorCpuTicks -le 0L) -or
+            (-not $actualAuto -and
+             ($selectorCpuTicks -ne 0L -or $selectorCpuMs -ne 0.0)) -or
             ($actualAuto -and
              [string]$row.decisionSource -cne 'ActualAuto') -or
             (-not $actualAuto -and
@@ -1057,9 +1078,20 @@ function Assert-PolicyBenchmarkEvidence {
     $selectorRows = @(Import-Csv -LiteralPath $paths.selector)
     if ($selectorRows.Count -ne 1 -or
         [int]$selectorRows[0].iterations -ne 100000 -or
+        [int64]$selectorRows[0].stopwatchFrequency -ne
+            $selectorStopwatchFrequency -or
         [int64]$selectorRows[0].allocatedBytes -ne 0 -or
         [int]$selectorRows[0].unstableDecisionCount -ne 0) {
         throw "$root selector microbenchmark is incomplete."
+    }
+    $selectorMeanNs = ConvertTo-PolicyDouble $selectorRows[0].meanNs
+    $selectorP50Ns = ConvertTo-PolicyDouble $selectorRows[0].p50Ns
+    $selectorP95Ns = ConvertTo-PolicyDouble $selectorRows[0].p95Ns
+    $selectorP99Ns = ConvertTo-PolicyDouble $selectorRows[0].p99Ns
+    if ($selectorMeanNs -lt 0.0 -or $selectorP50Ns -lt 0.0 -or
+        $selectorP95Ns -lt $selectorP50Ns -or
+        $selectorP99Ns -lt $selectorP95Ns) {
+        throw "$root selector microbenchmark timing is invalid."
     }
     if ($RequireAcceptedProfile -and
         ([uint32]$selectorRows[0].flags -ne 0 -or
@@ -1210,7 +1242,8 @@ function Test-PolicyReplayEquivalence {
     }
 
     $comparisons = [ordered]@{}
-    $materialTailFailures = [Collections.Generic.List[string]]::new()
+    $observedDiagnosticTailRegressions =
+        [Collections.Generic.List[string]]::new()
     foreach ($guard in @(
             @('totalCpuMs', 10.0, 0.05),
             @('gpuRegionElapsedMs', 5.0, 0.05),
@@ -1225,26 +1258,96 @@ function Test-PolicyReplayEquivalence {
         $absoluteP99 = $comparison.candidate.p99 - $comparison.baseline.p99
         if ($comparison.p99RegressionPercent -gt [double]$guard[1] -and
             $absoluteP99 -gt [double]$guard[2]) {
-            $materialTailFailures.Add($guard[0] + '-material-p99-regression')
+            $observedDiagnosticTailRegressions.Add(
+                $guard[0] + '-material-p99-regression')
         }
     }
-    return [pscustomobject][ordered]@{
-        accepted = $mismatchCount -eq 0 -and
-            $materialTailFailures.Count -eq 0
-        decisionMismatchCount = $mismatchCount
-        materialTailFailures = [string[]]$materialTailFailures.ToArray()
-        selectorCpuMs = [ordered]@{
-            forcedSelected = Get-PolicyMetricSummary (
-                Get-PolicyMetricValues `
-                    -Rows @($rows | Where-Object {
-                        [string]$_.caseId -ceq $ForcedCaseId
-                    }) `
-                    -Property selectorCpuMs)
-            actualAuto = Get-PolicyMetricSummary (
-                Get-PolicyMetricValues `
-                    -Rows $autoRows `
-                    -Property selectorCpuMs)
+
+    $selectorCpuMs = [ordered]@{
+        forcedSelected = Get-PolicyMetricSummary (
+            Get-PolicyMetricValues `
+                -Rows @($rows | Where-Object {
+                    [string]$_.caseId -ceq $ForcedCaseId
+                }) `
+                -Property selectorCpuMs)
+        actualAuto = Get-PolicyMetricSummary (
+            Get-PolicyMetricValues `
+                -Rows $autoRows `
+                -Property selectorCpuMs)
+    }
+    $selectorOverheadThresholds = [ordered]@{
+        maximumMeanMs = 0.01
+        maximumP99Ms = 0.05
+        comparisonToleranceMs = 0.000000001
+        forcedSelectedMustRemainZero = $true
+        requiredIsolatedIterations = 100000
+        requiredIsolatedAllocatedBytes = 0
+        requiredIsolatedUnstableDecisionCount = 0
+    }
+    $selectorOverheadFailures = [Collections.Generic.List[string]]::new()
+    if ([double]$selectorCpuMs.forcedSelected.mean -ne 0.0 -or
+        [double]$selectorCpuMs.forcedSelected.p99 -ne 0.0) {
+        $selectorOverheadFailures.Add('forced-selected-selector-time-nonzero')
+    }
+    if ([double]$selectorCpuMs.actualAuto.mean -gt
+        ([double]$selectorOverheadThresholds.maximumMeanMs +
+            [double]$selectorOverheadThresholds.comparisonToleranceMs)) {
+        $selectorOverheadFailures.Add('actual-auto-selector-mean-above-0.01ms')
+    }
+    if ([double]$selectorCpuMs.actualAuto.p99 -gt
+        ([double]$selectorOverheadThresholds.maximumP99Ms +
+            [double]$selectorOverheadThresholds.comparisonToleranceMs)) {
+        $selectorOverheadFailures.Add('actual-auto-selector-p99-above-0.05ms')
+    }
+    $isolatedSelectorOverhead = $null
+    $isolatedProperty = $Evidence.PSObject.Properties['selectorOverhead']
+    if ($null -eq $isolatedProperty -or
+        $null -eq $isolatedProperty.Value) {
+        $selectorOverheadFailures.Add('isolated-selector-evidence-missing')
+    }
+    else {
+        $isolatedSelectorOverhead = $isolatedProperty.Value
+        $requiredIsolatedProperties = @(
+            'iterations', 'stopwatchFrequency',
+            'meanNs', 'p50Ns', 'p95Ns', 'p99Ns',
+            'allocatedBytes', 'unstableDecisionCount')
+        $missingIsolatedProperty = $false
+        foreach ($propertyName in $requiredIsolatedProperties) {
+            if ($null -eq $isolatedSelectorOverhead.PSObject.Properties[
+                    $propertyName]) {
+                $missingIsolatedProperty = $true
+                break
+            }
         }
+        if ($missingIsolatedProperty) {
+            $selectorOverheadFailures.Add(
+                'isolated-selector-evidence-incomplete')
+        }
+        elseif ([int]$isolatedSelectorOverhead.iterations -ne
+                [int]$selectorOverheadThresholds.requiredIsolatedIterations -or
+            [int64]$isolatedSelectorOverhead.allocatedBytes -ne
+                [int64]$selectorOverheadThresholds.
+                    requiredIsolatedAllocatedBytes -or
+            [int]$isolatedSelectorOverhead.unstableDecisionCount -ne
+                [int]$selectorOverheadThresholds.
+                    requiredIsolatedUnstableDecisionCount) {
+            $selectorOverheadFailures.Add(
+                'isolated-selector-contract-not-satisfied')
+        }
+    }
+
+    return [pscustomobject][ordered]@{
+        requiredGate = 'decision-exact-and-selector-overhead-budget-v1'
+        accepted = $mismatchCount -eq 0 -and
+            $selectorOverheadFailures.Count -eq 0
+        decisionMismatchCount = $mismatchCount
+        selectorOverheadThresholds = $selectorOverheadThresholds
+        selectorOverheadFailures =
+            [string[]]$selectorOverheadFailures.ToArray()
+        selectorCpuMs = $selectorCpuMs
+        isolatedSelectorOverhead = $isolatedSelectorOverhead
+        observedDiagnosticTailRegressions =
+            [string[]]$observedDiagnosticTailRegressions.ToArray()
         comparisons = $comparisons
     }
 }

@@ -91,7 +91,9 @@ foreach ($requirement in @(
         @("'6000.5.2f1'", 'Exact Unity contract'),
         @('$calibrationSeed = 20260830', 'Calibration seed'),
         @('$holdoutSeed = 20260831', 'Holdout seed'),
-        @('$replaySeed = 20260832', 'Replay seed'),
+        @('$replaySeed = 20260833', 'Unseen amended replay seed'),
+        @('gpu-driven-policy-calibration-v1-holdout-v1-replay-amendment-v2',
+            'Amended replay protocol'),
         @('$formalSampleFrames = 900', 'Formal sample cardinality'),
         @('[ValidateSet(500, 2500, 7500, 10000)]',
             'Controller-compatible visibility set'),
@@ -124,12 +126,16 @@ foreach ($requirement in @(
         @('GpuInstanceStateUploaderTests.PlannedDirtyUploadRecordsExactlyTheInspectedPlan',
             'Uploader EditMode identity'),
         @('candidateGate=mean>=2%;wins>=55%', 'Cautious candidate gate'),
+        @('replayGate=decision-exact;selector-mean<=0.01ms;selector-p99<=0.05ms;isolated-iterations=100000;isolated-allocated=0;isolated-unstable=0',
+            'Selector-equivalence overhead gate'),
         @('endToEndReplayGate=accepted:candidate-gate;rejected:full-flat-portable+no-material-p99-regression',
             'End-to-end accepted/rejected replay contract'),
         @('forced-selected', 'Forced selected replay'),
         @('actual-auto', 'Actual auto replay'),
         @('Test-PolicyReplayEquivalence', 'Replay equivalence gate'),
         @('Test-PolicyEndToEndReplay', 'End-to-end replay gate'),
+        @("suite = 'summit.gpu-driven-instance-policy-formal-v2'",
+            'Self-describing amended formal receipt'),
         @('Test-PolicySha256Equal', 'Case-neutral SHA-256 identity gate'),
         @("-Phase 'replay-end-to-end'", 'Independent end-to-end replay'),
         @('endToEndReplayRunCount', 'End-to-end replay run count'),
@@ -223,7 +229,8 @@ try {
     $pipelineHash = 'b' * 64
     $shaderHash = 'c' * 64
     $measurementHash = 'd' * 64
-    $protocol = 'gpu-driven-policy-calibration-v1-holdout-v1'
+    $protocol =
+        'gpu-driven-policy-calibration-v1-holdout-v1-replay-amendment-v2'
     $unity = '6000.5.2f1'
     $sampleFrames = 20
 
@@ -529,6 +536,7 @@ try {
                     hierarchyCandidateBp = 2600
                     totalCpuMs = $metric
                     selectorCpuMs = if ($isAutoDecision) { 0.01 } else { 0.0 }
+                    selectorCpuTicks = if ($isAutoDecision) { 100 } else { 0 }
                     selectorInvoked = if ($isAutoDecision) { 1 } else { 0 }
                     gpuRegionElapsedMs = $metric
                     cpuFrameMs = $metric + 3.0
@@ -664,6 +672,11 @@ try {
             -NoTypeInformation -Encoding utf8
         [pscustomobject]@{
             iterations = 100000
+            stopwatchFrequency = 10000000
+            meanNs = 100
+            p50Ns = 100
+            p95Ns = 100
+            p99Ns = 100
             allocatedBytes = 0
             unstableDecisionCount = 0
             flags = if ($AcceptedProfile) { 0 } else { 1 }
@@ -939,16 +952,40 @@ try {
     $replayDirectory = Join-Path $temporaryRoot 'replay'
     $forcedCase = 'gpu-driven-policy/forced-selected'
     $autoCase = 'gpu-driven-policy/actual-auto'
-    Write-SyntheticEvidence $replayDirectory 20260832 `
+    Write-SyntheticEvidence $replayDirectory 20260833 `
         $forcedCase $autoCase -AcceptedProfile
     $replayEvidence = Assert-PolicyBenchmarkEvidence `
-        $replayDirectory $sampleFrames 20260832 $commit $unity `
+        $replayDirectory $sampleFrames 20260833 $commit $unity `
         $pipelineHash $shaderHash $measurementHash $protocol `
         $forcedCase $autoCase -RequireAcceptedProfile
+    $badSelectorClockDirectory =
+        Join-Path $temporaryRoot 'bad-selector-clock'
+    Copy-Item -LiteralPath $replayDirectory `
+        -Destination $badSelectorClockDirectory -Recurse
+    $badSelectorClockPath =
+        Join-Path $badSelectorClockDirectory 'raw-frames.csv'
+    $badSelectorClockRows = @(Import-Csv -LiteralPath $badSelectorClockPath)
+    $badSelectorClockRow = @($badSelectorClockRows | Where-Object {
+        [string]$_.caseId -ceq $autoCase
+    })[0]
+    $badSelectorClockRow.selectorCpuTicks =
+        [int64]$badSelectorClockRow.selectorCpuTicks + 1L
+    $badSelectorClockRows | Export-Csv `
+        -LiteralPath $badSelectorClockPath -NoTypeInformation -Encoding utf8
+    Assert-Throws {
+        Assert-PolicyBenchmarkEvidence `
+            $badSelectorClockDirectory $sampleFrames 20260833 `
+            $commit $unity $pipelineHash $shaderHash `
+            $measurementHash $protocol $forcedCase $autoCase `
+            -RequireAcceptedProfile
+    } 'Selector tick-to-millisecond cross-check'
     $replay = Test-PolicyReplayEquivalence $replayEvidence
     if (-not $replay.accepted -or $replay.decisionMismatchCount -ne 0 -or
         [double]$replay.selectorCpuMs.forcedSelected.mean -ne 0.0 -or
-        [double]$replay.selectorCpuMs.actualAuto.mean -le 0.0) {
+        [double]$replay.selectorCpuMs.actualAuto.mean -le 0.0 -or
+        [double]$replay.selectorOverheadThresholds.maximumMeanMs -ne 0.01 -or
+        [double]$replay.selectorOverheadThresholds.maximumP99Ms -ne 0.05 -or
+        @($replay.selectorOverheadFailures).Count -ne 0) {
         throw 'Synthetic ActualAuto replay did not equal ForcedSelected.'
     }
     $replayEvidence.raw[0].decisionUploadMode = 'Full'
@@ -956,12 +993,86 @@ try {
     if ($mismatch.accepted -or $mismatch.decisionMismatchCount -eq 0) {
         throw 'Replay helper accepted a per-row policy decision mismatch.'
     }
+    $replayEvidence.raw[0].decisionUploadMode = 'Dirty'
+    foreach ($row in @($replayEvidence.raw | Where-Object {
+            [string]$_.caseId -ceq $autoCase
+        })) {
+        $row.totalCpuMs = 100.0
+        $row.cpuFrameMs = 103.0
+        $row.cpuMainThreadFrameMs = 102.0
+    }
+    $diagnosticTail = Test-PolicyReplayEquivalence $replayEvidence
+    if (-not $diagnosticTail.accepted -or
+        @($diagnosticTail.observedDiagnosticTailRegressions).Count -eq 0) {
+        throw 'Replay helper did not retain whole-frame tail diagnostics.'
+    }
+    $autoSelectorRows = @($replayEvidence.raw | Where-Object {
+        [string]$_.caseId -ceq $autoCase
+    })
+    foreach ($row in $autoSelectorRows) {
+        $row.totalCpuMs = 1.0
+        $row.cpuFrameMs = 4.0
+        $row.cpuMainThreadFrameMs = 3.0
+        $row.selectorCpuMs = 0.001
+    }
+    $autoSelectorRows[0].selectorCpuMs = 0.05
+    $autoSelectorRows[1].selectorCpuMs = 0.05
+    $selectorBoundary = Test-PolicyReplayEquivalence $replayEvidence
+    if (-not $selectorBoundary.accepted) {
+        throw 'Replay helper rejected the frozen selector P99 boundary.'
+    }
+    $autoSelectorRows[0].selectorCpuMs = 0.050000002
+    $autoSelectorRows[1].selectorCpuMs = 0.050000002
+    $selectorP99Regression = Test-PolicyReplayEquivalence $replayEvidence
+    if ($selectorP99Regression.accepted -or
+        $selectorP99Regression.selectorOverheadFailures -cnotcontains
+            'actual-auto-selector-p99-above-0.05ms') {
+        throw 'Replay helper accepted selector P99 above the frozen gate.'
+    }
+    foreach ($row in $autoSelectorRows) {
+        $row.selectorCpuMs = 0.011
+    }
+    $selectorMeanRegression = Test-PolicyReplayEquivalence $replayEvidence
+    if ($selectorMeanRegression.accepted -or
+        $selectorMeanRegression.selectorOverheadFailures -cnotcontains
+            'actual-auto-selector-mean-above-0.01ms' -or
+        $selectorMeanRegression.selectorOverheadFailures -ccontains
+            'actual-auto-selector-p99-above-0.05ms') {
+        throw 'Replay helper accepted selector mean above the frozen gate.'
+    }
+    foreach ($row in $autoSelectorRows) {
+        $row.selectorCpuMs = 0.001
+    }
+    $forcedSelectorRows = @($replayEvidence.raw | Where-Object {
+        [string]$_.caseId -ceq $forcedCase
+    })
+    foreach ($row in $forcedSelectorRows) {
+        $row.selectorCpuMs = 0.001
+    }
+    $forcedSelectorRegression = Test-PolicyReplayEquivalence $replayEvidence
+    if ($forcedSelectorRegression.accepted -or
+        $forcedSelectorRegression.selectorOverheadFailures -cnotcontains
+            'forced-selected-selector-time-nonzero') {
+        throw 'Replay helper accepted nonzero ForcedSelected selector time.'
+    }
+    foreach ($row in $forcedSelectorRows) {
+        $row.selectorCpuMs = 0.0
+    }
+    $replayEvidence.selectorOverhead.allocatedBytes = 1
+    $isolatedSelectorRegression =
+        Test-PolicyReplayEquivalence $replayEvidence
+    if ($isolatedSelectorRegression.accepted -or
+        $isolatedSelectorRegression.selectorOverheadFailures -cnotcontains
+            'isolated-selector-contract-not-satisfied') {
+        throw 'Replay helper accepted allocating isolated selector evidence.'
+    }
+    $replayEvidence.selectorOverhead.allocatedBytes = 0
 
     $endToEndDirectory = Join-Path $temporaryRoot 'replay-end-to-end'
-    Write-SyntheticEvidence $endToEndDirectory 20260832 `
+    Write-SyntheticEvidence $endToEndDirectory 20260833 `
         $leftCalibration $autoCase -AcceptedProfile
     $endToEndEvidence = Assert-PolicyBenchmarkEvidence `
-        $endToEndDirectory $sampleFrames 20260832 $commit $unity `
+        $endToEndDirectory $sampleFrames 20260833 $commit $unity `
         $pipelineHash $shaderHash $measurementHash $protocol `
         $leftCalibration $autoCase -RequireAcceptedProfile
     $acceptedEndToEnd = Test-PolicyEndToEndReplay `
@@ -1082,7 +1193,7 @@ try {
         calibrationProtocol = $protocol
         calibrationSeed = 20260830
         holdoutSeed = 20260831
-        replaySeed = 20260832
+        replaySeed = 20260833
         cells = @([ordered]@{
             ruleId = 'synthetic-rule'
             candidateKind = 'Upload'
