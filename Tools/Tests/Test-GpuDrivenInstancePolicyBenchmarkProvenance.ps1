@@ -235,7 +235,8 @@ foreach ($requirement in @(
 foreach ($requirement in @(
         @('FileMode]::CreateNew', 'Exclusive file creation'),
         @('FileShare]::Read', 'Held readable run lock'),
-        @('File]::Replace', 'Atomic replacement'),
+        @('File]::Move($temporary, $resolved, $true)',
+            'Atomic overwrite replacement'),
         @('recordSha256', 'Canonical record seal'),
         @('Test-GpuBenchmarkLockOwnerActive', 'PID/start-time lock identity'),
         @('interruptions', 'Recoverable interruption archive'),

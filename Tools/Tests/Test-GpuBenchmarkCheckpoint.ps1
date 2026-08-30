@@ -61,6 +61,18 @@ try {
         throw 'Canonical object hashing depends on property insertion order.'
     }
 
+    $atomicPath = Join-Path $temporaryRoot 'atomic.json'
+    $null = Write-GpuBenchmarkAtomicJson `
+        -Value ([ordered]@{ revision = 1 }) `
+        -Path $atomicPath
+    $null = Write-GpuBenchmarkAtomicJson `
+        -Value ([ordered]@{ revision = 2 }) `
+        -Path $atomicPath
+    $atomic = Get-Content -LiteralPath $atomicPath -Raw | ConvertFrom-Json
+    if ([int]$atomic.revision -ne 2) {
+        throw 'Atomic overwrite did not publish the complete replacement.'
+    }
+
     $sealedPath = Join-Path $temporaryRoot 'sealed.json'
     $sealed = Write-GpuBenchmarkSealedJson `
         -Value $left `

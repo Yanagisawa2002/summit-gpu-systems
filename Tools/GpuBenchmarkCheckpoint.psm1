@@ -154,7 +154,7 @@ function Write-GpuBenchmarkAtomicText {
             [IO.File]::Move($temporary, $resolved)
         }
         elseif (Test-Path -LiteralPath $resolved -PathType Leaf) {
-            [IO.File]::Replace($temporary, $resolved, $null)
+            [IO.File]::Move($temporary, $resolved, $true)
         }
         else {
             [IO.File]::Move($temporary, $resolved)
