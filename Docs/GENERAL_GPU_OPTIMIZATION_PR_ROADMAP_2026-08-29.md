@@ -55,9 +55,10 @@ that hardware is accessible.
 
 PR7 does not calibrate four axes. Its frozen matrix changes exactly one of two
 measured mechanisms per cell: state upload or culling. `VisibleOnly` is a fixed
-caller-required output contract in every formal cell, and `Portable` is fixed in
-this matrix. Primitive `Portable/WaveOps` choice remains owned by the independent
-PR1 device/workload profile and is combined only after the instance selector.
+caller-required output contract in every formal cell. The selected-system
+matrix composes the same exact-device PR1 `exclusive-scan` backend on both sides
+of each A/B cell, so primitive `Portable/WaveOps` choice remains owned by the
+independent PR1 profile and does not confound upload/culling selection.
 
 The formal workflow is resumable only through evidence created by the new
 checkpoint contract. It seals an immutable run manifest, EditMode/Player setup,

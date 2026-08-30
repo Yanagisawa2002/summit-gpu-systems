@@ -17,10 +17,24 @@ namespace Summit.GpuAutotuning
 
         public GpuPrimitiveBackend Resolve(string workloadId)
         {
-            return profile != null &&
-                profile.TryResolve(workloadId, device, out GpuPrimitiveBackend backend)
+            return TryResolveMeasured(
+                workloadId,
+                out GpuPrimitiveBackend backend)
                     ? backend
                     : GpuPrimitiveBackend.Auto;
+        }
+
+        /// <summary>
+        /// Resolves an accepted choice only when the workload and exact device
+        /// are both present in the measured profile.
+        /// </summary>
+        public bool TryResolveMeasured(
+            string workloadId,
+            out GpuPrimitiveBackend backend)
+        {
+            backend = GpuPrimitiveBackend.Auto;
+            return profile != null &&
+                profile.TryResolve(workloadId, device, out backend);
         }
 
         /// <summary>
@@ -30,9 +44,9 @@ namespace Summit.GpuAutotuning
         /// </summary>
         public GpuPrimitiveBackend ResolveMeasuredOrPortable(string workloadId)
         {
-            GpuPrimitiveBackend resolved = Resolve(workloadId);
-            return resolved == GpuPrimitiveBackend.Portable ||
-                resolved == GpuPrimitiveBackend.WaveOps
+            return TryResolveMeasured(
+                workloadId,
+                out GpuPrimitiveBackend resolved)
                     ? resolved
                     : GpuPrimitiveBackend.Portable;
         }

@@ -49,6 +49,13 @@ public sealed class GpuDrivenInstancePolicyBenchmarkController : MonoBehaviour
     private GpuDrivenInstancePolicyValidationError profileValidationError;
     private bool profileAccepted;
     private string profileSha256 = "unavailable";
+    private GpuAutotuneProfile primitiveProfile;
+    private GpuPrimitiveBackendResolver primitiveResolver;
+    private bool primitiveProfileAccepted;
+    private string primitiveProfileSha256 = "unavailable";
+    private string primitiveProfileStatus = "not-configured";
+    private GpuPrimitiveBackend primitiveProfileBackend =
+        GpuPrimitiveBackend.Portable;
 
     private GpuDrivenInstanceFrameTimingCollector frameTimingCollector;
     private GpuDrivenInstanceNativeTimestampBackend timestampBackend;
@@ -118,6 +125,9 @@ public sealed class GpuDrivenInstancePolicyBenchmarkController : MonoBehaviour
     private GpuDrivenInstanceOutputMode requiredOutputMode =
         GpuDrivenInstanceOutputMode.VisibleOnly;
     private string profilePath = string.Empty;
+    private string primitiveProfilePath = string.Empty;
+    private string primitiveWorkloadId = string.Empty;
+    private bool requirePrimitiveProfile;
     private string pipelineContractFingerprint = string.Empty;
     private string shaderContractFingerprint = string.Empty;
     private string calibrationProtocol =
@@ -286,6 +296,21 @@ public sealed class GpuDrivenInstancePolicyBenchmarkController : MonoBehaviour
                 args,
                 "-gpu-driven-instance-policy-profile-path",
                 profilePath));
+        primitiveProfilePath = ReadString(
+            args,
+            "-gpu-driven-instance-policy-primitive-profile",
+            ReadString(
+                args,
+                "-gpu-driven-instance-policy-primitive-profile-path",
+                primitiveProfilePath));
+        primitiveWorkloadId = ReadString(
+            args,
+            "-gpu-driven-instance-policy-primitive-workload",
+            primitiveWorkloadId);
+        requirePrimitiveProfile = ReadInt(
+            args,
+            "-gpu-driven-instance-policy-require-primitive-profile",
+            requirePrimitiveProfile ? 1 : 0) != 0;
         pipelineContractFingerprint = ReadString(
             args,
             "-gpu-driven-instance-policy-pipeline-fingerprint",
@@ -410,7 +435,7 @@ public sealed class GpuDrivenInstancePolicyBenchmarkController : MonoBehaviour
 
         try
         {
-            LoadSelectorOnce();
+            LoadProfilesOnce();
             adapter = new GpuDrivenInstancePolicyBenchmarkAdapter(
                 instanceCount,
                 viewCount,
@@ -418,7 +443,9 @@ public sealed class GpuDrivenInstancePolicyBenchmarkController : MonoBehaviour
                 seed,
                 dirtyBasisPoints,
                 requiredOutputMode,
-                selector);
+                selector,
+                primitiveResolver: primitiveResolver,
+                primitiveWorkloadId: primitiveWorkloadId);
             ResolvePresentationValidationResources();
             GpuDrivenInstancePolicyDecision selectedDecision =
                 SelectConvergedDecision();
@@ -565,6 +592,13 @@ public sealed class GpuDrivenInstancePolicyBenchmarkController : MonoBehaviour
             error = "missing-contract-fingerprint";
             return false;
         }
+        if (requirePrimitiveProfile &&
+            (string.IsNullOrWhiteSpace(primitiveProfilePath) ||
+             string.IsNullOrWhiteSpace(primitiveWorkloadId)))
+        {
+            error = "missing-required-primitive-profile";
+            return false;
+        }
         if (!IsHex(buildCommit, 40))
         {
             error = "invalid-build-commit";
@@ -574,7 +608,7 @@ public sealed class GpuDrivenInstancePolicyBenchmarkController : MonoBehaviour
         return true;
     }
 
-    private void LoadSelectorOnce()
+    private void LoadProfilesOnce()
     {
         environment = GpuDrivenInstancePolicyEnvironment.Capture(
             pipelineContractFingerprint,
@@ -608,6 +642,60 @@ public sealed class GpuDrivenInstancePolicyBenchmarkController : MonoBehaviour
                 "Actual-auto and forced-selected cases require an exact, " +
                 "holdout-accepted profile. Validation error: " +
                 profileValidationError + ".");
+        }
+
+        LoadPrimitiveProfile();
+    }
+
+    private void LoadPrimitiveProfile()
+    {
+        if (string.IsNullOrWhiteSpace(primitiveProfilePath) ||
+            string.IsNullOrWhiteSpace(primitiveWorkloadId))
+        {
+            primitiveProfileStatus =
+                string.IsNullOrWhiteSpace(primitiveProfilePath) &&
+                string.IsNullOrWhiteSpace(primitiveWorkloadId)
+                    ? "not-configured"
+                    : "incomplete-configuration";
+            primitiveResolver = null;
+            return;
+        }
+
+        primitiveProfilePath = Path.GetFullPath(primitiveProfilePath);
+        if (File.Exists(primitiveProfilePath))
+        {
+            primitiveProfileSha256 = ComputeSha256(primitiveProfilePath);
+        }
+        bool exactDeviceProfile = GpuAutotuneProfileStore.TryLoad(
+            primitiveProfilePath,
+            environment.Device,
+            out primitiveProfile);
+        primitiveResolver = new GpuPrimitiveBackendResolver(
+            primitiveProfile,
+            environment.Device);
+        bool workloadAccepted = exactDeviceProfile &&
+            primitiveResolver.TryResolveMeasured(
+                primitiveWorkloadId,
+                out primitiveProfileBackend);
+        bool capabilityAccepted = workloadAccepted &&
+            (primitiveProfileBackend == GpuPrimitiveBackend.Portable ||
+             (primitiveProfileBackend == GpuPrimitiveBackend.WaveOps &&
+              global::Summit.GpuPrimitives.GpuPrimitives
+                  .SupportsWaveOperations));
+        primitiveProfileAccepted = capabilityAccepted;
+        primitiveProfileStatus = !exactDeviceProfile
+            ? "missing-invalid-or-device-mismatch"
+            : !workloadAccepted
+                ? "workload-not-accepted"
+                : !capabilityAccepted
+                    ? "backend-capability-unavailable"
+                    : "accepted";
+        if (requirePrimitiveProfile && !primitiveProfileAccepted)
+        {
+            throw new InvalidOperationException(
+                "The selected-system workflow requires an exact-device, " +
+                "accepted primitive workload profile. Status: " +
+                primitiveProfileStatus + ".");
         }
     }
 
@@ -1917,6 +2005,10 @@ public sealed class GpuDrivenInstancePolicyBenchmarkController : MonoBehaviour
         {
             return false;
         }
+        if (requirePrimitiveProfile && !primitiveProfileAccepted)
+        {
+            return false;
+        }
         for (int index = 0; index < validationResultCount; index++)
         {
             if (validationResults[index] == null ||
@@ -2173,6 +2265,13 @@ public sealed class GpuDrivenInstancePolicyBenchmarkController : MonoBehaviour
             profileRevision = profile?.profileRevision ?? 0,
             profileHoldoutEvidenceSetId =
                 profile?.holdoutEvidenceSetId ?? string.Empty,
+            primitiveProfilePath = primitiveProfilePath,
+            primitiveProfileSha256 = primitiveProfileSha256,
+            primitiveProfileAccepted = primitiveProfileAccepted,
+            primitiveProfileStatus = primitiveProfileStatus,
+            primitiveWorkloadId = primitiveWorkloadId,
+            primitiveProfileBackend = primitiveProfileBackend.ToString(),
+            requirePrimitiveProfile = requirePrimitiveProfile,
             deviceFingerprint = environment.Device?.StableKey ?? string.Empty,
             pipelineContractFingerprint = pipelineContractFingerprint,
             shaderContractFingerprint = shaderContractFingerprint,
@@ -2787,6 +2886,14 @@ public sealed class GpuDrivenInstancePolicyBenchmarkController : MonoBehaviour
             "profileSha256=" + profileSha256,
             "profileAccepted=" + B(profileAccepted),
             "profileValidationError=" + profileValidationError,
+            "primitiveProfilePath=" +
+                (primitiveProfilePath ?? string.Empty),
+            "primitiveProfileSha256=" + primitiveProfileSha256,
+            "primitiveProfileAccepted=" + B(primitiveProfileAccepted),
+            "primitiveProfileStatus=" + primitiveProfileStatus,
+            "primitiveWorkloadId=" + primitiveWorkloadId,
+            "primitiveProfileBackend=" + primitiveProfileBackend,
+            "requirePrimitiveProfile=" + B(requirePrimitiveProfile),
             "pipelineContractFingerprint=" +
                 pipelineContractFingerprint,
             "shaderContractFingerprint=" + shaderContractFingerprint,
@@ -3952,6 +4059,13 @@ public sealed class GpuDrivenInstancePolicyBenchmarkController : MonoBehaviour
         public string profileValidationError;
         public int profileRevision;
         public string profileHoldoutEvidenceSetId;
+        public string primitiveProfilePath;
+        public string primitiveProfileSha256;
+        public bool primitiveProfileAccepted;
+        public string primitiveProfileStatus;
+        public string primitiveWorkloadId;
+        public string primitiveProfileBackend;
+        public bool requirePrimitiveProfile;
         public string deviceFingerprint;
         public string pipelineContractFingerprint;
         public string shaderContractFingerprint;

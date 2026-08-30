@@ -82,6 +82,64 @@ namespace Summit.GpuAutotuning.Tests
         }
 
         [Test]
+        public void ExactDevicePrimitiveResolverComposesMeasuredChoice()
+        {
+            GpuDeviceFingerprint device = Device();
+            GpuPrimitiveBackendResolver resolver =
+                new GpuPrimitiveBackendResolver(
+                    PrimitiveProfile(device, "exclusive-scan", "WaveOps"),
+                    device);
+            GpuDrivenInstancePolicyDecision instancePolicy = Select(
+                GpuDrivenInstanceOutputMode.VisibleOnly);
+
+            GpuDrivenInstanceExecutionPolicy composed =
+                GpuDrivenInstancePolicyComposition.Compose(
+                    in instancePolicy,
+                    GpuDrivenInstanceOutputMode.VisibleOnly,
+                    resolver,
+                    "exclusive-scan",
+                    supportsWaveOps: true);
+
+            Assert.That(composed.PrimitiveBackend,
+                Is.EqualTo(GpuPrimitiveBackend.WaveOps));
+            Assert.That(composed.PrimitiveProfileAccepted, Is.True);
+            Assert.That(composed.Flags &
+                GpuDrivenInstancePolicyDecisionFlags.BackendGateFallback,
+                Is.EqualTo(GpuDrivenInstancePolicyDecisionFlags.None));
+        }
+
+        [Test]
+        public void MissingPrimitiveWorkloadKeepsInstanceChoiceAndFallsBack()
+        {
+            GpuDeviceFingerprint device = Device();
+            GpuPrimitiveBackendResolver resolver =
+                new GpuPrimitiveBackendResolver(
+                    PrimitiveProfile(device, "stable-compaction", "WaveOps"),
+                    device);
+            GpuDrivenInstancePolicyDecision instancePolicy = Select(
+                GpuDrivenInstanceOutputMode.VisibleOnly);
+
+            GpuDrivenInstanceExecutionPolicy composed =
+                GpuDrivenInstancePolicyComposition.Compose(
+                    in instancePolicy,
+                    GpuDrivenInstanceOutputMode.VisibleOnly,
+                    resolver,
+                    "exclusive-scan",
+                    supportsWaveOps: true);
+
+            Assert.That(composed.UploadMode,
+                Is.EqualTo(instancePolicy.UploadMode));
+            Assert.That(composed.CullingMode,
+                Is.EqualTo(instancePolicy.CullingMode));
+            Assert.That(composed.PrimitiveBackend,
+                Is.EqualTo(GpuPrimitiveBackend.Portable));
+            Assert.That(composed.PrimitiveProfileAccepted, Is.False);
+            Assert.That(composed.Flags &
+                GpuDrivenInstancePolicyDecisionFlags.BackendGateFallback,
+                Is.Not.EqualTo(GpuDrivenInstancePolicyDecisionFlags.None));
+        }
+
+        [Test]
         public void ContractV2RejectsPrimitiveChoiceInsideInstanceProfile()
         {
             GpuDrivenInstancePolicyProfile profile =
@@ -114,6 +172,40 @@ namespace Summit.GpuAutotuning.Tests
                 GpuDrivenInstancePolicyTestFactory.Observation(outputMode);
             GpuDrivenInstancePolicyState state = default;
             return selector.Select(in observation, ref state);
+        }
+
+        private static GpuDeviceFingerprint Device()
+        {
+            return new GpuDeviceFingerprint
+            {
+                vendorId = 0x10DE,
+                deviceId = 0x2684,
+                vendor = "NVIDIA",
+                deviceName = "test-device",
+                graphicsApi = "Direct3D12",
+                graphicsVersion = "Direct3D 12",
+                shaderLevel = 50
+            };
+        }
+
+        private static GpuAutotuneProfile PrimitiveProfile(
+            GpuDeviceFingerprint device,
+            string workloadId,
+            string backend)
+        {
+            return new GpuAutotuneProfile
+            {
+                device = device,
+                workloads = new[]
+                {
+                    new GpuAutotuneWorkloadSelection
+                    {
+                        workloadId = workloadId,
+                        selectedBackend = backend,
+                        accepted = true
+                    }
+                }
+            };
         }
     }
 }

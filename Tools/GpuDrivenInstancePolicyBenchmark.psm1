@@ -590,7 +590,12 @@ function Assert-PolicyBenchmarkEvidence {
         [Parameter(Mandatory = $true)][string]$ExpectedCalibrationProtocol,
         [string]$ExpectedLeftCaseId,
         [string]$ExpectedRightCaseId,
-        [switch]$RequireAcceptedProfile
+        [switch]$RequireAcceptedProfile,
+        [string]$ExpectedPrimitiveProfileSha256,
+        [string]$ExpectedPrimitiveWorkloadId,
+        [ValidateSet('', 'Portable', 'WaveOps')]
+        [string]$ExpectedPrimitiveBackend = '',
+        [switch]$RequireAcceptedPrimitiveProfile
     )
 
     if ($ExpectedBuildCommit -notmatch '^[0-9a-fA-F]{40}$' -or
@@ -599,6 +604,13 @@ function Assert-PolicyBenchmarkEvidence {
         $ExpectedShaderFingerprint -notmatch '^[0-9a-fA-F]{64}$' -or
         $ExpectedMeasurementFingerprint -notmatch '^[0-9a-fA-F]{64}$') {
         throw 'Expected evidence provenance must use Unity 6000.5.2f1, a 40-hex commit, and 64-hex contract fingerprints.'
+    }
+    if ($RequireAcceptedPrimitiveProfile -and
+        ($ExpectedPrimitiveProfileSha256 -notmatch
+            '^[0-9a-fA-F]{64}$' -or
+         [string]::IsNullOrWhiteSpace($ExpectedPrimitiveWorkloadId) -or
+         [string]::IsNullOrWhiteSpace($ExpectedPrimitiveBackend))) {
+        throw 'Required primitive evidence needs a profile hash, workload, and resolved backend.'
     }
 
     $root = [IO.Path]::GetFullPath($Directory)
@@ -719,6 +731,22 @@ function Assert-PolicyBenchmarkEvidence {
             Get-RequiredPolicyMapValue $summary 'profileAccepted' $root))) {
         throw "$root did not accept its exact policy profile."
     }
+    if ($RequireAcceptedPrimitiveProfile) {
+        foreach ($entry in @(
+                @('primitiveProfileSha256',
+                    $ExpectedPrimitiveProfileSha256),
+                @('primitiveProfileAccepted', '1'),
+                @('primitiveProfileStatus', 'accepted'),
+                @('primitiveWorkloadId', $ExpectedPrimitiveWorkloadId),
+                @('primitiveProfileBackend',
+                    $ExpectedPrimitiveBackend),
+                @('requirePrimitiveProfile', '1'))) {
+            if ((Get-RequiredPolicyMapValue $summary $entry[0] $root) -cne
+                    $entry[1]) {
+                throw "$root has mismatched primitive evidence '$($entry[0])'."
+            }
+        }
+    }
 
     $config = Get-Content -LiteralPath $paths.config -Raw | ConvertFrom-Json
     $device = Get-Content -LiteralPath $paths.device -Raw | ConvertFrom-Json
@@ -754,6 +782,18 @@ function Assert-PolicyBenchmarkEvidence {
         ([uint32]$config.nativeTimestampCapabilityFlags -band 0x1f) -ne 0x1f -or
         -not [bool]$config.nativeTimestampWarmupPassed) {
         throw "$root configuration contract is not exact."
+    }
+    if ($RequireAcceptedPrimitiveProfile -and
+        ([string]$config.primitiveProfileSha256 -cne
+            $ExpectedPrimitiveProfileSha256 -or
+         -not [bool]$config.primitiveProfileAccepted -or
+         [string]$config.primitiveProfileStatus -cne 'accepted' -or
+         [string]$config.primitiveWorkloadId -cne
+            $ExpectedPrimitiveWorkloadId -or
+         [string]$config.primitiveProfileBackend -cne
+            $ExpectedPrimitiveBackend -or
+         -not [bool]$config.requirePrimitiveProfile)) {
+        throw "$root configuration did not bind the required primitive profile."
     }
     if ([string]$device.graphicsDeviceType -cne 'Direct3D12' -or
         [string]$device.unityVersion -cne $ExpectedUnityVersion -or
@@ -848,7 +888,10 @@ function Assert-PolicyBenchmarkEvidence {
             -not (ConvertTo-PolicyBoolean $row.completionFenceAppended) -or
             -not (ConvertTo-PolicyBoolean $row.decisionAccepted) -or
             -not (ConvertTo-PolicyBoolean $row.decisionStableExpected) -or
-            [uint32]$row.decisionFlags -ne 0) {
+            [uint32]$row.decisionFlags -ne 0 -or
+            ($RequireAcceptedPrimitiveProfile -and
+             [string]$row.decisionPrimitiveBackend -cne
+                $ExpectedPrimitiveBackend)) {
             throw "$root has an incomplete or fallback-bearing raw row $index."
         }
         foreach ($metric in @(
@@ -1413,7 +1456,8 @@ function Test-PolicyEndToEndReplay {
         if ([string]$baseline.decisionUploadMode -cne 'Full' -or
             [string]$baseline.decisionOutputMode -cne $ExpectedOutputMode -or
             [string]$baseline.decisionCullingMode -cne 'Flat' -or
-            [string]$baseline.decisionPrimitiveBackend -cne 'Portable' -or
+            [string]$baseline.decisionPrimitiveBackend -cne
+                $ExpectedPrimitiveBackend -or
             [string]$baseline.decisionSource -cne 'ForcedCalibration' -or
             (ConvertTo-PolicyBoolean $baseline.selectorInvoked) -or
             [uint32]$baseline.decisionFlags -ne 0 -or
@@ -1450,8 +1494,7 @@ function Test-PolicyEndToEndReplay {
     })
     $safeRejectedDecision =
         $ExpectedUploadMode -ceq 'Full' -and
-        $ExpectedCullingMode -ceq 'Flat' -and
-        $ExpectedPrimitiveBackend -ceq 'Portable'
+        $ExpectedCullingMode -ceq 'Flat'
     $performanceAccepted = if ($CandidateAccepted) {
         [bool]$performanceGate.accepted
     }

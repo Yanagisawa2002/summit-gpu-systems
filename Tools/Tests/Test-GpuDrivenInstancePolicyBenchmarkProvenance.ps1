@@ -107,8 +107,8 @@ foreach ($requirement in @(
         @('$calibrationSeed = 20260830', 'Calibration seed'),
         @('$holdoutSeed = 20260831', 'Holdout seed'),
         @('$replaySeed = 20260833', 'Unseen amended replay seed'),
-        @('gpu-driven-policy-upload-culling-v2-holdout-v1-replay-v2-checkpoint-v1',
-            'Scoped resumable replay protocol'),
+        @('gpu-selected-system-upload-culling-v3-holdout-v1-replay-v2-checkpoint-v1',
+            'Selected-system resumable replay protocol'),
         @('$formalSampleFrames = 900', 'Formal sample cardinality'),
         @('visible-windowed-swapchain-v1',
             'Visible Player timing contract'),
@@ -151,14 +151,14 @@ foreach ($requirement in @(
         @('candidateGate=mean>=2%;wins>=55%', 'Cautious candidate gate'),
         @('replayGate=decision-exact;selector-mean<=0.01ms;selector-p99<=0.05ms;isolated-iterations=100000;isolated-allocated=0;isolated-unstable=0',
             'Selector-equivalence overhead gate'),
-        @('endToEndReplayGate=accepted:candidate-gate;rejected:full-flat-portable+no-material-p99-regression',
+        @('endToEndReplayGate=accepted:candidate-gate;rejected:full-flat+profile-selected-primitive+no-material-p99-regression',
             'End-to-end accepted/rejected replay contract'),
         @('forced-selected', 'Forced selected replay'),
         @('actual-auto', 'Actual auto replay'),
         @('Test-PolicyReplayEquivalence', 'Replay equivalence gate'),
         @('Test-PolicyEndToEndReplay', 'End-to-end replay gate'),
         @('Get-PolicyComparison', 'Typed comparison lookup'),
-        @("suite = 'summit.gpu-driven-instance-policy-formal-v2'",
+        @("suite = 'summit.gpu-selected-system-formal-v3'",
             'Self-describing amended formal receipt'),
         @('Test-PolicySha256Equal', 'Case-neutral SHA-256 identity gate'),
         @("-Phase 'replay-end-to-end'", 'Independent end-to-end replay'),
@@ -185,8 +185,14 @@ foreach ($requirement in @(
             'Measured two-axis scope'),
         @('caller-required;not-calibrated',
             'Output semantic-constraint boundary'),
-        @('compose-with-primitive-autotuner',
+        @('pr1-exact-device-profile;uniform-across-each-ab-cell',
             'Primitive autotuner composition boundary'),
+        @('-gpu-driven-instance-policy-primitive-profile-path',
+            'Primitive profile Player binding'),
+        @('primitiveProfileSha256',
+            'Primitive profile hash binding'),
+        @('ExpectedPrimitiveBackend',
+            'Primitive execution decision assertion'),
         @('SHA256SUMS', 'Evidence hashes'))) {
     Assert-Contains $runner $requirement[0] $requirement[1]
 }
@@ -322,7 +328,7 @@ try {
     $shaderHash = 'c' * 64
     $measurementHash = 'd' * 64
     $protocol =
-        'gpu-driven-policy-upload-culling-v2-holdout-v1-replay-v2-checkpoint-v1'
+        'gpu-selected-system-upload-culling-v3-holdout-v1-replay-v2-checkpoint-v1'
     $unity = '6000.5.2f1'
     $sampleFrames = 20
 

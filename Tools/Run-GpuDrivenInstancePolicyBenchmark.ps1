@@ -41,6 +41,9 @@ param(
     [ValidateSet('visible-only', 'culled-tail')]
     [string]$RequiredOutput = 'visible-only',
     [string]$ProfilePath,
+    [string]$PrimitiveProfilePath,
+    [string]$PrimitiveWorkloadId = 'exclusive-scan',
+    [switch]$RequirePrimitiveProfile,
     [switch]$Resume,
     [switch]$RecoverInterrupted
 )
@@ -53,9 +56,9 @@ $calibrationSeed = 20260830
 $holdoutSeed = 20260831
 $replaySeed = 20260833
 $calibrationProtocol =
-    'gpu-driven-policy-upload-culling-v2-holdout-v1-replay-v2-checkpoint-v1'
+    'gpu-selected-system-upload-culling-v3-holdout-v1-replay-v2-checkpoint-v1'
 $protocolAmendmentReason =
-    'two-measured-axes-plus-atomic-resumable-phase-evidence'
+    'two-measured-axes-plus-exact-device-pr1-composition-and-atomic-resume'
 $formalSampleFrames = 900
 $formalWarmupFrames = 60
 $playerWindowContract = 'visible-windowed-swapchain-v1'
@@ -82,9 +85,10 @@ validationLifecycle=single-pending-owner;timeout-fail-closed;dispose-requires-no
 selectorIterations=100000
 selectorAllocatedBytes=0
 selectorUnstableDecisions=0
+primitiveProfile=exact-device;holdout-accepted;workload=exclusive-scan;uniform-across-ab
 candidateGate=mean>=2%;wins>=55%;primaryP95<=5%;primaryP99<=10%
 replayGate=decision-exact;selector-mean<=0.01ms;selector-p99<=0.05ms;isolated-iterations=100000;isolated-allocated=0;isolated-unstable=0
-endToEndReplayGate=accepted:candidate-gate;rejected:full-flat-portable+no-material-p99-regression
+endToEndReplayGate=accepted:candidate-gate;rejected:full-flat+profile-selected-primitive+no-material-p99-regression
 '@
 
 $projectRoot = [IO.Path]::GetFullPath(
@@ -350,9 +354,15 @@ function Get-PolicyEvidenceAssertionParameters {
         ExpectedCalibrationProtocol = $calibrationProtocol
         ExpectedLeftCaseId = [string]$PhaseSpecification.leftCaseId
         ExpectedRightCaseId = [string]$PhaseSpecification.rightCaseId
+        ExpectedPrimitiveProfileSha256 = $primitiveProfileSha256
+        ExpectedPrimitiveWorkloadId = $PrimitiveWorkloadId
+        ExpectedPrimitiveBackend = $expectedPrimitiveBackend
     }
     if ([bool]$PhaseSpecification.requiresAcceptedProfile) {
         $parameters['RequireAcceptedProfile'] = $true
+    }
+    if ($requirePrimitiveProfileEffective) {
+        $parameters['RequireAcceptedPrimitiveProfile'] = $true
     }
     return $parameters
 }
@@ -415,7 +425,11 @@ function Read-CompletedPolicyPhase {
             [IO.Path]::GetFullPath([string]$receipt.evidenceDirectory),
             $resolvedEvidenceDirectory,
             [StringComparison]::OrdinalIgnoreCase) -or
-        [string]$receipt.profileSha256 -cne $expectedProfileSha256) {
+        [string]$receipt.profileSha256 -cne $expectedProfileSha256 -or
+        ($requirePrimitiveProfileEffective -and
+         -not (Test-PolicySha256Equal `
+            -Left ([string]$receipt.primitiveProfileSha256) `
+            -Right $primitiveProfileSha256))) {
         throw "Phase receipt is not bound to the current run: $ReceiptPath"
     }
     $null = Assert-GpuBenchmarkFileSetReceipt `
@@ -503,6 +517,13 @@ function Invoke-PolicyPlayer {
             throw 'Frozen policy profile changed before replay.'
         }
     }
+    if ($requirePrimitiveProfileEffective -and
+        -not (Test-PolicySha256Equal `
+            -Left (Get-FileHash -LiteralPath $resolvedPrimitiveProfilePath `
+                -Algorithm SHA256).Hash `
+            -Right $primitiveProfileSha256)) {
+        throw 'Frozen primitive profile changed before a Player run.'
+    }
     if (Test-Path -LiteralPath $phaseReceiptPath -PathType Leaf) {
         if (-not $Resume) {
             throw "Fresh workflow found an unexpected phase receipt: $phaseReceiptPath"
@@ -582,6 +603,14 @@ function Invoke-PolicyPlayer {
             (Quote-PolicyProcessArgument (
                 [IO.Path]::GetFullPath($RunProfilePath))))
     }
+    if ($requirePrimitiveProfileEffective) {
+        $arguments += @(
+            '-gpu-driven-instance-policy-primitive-profile-path',
+            (Quote-PolicyProcessArgument $resolvedPrimitiveProfilePath),
+            '-gpu-driven-instance-policy-primitive-workload',
+            (Quote-PolicyProcessArgument $PrimitiveWorkloadId),
+            '-gpu-driven-instance-policy-require-primitive-profile', '1')
+    }
 
     $startedUtc = (Get-Date).ToUniversalTime().ToString('O')
     # Keep the benchmark Player windowed and visible. On D3D12, launching the
@@ -615,6 +644,15 @@ function Invoke-PolicyPlayer {
             throw "$scenarioId loaded a different profile payload."
         }
     }
+    if ($requirePrimitiveProfileEffective -and
+        (-not (Test-PolicySha256Equal `
+            -Left ([string]$evidence.config.primitiveProfileSha256) `
+            -Right $primitiveProfileSha256) -or
+         -not [bool]$evidence.config.primitiveProfileAccepted -or
+         [string]$evidence.config.primitiveProfileBackend -cne
+            $expectedPrimitiveBackend)) {
+        throw "$scenarioId did not execute the frozen primitive profile."
+    }
     $currentPayload =
         Get-GpuBenchmarkPlayerPayload -PlayerPath $resolvedPlayerPath
     if ([string]$currentPayload.sha256 -cne [string]$initialPayload.sha256) {
@@ -640,6 +678,11 @@ function Invoke-PolicyPlayer {
             profileSha256 = if ($requireProfile) {
                 (Get-FileHash -LiteralPath $RunProfilePath `
                     -Algorithm SHA256).Hash
+            }
+            else { '' }
+            primitiveProfileSha256 = if (
+                $requirePrimitiveProfileEffective) {
+                $primitiveProfileSha256
             }
             else { '' }
         }) `
@@ -871,6 +914,41 @@ else {
     }
     (Get-FileHash -LiteralPath $resolvedInputProfilePath -Algorithm SHA256).Hash
 }
+$requirePrimitiveProfileEffective =
+    [bool]$RequirePrimitiveProfile -or $Workflow -ceq 'FormalMatrix'
+$resolvedPrimitiveProfilePath = if (
+    [string]::IsNullOrWhiteSpace($PrimitiveProfilePath)) { '' }
+else { [IO.Path]::GetFullPath($PrimitiveProfilePath) }
+$primitiveProfileSha256 = ''
+$expectedPrimitiveBackend = 'Portable'
+if ($requirePrimitiveProfileEffective -or
+    -not [string]::IsNullOrWhiteSpace($resolvedPrimitiveProfilePath)) {
+    if ([string]::IsNullOrWhiteSpace($resolvedPrimitiveProfilePath) -or
+        -not (Test-Path -LiteralPath $resolvedPrimitiveProfilePath `
+            -PathType Leaf)) {
+        throw 'Selected-system evidence requires an existing primitive profile.'
+    }
+    if ([string]::IsNullOrWhiteSpace($PrimitiveWorkloadId)) {
+        throw 'Selected-system evidence requires a primitive workload id.'
+    }
+    $primitiveProfilePayload = Get-Content `
+        -LiteralPath $resolvedPrimitiveProfilePath -Raw | ConvertFrom-Json
+    $primitiveSelections = @($primitiveProfilePayload.workloads |
+        Where-Object {
+            [string]$_.workloadId -ceq $PrimitiveWorkloadId -and
+            [bool]$_.accepted
+        })
+    if ($primitiveSelections.Count -ne 1 -or
+        [string]$primitiveSelections[0].selectedBackend -notin
+            @('Portable', 'WaveOps')) {
+        throw "Primitive profile has no unique accepted '$PrimitiveWorkloadId' choice."
+    }
+    $expectedPrimitiveBackend =
+        [string]$primitiveSelections[0].selectedBackend
+    $primitiveProfileSha256 =
+        (Get-FileHash -LiteralPath $resolvedPrimitiveProfilePath `
+            -Algorithm SHA256).Hash
+}
 $runContract = [ordered]@{
     schemaVersion = 1
     suite = 'summit.gpu-driven-instance-policy-run-contract'
@@ -902,7 +980,7 @@ $runContract = [ordered]@{
     semanticConstraints = [ordered]@{
         output = 'caller-required;not-calibrated'
         primitiveBackend =
-            'portable-in-this-matrix;compose-with-primitive-autotuner'
+            'pr1-exact-device-profile;uniform-across-each-ab-cell'
     }
     formalCells = [object[]]$formalCells
     singleScenario = $singleCell
@@ -911,6 +989,11 @@ $runContract = [ordered]@{
     singleRightCase = $RightCase
     inputProfilePath = $resolvedInputProfilePath
     inputProfileSha256 = $inputProfileSha256
+    primitiveProfilePath = $resolvedPrimitiveProfilePath
+    primitiveProfileSha256 = $primitiveProfileSha256
+    primitiveWorkloadId = $PrimitiveWorkloadId
+    expectedPrimitiveBackend = $expectedPrimitiveBackend
+    requirePrimitiveProfile = $requirePrimitiveProfileEffective
     expectedPhases = [object[]]$expectedPhaseSpecifications.ToArray()
 }
 $expectedRunContractFingerprint =
@@ -1094,6 +1177,11 @@ $script:runnerConfig = [ordered]@{
     measurementContractFingerprint = $measurementContractFingerprint
     calibrationProtocol = $calibrationProtocol
     protocolAmendmentReason = $protocolAmendmentReason
+    primitiveProfilePath = $resolvedPrimitiveProfilePath
+    primitiveProfileSha256 = $primitiveProfileSha256
+    primitiveWorkloadId = $PrimitiveWorkloadId
+    expectedPrimitiveBackend = $expectedPrimitiveBackend
+    requirePrimitiveProfile = $requirePrimitiveProfileEffective
     calibrationSeed = $calibrationSeed
     holdoutSeed = $holdoutSeed
     replaySeed = $replaySeed
@@ -1473,7 +1561,8 @@ else {
                     [string]$selectionCell[0].selectedUploadMode -or
                 [string]$_.decisionCullingMode -cne
                     [string]$selectionCell[0].selectedCullingMode -or
-                [string]$_.decisionPrimitiveBackend -cne 'Portable' -or
+                [string]$_.decisionPrimitiveBackend -cne
+                    $expectedPrimitiveBackend -or
                 [uint32]$_.decisionFlags -ne 0
             }).Count -ne 0) {
             throw "ActualAuto did not execute frozen rule '$($cell.ruleId)'."
@@ -1515,8 +1604,7 @@ else {
                 [string]$selectionCell[0].selectedOutputMode) `
             -ExpectedCullingMode (
                 [string]$selectionCell[0].selectedCullingMode) `
-            -ExpectedPrimitiveBackend (
-                [string]$selectionCell[0].selectedPrimitiveBackend)
+            -ExpectedPrimitiveBackend $expectedPrimitiveBackend
         if (-not [bool]$endToEndReplay.accepted) {
             throw "End-to-end replay '$($cell.ruleId)' failed its " +
                 "accepted/rejected performance and correctness gate."
@@ -1539,12 +1627,17 @@ else {
         })
     }
     $formalReceipt = [ordered]@{
-        schemaVersion = 2
-        suite = 'summit.gpu-driven-instance-policy-formal-v2'
+        schemaVersion = 3
+        suite = 'summit.gpu-selected-system-formal-v3'
         optimizedAxes = [string[]]@('Upload', 'Culling')
         outputContractRole = 'caller-semantic-match-constraint'
         primitiveBackendRole =
-            'portable-in-this-matrix;compose-pr1-resolver'
+            'pr1-exact-device-profile;uniform-across-each-ab-cell'
+        primitiveProfilePath = $resolvedPrimitiveProfilePath
+        primitiveProfileSha256 = $primitiveProfileSha256
+        primitiveWorkloadId = $PrimitiveWorkloadId
+        executionPrimitiveBackend = $expectedPrimitiveBackend
+        primitiveProfileRequired = $requirePrimitiveProfileEffective
         sourceCommit = $gitCommit
         sourceSnapshotSha256 = $sourceSnapshotSha256
         unityVersion = $expectedUnityVersion
@@ -1628,6 +1721,8 @@ else {
             selectedUploadMode = [string]$cellReceipt.selectedUploadMode
             selectedCullingMode = [string]$cellReceipt.selectedCullingMode
             selectedPrimitiveBackend =
+                $expectedPrimitiveBackend
+            instanceProfilePrimitiveCompatibilityField =
                 [string]$cellReceipt.selectedPrimitiveBackend
             calibrationAccepted =
                 [bool]$cellReceipt.calibrationGate.accepted
@@ -1679,20 +1774,20 @@ else {
         Join-Path $outputRoot 'formal-matrix-summary.csv') `
         -NoTypeInformation -Encoding utf8
     $report = [Collections.Generic.List[string]]::new()
-    $report.Add('# GPU-driven instance automatic policy formal report')
+    $report.Add('# GPU selected-system automatic policy formal report')
     $report.Add('')
     $report.Add(('- Build commit: `{0}`' -f $gitCommit))
     $report.Add(('- Unity: `{0}`; graphics API: D3D12' -f
         $expectedUnityVersion))
     $report.Add(('- Seeds: calibration `{0}`, holdout `{1}`, replay `{2}`' -f
         $calibrationSeed, $holdoutSeed, $replaySeed))
-    $report.Add('- Scope: this matrix calibrates upload and culling only. Output is a caller semantic constraint; primitive backend stays Portable here and composes with the independent PR1 resolver.')
+    $report.Add(('- Scope: this matrix calibrates upload and culling only. Output is a caller semantic constraint. Every A/B side independently composes the same exact-device PR1 `{0}` choice, `{1}`, so primitive selection is verified without confounding the upload/culling comparison.' -f $PrimitiveWorkloadId, $expectedPrimitiveBackend))
     $report.Add("- Formal runs: $($cells.Count * 4) total ($($cells.Count) calibration, $($cells.Count) holdout, $($cells.Count) selector-equivalence replay, $($cells.Count) end-to-end replay).")
     $report.Add("- Raw measured rows: $($cells.Count * 4 * 8 * $SampleFrames)")
-    $report.Add('- Candidate failure policy: retain evidence and reuse the measured baseline decision (formal baseline is Full + Flat + Portable).')
+    $report.Add(('- Candidate failure policy: retain evidence and reuse the measured upload/culling baseline (Full + Flat) while preserving the independently selected primitive backend `{0}`.' -f $expectedPrimitiveBackend))
     $report.Add('- Metric availability: CPU/native/submission metrics require 100% coverage; GPU frame time uses literal `unavailable`, at least 95% valid rows per block, and at least 90% jointly valid paired comparisons.')
     $report.Add('- Selector-equivalence replay: ActualAuto decision equals ForcedSelected per row; selector mean must be <= 0.01 ms and selector P99 <= 0.05 ms; the isolated selector must complete 100,000 iterations with zero allocation and zero unstable decisions. Full performance-tail comparisons are retained as diagnostics; the independent end-to-end replay owns their acceptance.')
-    $report.Add('- End-to-end replay: Full+Flat versus ActualAuto on the replay seed. Accepted candidates repeat the full mean/wins/P95/P99 gate; rejected candidates remain Full+Flat+Portable with no material P99 regression.')
+    $report.Add(('- End-to-end replay: Full+Flat versus ActualAuto on the replay seed, both using `{0}`. Accepted candidates repeat the full mean/wins/P95/P99 gate; rejected candidates remain Full+Flat with no material P99 regression.' -f $expectedPrimitiveBackend))
     $report.Add('')
     $report.Add('| Rule | Candidate | Selected upload | Selected culling | Holdout mean | E2E gate | E2E mean | E2E wins |')
     $report.Add('|---|---:|---|---|---:|---:|---:|---:|')

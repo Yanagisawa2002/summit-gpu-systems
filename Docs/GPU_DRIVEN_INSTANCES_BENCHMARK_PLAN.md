@@ -66,11 +66,13 @@ Anti-claim to rule out: the gain comes only from SUMMIT city data, fewer rendere
 - Target: device-policy table
 - Priority: MUST-RUN on NVIDIA, NICE-TO-HAVE on AMD this week
 
-PR7 scope clarification: the instance-policy matrix calibrates only upload
+PR7 scope clarification: the instance-policy profile calibrates only upload
 (`None/Dirty/Full`) and culling (`Flat/Hierarchy`). Output is a caller-owned
-semantic match constraint. Primitive backend selection is independently
-calibrated by the PR1 `GpuPrimitiveBackendResolver`; PR7 keeps `Portable` fixed
-and tests only the composition boundary.
+semantic match constraint. Primitive backend selection remains independently
+calibrated by the PR1 `GpuPrimitiveBackendResolver`. The later selected-system
+formal composes the exact-device PR1 `exclusive-scan` choice on every A/B side;
+this verifies the runtime boundary while keeping primitive backend out of the
+instance-policy calibration dimensions.
 
 ### B5: Failure and stress analysis
 

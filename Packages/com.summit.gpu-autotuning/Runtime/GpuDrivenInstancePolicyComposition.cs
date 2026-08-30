@@ -46,11 +46,56 @@ namespace Summit.GpuAutotuning
     /// </summary>
     public static class GpuDrivenInstancePolicyComposition
     {
+        /// <summary>
+        /// Composes an instance decision with an exact-device, holdout-accepted
+        /// primitive profile choice. Missing workloads and stale device
+        /// profiles fail closed to Portable without changing valid upload or
+        /// culling choices.
+        /// </summary>
+        public static GpuDrivenInstanceExecutionPolicy Compose(
+            in GpuDrivenInstancePolicyDecision instancePolicy,
+            GpuDrivenInstanceOutputMode requiredOutputMode,
+            GpuPrimitiveBackendResolver primitiveResolver,
+            string primitiveWorkloadId,
+            bool supportsWaveOps)
+        {
+            GpuPrimitiveBackend measuredPrimitiveBackend =
+                GpuPrimitiveBackend.Portable;
+            bool primitiveProfileAccepted =
+                primitiveResolver != null &&
+                primitiveResolver.TryResolveMeasured(
+                    primitiveWorkloadId,
+                    out measuredPrimitiveBackend);
+            return ComposeCore(
+                in instancePolicy,
+                requiredOutputMode,
+                primitiveProfileAccepted
+                    ? measuredPrimitiveBackend
+                    : GpuPrimitiveBackend.Portable,
+                supportsWaveOps,
+                primitiveProfileAccepted);
+        }
+
         public static GpuDrivenInstanceExecutionPolicy Compose(
             in GpuDrivenInstancePolicyDecision instancePolicy,
             GpuDrivenInstanceOutputMode requiredOutputMode,
             GpuPrimitiveBackend measuredPrimitiveBackend,
             bool supportsWaveOps)
+        {
+            return ComposeCore(
+                in instancePolicy,
+                requiredOutputMode,
+                measuredPrimitiveBackend,
+                supportsWaveOps,
+                primitiveProfileAvailable: true);
+        }
+
+        private static GpuDrivenInstanceExecutionPolicy ComposeCore(
+            in GpuDrivenInstancePolicyDecision instancePolicy,
+            GpuDrivenInstanceOutputMode requiredOutputMode,
+            GpuPrimitiveBackend measuredPrimitiveBackend,
+            bool supportsWaveOps,
+            bool primitiveProfileAvailable)
         {
             GpuDrivenInstanceOutputMode safeOutput =
                 IsOutputModeValid(requiredOutputMode)
@@ -74,10 +119,10 @@ namespace Summit.GpuAutotuning
                     false);
             }
 
-            bool primitiveAccepted =
-                measuredPrimitiveBackend == GpuPrimitiveBackend.Portable ||
-                (measuredPrimitiveBackend == GpuPrimitiveBackend.WaveOps &&
-                 supportsWaveOps);
+            bool primitiveAccepted = primitiveProfileAvailable &&
+                (measuredPrimitiveBackend == GpuPrimitiveBackend.Portable ||
+                 (measuredPrimitiveBackend == GpuPrimitiveBackend.WaveOps &&
+                  supportsWaveOps));
             GpuPrimitiveBackend primitiveBackend = primitiveAccepted
                 ? measuredPrimitiveBackend
                 : GpuPrimitiveBackend.Portable;

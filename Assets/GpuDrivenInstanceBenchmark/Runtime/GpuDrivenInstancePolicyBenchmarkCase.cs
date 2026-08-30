@@ -308,4 +308,39 @@ internal readonly struct GpuDrivenInstancePolicyResolvedDecision
             decision.Flags,
             source);
     }
+
+    internal static GpuDrivenInstancePolicyResolvedDecision
+        FromExecutionPolicy(
+            in GpuDrivenInstanceExecutionPolicy decision,
+            GpuDrivenInstancePolicyDecisionSource source)
+    {
+        return new GpuDrivenInstancePolicyResolvedDecision(
+            decision.UploadMode,
+            decision.OutputMode,
+            decision.CullingMode,
+            decision.PrimitiveBackend,
+            decision.InstancePolicyRuleIndex,
+            decision.Flags,
+            source);
+    }
+
+    internal GpuDrivenInstancePolicyResolvedDecision WithPrimitiveBackend(
+        GpuPrimitiveBackend backend,
+        bool accepted)
+    {
+        GpuDrivenInstancePolicyDecisionFlags composedFlags = Flags;
+        if (!accepted)
+        {
+            composedFlags |= GpuDrivenInstancePolicyDecisionFlags
+                .BackendGateFallback;
+        }
+        return new GpuDrivenInstancePolicyResolvedDecision(
+            UploadMode,
+            OutputMode,
+            CullingMode,
+            accepted ? backend : GpuPrimitiveBackend.Portable,
+            ProfileRuleIndex,
+            composedFlags,
+            Source);
+    }
 }

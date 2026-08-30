@@ -18,16 +18,22 @@ Output is not a performance choice. The caller supplies the required
 contract may match. Primitive selection is also independent: use the original
 PR1 `GpuPrimitiveBackendResolver` for the named primitive workload, then compose
 that result with the instance decision through
-`GpuDrivenInstancePolicyComposition`. `ResolveMeasuredOrPortable` keeps a
-missing or stale primitive profile on `Portable`; it never promotes WaveOps from
+`GpuDrivenInstancePolicyComposition`. Its resolver overload distinguishes an
+accepted measured `Portable` choice from a missing-profile fallback.
+`ResolveMeasuredOrPortable` remains available when that distinction is not
+needed. Missing or stale primitive evidence never promotes WaveOps from
 capability alone.
 
 Policy contract v2 retains `requiredOutputMode` and `primitiveBackend` in the
 serialized rule for migration clarity. The former is a match constraint and the
 latter must be `Portable`; a rule that attempts to select WaveOps is rejected.
-The automatic benchmark therefore calibrates upload/culling only. Direct use of
-the older selector result and primitive override remains compatibility surface,
-not evidence that PR7 measured a primitive-backend axis.
+The automatic benchmark therefore calibrates upload/culling only. In the
+selected-system workflow every forced and automatic side composes the same
+exact-device PR1 `exclusive-scan` choice, so it verifies the production call
+chain without treating primitive selection as a third calibrated axis or
+confounding upload/culling A/B comparisons. Direct use of the older selector
+result and primitive override remains compatibility surface, not evidence that
+the instance profile measured a primitive-backend axis.
 
 Profiles use inclusive integer count ranges and integer basis points. Their
 selection dimensions include active/dirty/visible work, upload call count,
@@ -86,8 +92,11 @@ in a runtime profile; a rejected candidate should be represented by the safe
 baseline for that measured range rather than promoted as an optimization.
 
 The formal runner writes an immutable run contract, a sealed setup receipt, and
-one atomic receipt per `cell x phase`. `-Resume` revalidates commit, source,
-Unity, Player payload, profile, phase specification, and evidence hashes before
-skipping any completed work. `-RecoverInterrupted` is separately required to
-archive and replace an unsealed phase directory or a dead-process lock. Missing,
-duplicate, unexpected, corrupted, or foreign-contract receipts fail closed.
+one atomic receipt per `cell x phase`. Selected-system evidence also seals the
+primitive-profile hash, workload ID, exact-device acceptance, and executed
+backend; all A/B rows must report the same resolved backend. `-Resume`
+revalidates commit, source, Unity, Player payload, both profiles, phase
+specification, and evidence hashes before skipping any completed work.
+`-RecoverInterrupted` is separately required to archive and replace an unsealed
+phase directory or a dead-process lock. Missing, duplicate, unexpected,
+corrupted, or foreign-contract receipts fail closed.

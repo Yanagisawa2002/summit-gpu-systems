@@ -1,6 +1,6 @@
 {
   "name": "com.summit.gpu-autotuning",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "displayName": "SUMMIT GPU Autotuning",
   "description": "Device-keyed GPU backend calibration and fail-closed GPU-driven instance policy selection.",
   "unity": "6000.5",

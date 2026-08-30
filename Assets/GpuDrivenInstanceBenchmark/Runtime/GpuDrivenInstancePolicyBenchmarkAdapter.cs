@@ -190,6 +190,8 @@ internal sealed class GpuDrivenInstancePolicyBenchmarkAdapter : IDisposable
     private ulong submissionSerial;
     private GpuDrivenInstancePolicySelector selector;
     private GpuDrivenInstancePolicyState selectorState;
+    private GpuPrimitiveBackendResolver primitiveResolver;
+    private string primitiveWorkloadId;
     private GpuDrivenInstancePolicyObservation selectorOverheadObservation;
     private GpuDrivenInstanceExpectedResult expectedOutput;
     private GpuDrivenInstanceExpectedResult visibleOnlyExpected;
@@ -231,7 +233,9 @@ internal sealed class GpuDrivenInstancePolicyBenchmarkAdapter : IDisposable
         GpuDrivenInstancePolicySelector selector,
         int drawGroupCount = FixedDrawGroupCount,
         int stagingSlotCount = DefaultStagingSlotCount,
-        int maximumMergedGapRecords = 0)
+        int maximumMergedGapRecords = 0,
+        GpuPrimitiveBackendResolver primitiveResolver = null,
+        string primitiveWorkloadId = null)
     {
         ValidateConstructionInputs(
             instanceCount,
@@ -250,6 +254,8 @@ internal sealed class GpuDrivenInstancePolicyBenchmarkAdapter : IDisposable
         this.seed = seed;
         this.requiredOutputMode = requiredOutputMode;
         this.selector = selector;
+        this.primitiveResolver = primitiveResolver;
+        this.primitiveWorkloadId = primitiveWorkloadId ?? string.Empty;
         visibleBinCount = checked(viewCount * drawGroupCount);
 
         try
@@ -592,11 +598,10 @@ internal sealed class GpuDrivenInstancePolicyBenchmarkAdapter : IDisposable
             case GpuDrivenInstancePolicyBenchmarkCaseKind.ForcedSelected:
                 GpuDrivenInstancePolicyDecision supplied =
                     slot.BenchmarkCase.SuppliedDecision;
-                decision = GpuDrivenInstancePolicyResolvedDecision
-                    .FromPolicy(
-                        in supplied,
-                        GpuDrivenInstancePolicyDecisionSource
-                            .ForcedSelected);
+                decision = ComposePolicyDecision(
+                    in supplied,
+                    GpuDrivenInstancePolicyDecisionSource.ForcedSelected,
+                    observation.SupportsWaveOps);
                 break;
             case GpuDrivenInstancePolicyBenchmarkCaseKind.ActualAuto:
                 long selectorStart = Stopwatch.GetTimestamp();
@@ -606,16 +611,19 @@ internal sealed class GpuDrivenInstancePolicyBenchmarkAdapter : IDisposable
                 selectorCpuTicks = checked(
                     Stopwatch.GetTimestamp() - selectorStart);
                 selectorInvoked = true;
-                decision = GpuDrivenInstancePolicyResolvedDecision
-                    .FromPolicy(
-                        in selected,
-                        GpuDrivenInstancePolicyDecisionSource.ActualAuto);
+                decision = ComposePolicyDecision(
+                    in selected,
+                    GpuDrivenInstancePolicyDecisionSource.ActualAuto,
+                    observation.SupportsWaveOps);
                 break;
             default:
                 decision = slot.BenchmarkCase.ResolveCalibration(
                     requiredOutputMode);
                 break;
         }
+        decision = ComposePrimitiveForNonPolicyCase(
+            in decision,
+            observation.SupportsWaveOps);
 
         long recordStart = Stopwatch.GetTimestamp();
         ValidateDecision(in decision, in observation, in uploadPlan);
@@ -648,6 +656,54 @@ internal sealed class GpuDrivenInstancePolicyBenchmarkAdapter : IDisposable
             selectorInvoked,
             visibleBinCount,
             visibleBinCount);
+    }
+
+    private bool UsesPrimitiveProfile =>
+        primitiveResolver != null &&
+        !string.IsNullOrWhiteSpace(primitiveWorkloadId);
+
+    private GpuDrivenInstancePolicyResolvedDecision ComposePolicyDecision(
+        in GpuDrivenInstancePolicyDecision decision,
+        GpuDrivenInstancePolicyDecisionSource source,
+        bool supportsWaveOps)
+    {
+        if (!UsesPrimitiveProfile)
+        {
+            return GpuDrivenInstancePolicyResolvedDecision.FromPolicy(
+                in decision,
+                source);
+        }
+        GpuDrivenInstanceExecutionPolicy composed =
+            GpuDrivenInstancePolicyComposition.Compose(
+                in decision,
+                requiredOutputMode,
+                primitiveResolver,
+                primitiveWorkloadId,
+                supportsWaveOps);
+        return GpuDrivenInstancePolicyResolvedDecision.FromExecutionPolicy(
+            in composed,
+            source);
+    }
+
+    private GpuDrivenInstancePolicyResolvedDecision
+        ComposePrimitiveForNonPolicyCase(
+            in GpuDrivenInstancePolicyResolvedDecision decision,
+            bool supportsWaveOps)
+    {
+        if (!UsesPrimitiveProfile ||
+            decision.Source ==
+                GpuDrivenInstancePolicyDecisionSource.ForcedSelected ||
+            decision.Source ==
+                GpuDrivenInstancePolicyDecisionSource.ActualAuto)
+        {
+            return decision;
+        }
+        bool accepted = primitiveResolver.TryResolveMeasured(
+            primitiveWorkloadId,
+            out GpuPrimitiveBackend backend) &&
+            (backend == GpuPrimitiveBackend.Portable ||
+             (backend == GpuPrimitiveBackend.WaveOps && supportsWaveOps));
+        return decision.WithPrimitiveBackend(backend, accepted);
     }
 
     internal GraphicsFence AppendLifetimeFence(int slotIndex)
