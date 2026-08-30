@@ -76,6 +76,7 @@ public sealed class GpuPrimitiveBenchmarkController : MonoBehaviour
     private float validationTimeoutSeconds = 60.0f;
     private string operationFilter = "*";
     private string backendFilter = "portable,wave-ops";
+    private string histogramDistribution = "uniform-16";
     private bool requireCompleteGpuTimings = true;
     private string buildCommit = "unknown";
     private string portableShaderSha256 = "unknown";
@@ -152,6 +153,10 @@ public sealed class GpuPrimitiveBenchmarkController : MonoBehaviour
             args,
             "-gpu-primitive-backends",
             backendFilter);
+        histogramDistribution = ReadString(
+            args,
+            "-gpu-primitive-histogram-distribution",
+            histogramDistribution);
         requireCompleteGpuTimings =
             ReadInt(
                 args,
@@ -200,7 +205,8 @@ public sealed class GpuPrimitiveBenchmarkController : MonoBehaviour
                 seed,
                 dispatchesPerFrame,
                 operationFilter,
-                backendFilter);
+                backendFilter,
+                histogramDistribution);
             InitializeNativeTimestampBackend();
             BuildCasesAndCommands();
             BuildNativeTimestampMeasurementCommands();
@@ -1312,6 +1318,7 @@ public sealed class GpuPrimitiveBenchmarkController : MonoBehaviour
             validationTimeoutSeconds = validationTimeoutSeconds,
             requestedOperations = operationFilter,
             requestedBackends = backendFilter,
+            histogramDistribution = adapter.HistogramDistribution,
             selectedCases = caseIds,
             gpuMarkers = markers,
             adapter = adapter.ImplementationName,
@@ -2132,6 +2139,7 @@ public sealed class GpuPrimitiveBenchmarkController : MonoBehaviour
         public float validationTimeoutSeconds;
         public string requestedOperations;
         public string requestedBackends;
+        public string histogramDistribution;
         public string[] selectedCases;
         public string[] gpuMarkers;
         public string adapter;

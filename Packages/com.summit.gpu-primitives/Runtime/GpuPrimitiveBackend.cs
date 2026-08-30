@@ -6,8 +6,9 @@ namespace Summit.GpuPrimitives
     public enum GpuPrimitiveBackend
     {
         /// <summary>
-        /// Select WaveOps when the active graphics API advertises Shader Model 6,
-        /// otherwise select the portable implementation.
+        /// Select the operation's conservative automatic backend. Most
+        /// primitives use WaveOps when Shader Model 6 is available; histogram
+        /// stays Portable because its best backend depends on input contention.
         /// </summary>
         Auto = 0,
 

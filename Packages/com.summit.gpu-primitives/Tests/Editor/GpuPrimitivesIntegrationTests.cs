@@ -154,6 +154,9 @@ namespace Summit.GpuPrimitives.Tests
         }
 
         [TestCase(1)]
+        [TestCase(2)]
+        [TestCase(4)]
+        [TestCase(8)]
         [TestCase(16)]
         [TestCase(256)]
         [TestCase(4096)]

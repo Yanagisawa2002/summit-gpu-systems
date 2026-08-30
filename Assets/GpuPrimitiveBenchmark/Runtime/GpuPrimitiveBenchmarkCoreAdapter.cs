@@ -47,6 +47,7 @@ internal sealed class GpuPrimitiveBenchmarkCoreAdapter : IDisposable
 
     private readonly int count;
     private readonly int dispatchesPerFrame;
+    private readonly string histogramDistribution;
     private readonly GpuPrimitives primitives;
     private readonly GraphicsBuffer input;
     private readonly GraphicsBuffer values;
@@ -71,10 +72,23 @@ internal sealed class GpuPrimitiveBenchmarkCoreAdapter : IDisposable
         int seed,
         int repetitionsPerFrame,
         string operationFilter,
-        string backendFilter)
+        string backendFilter,
+        string requestedHistogramDistribution)
     {
         count = elementCount;
         dispatchesPerFrame = repetitionsPerFrame;
+        histogramDistribution = NormalizeHistogramDistribution(
+            requestedHistogramDistribution);
+        if (histogramDistribution != "uniform-16" &&
+            !string.Equals(
+                (operationFilter ?? string.Empty).Trim(),
+                "histogram-16",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException(
+                "Non-default histogram distributions require a histogram-16-only run.",
+                nameof(operationFilter));
+        }
 
         uint[] inputData = new uint[count];
         uint[] valueData = new uint[count];
@@ -84,11 +98,15 @@ internal sealed class GpuPrimitiveBenchmarkCoreAdapter : IDisposable
 
         List<uint> compactValues = new List<uint>(count);
         uint prefix = 0u;
+        uint[] radixKeys = new uint[count];
         for (int i = 0; i < count; i++)
         {
             uint index = (uint)i;
             uint hashed = Mix(index ^ (uint)seed);
             uint key = unchecked(index * 2654435761u + (uint)seed);
+            uint histogramKey = CreateHistogramKey(
+                key,
+                histogramDistribution);
             uint value = index ^ unchecked((uint)seed * 2246822519u);
             uint predicate = (hashed & 3u) == 0u ? 0u : 1u;
             uint scanValue = hashed & 7u;
@@ -98,7 +116,8 @@ internal sealed class GpuPrimitiveBenchmarkCoreAdapter : IDisposable
             predicateData[i] = predicate;
             scanExpected[i] = prefix;
             prefix = unchecked(prefix + scanValue);
-            histogramExpected[key & (HistogramBinCount - 1)]++;
+            histogramExpected[histogramKey & (HistogramBinCount - 1)]++;
+            radixKeys[i] = histogramKey;
             if (predicate != 0u)
             {
                 compactValues.Add(value);
@@ -106,11 +125,6 @@ internal sealed class GpuPrimitiveBenchmarkCoreAdapter : IDisposable
         }
         compactExpected = compactValues.ToArray();
 
-        uint[] radixKeys = new uint[count];
-        for (int i = 0; i < count; i++)
-        {
-            radixKeys[i] = unchecked((uint)i * 2654435761u + (uint)seed);
-        }
         radixKeysExpected = (uint[])radixKeys.Clone();
         radixValuesExpected = (uint[])valueData.Clone();
         Array.Sort(radixKeysExpected, radixValuesExpected);
@@ -158,6 +172,8 @@ internal sealed class GpuPrimitiveBenchmarkCoreAdapter : IDisposable
 
     public int DispatchesPerFrame => dispatchesPerFrame;
 
+    public string HistogramDistribution => histogramDistribution;
+
     public bool SupportsWaveOperations => GpuPrimitives.SupportsWaveOperations;
 
     public static int MaxElementCount => GpuPrimitives.MaxElementCount;
@@ -168,6 +184,39 @@ internal sealed class GpuPrimitiveBenchmarkCoreAdapter : IDisposable
     public long PrimitiveScratchBytes => primitives.ScratchBytes;
 
     public long ResidentBytes => ExternalBufferBytes + PrimitiveScratchBytes;
+
+    private static string NormalizeHistogramDistribution(string requested)
+    {
+        string normalized = (requested ?? string.Empty).Trim().ToLowerInvariant();
+        switch (normalized)
+        {
+            case "uniform-16":
+            case "hotset-4":
+            case "single-bin":
+                return normalized;
+            default:
+                throw new ArgumentOutOfRangeException(
+                    nameof(requested),
+                    requested,
+                    "Histogram distribution must be uniform-16, hotset-4, or single-bin.");
+        }
+    }
+
+    private static uint CreateHistogramKey(uint key, string distribution)
+    {
+        switch (distribution)
+        {
+            case "uniform-16":
+                return key;
+            case "hotset-4":
+                return key & 3u;
+            case "single-bin":
+                return 0u;
+            default:
+                throw new InvalidOperationException(
+                    "Unsupported normalized histogram distribution: " + distribution);
+        }
+    }
 
     public CommandBuffer CreateMeasurementCommandBuffer(
         GpuPrimitiveBenchmarkCase benchmarkCase)

@@ -86,6 +86,7 @@ namespace Summit.GpuPrimitives
         private readonly int portableScanKernel;
         private readonly int addBlockOffsetsKernel;
         private readonly int histogramAtomicKernel;
+        private readonly int histogramGroupShared16Kernel;
         private readonly int stableCompactScatterKernel;
         private readonly int appendCompactAtomicKernel;
         private readonly int radixHistogramPortableKernel;
@@ -151,6 +152,8 @@ namespace Summit.GpuPrimitives
                 this.portableShader.FindKernel("AddBlockOffsets");
             histogramAtomicKernel =
                 this.portableShader.FindKernel("HistogramAtomic");
+            histogramGroupShared16Kernel =
+                this.portableShader.FindKernel("HistogramGroupShared16");
             stableCompactScatterKernel =
                 this.portableShader.FindKernel("StableCompactScatter");
             appendCompactAtomicKernel =
@@ -329,10 +332,11 @@ namespace Summit.GpuPrimitives
             ValidateUintBuffer(keys, count, nameof(keys));
             ValidateUintBuffer(histogram, binCount, nameof(histogram));
 
-            // The wave histogram intentionally specializes for small radix
-            // domains. Auto falls back instead of rejecting a large domain.
+            // Histogram contention is data-dependent, not a capability test.
+            // Keep Auto on the robust Portable reduction; a measured external
+            // resolver may still force WaveOps for a validated workload.
             GpuPrimitiveBackend resolved =
-                backend == GpuPrimitiveBackend.Auto && binCount > 16
+                backend == GpuPrimitiveBackend.Auto
                     ? GpuPrimitiveBackend.Portable
                     : ResolveBackend(backend);
             if (resolved == GpuPrimitiveBackend.WaveOps && binCount > 16)
@@ -355,7 +359,9 @@ namespace Summit.GpuPrimitives
                     : portableShader;
                 int kernel = resolved == GpuPrimitiveBackend.WaveOps
                     ? histogramWave16Kernel
-                    : histogramAtomicKernel;
+                    : binCount <= 16
+                        ? histogramGroupShared16Kernel
+                        : histogramAtomicKernel;
                 commands.SetComputeIntParam(shader, CountId, count);
                 commands.SetComputeIntParam(shader, BinCountId, binCount);
                 commands.SetComputeIntParam(shader, KeyShiftId, keyShift);
