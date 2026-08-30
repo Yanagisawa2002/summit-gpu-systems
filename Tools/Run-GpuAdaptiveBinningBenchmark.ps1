@@ -8,8 +8,10 @@ param(
     [ValidateSet(
         'single',
         'discovery-amd-r9700-v1',
+        'calibration-nvidia-rtx4090-v1',
         'formal-amd-r9700-v1',
-        'formal-amd-r9700-contention-v1')]
+        'formal-amd-r9700-contention-v1',
+        'formal-nvidia-rtx4090-surface-v1')]
     [string]$MatrixPreset = 'single',
     [string]$ScenarioId = 'custom',
     [ValidateRange(1024, 16776960)]
@@ -120,7 +122,9 @@ function ConvertTo-GpuAdaptiveBinningScenario {
             $declaredExactSingleBinKey = [int]$declaredProperty.Value
         }
     }
-    if ($MatrixPreset -ceq 'formal-amd-r9700-contention-v1' -and
+    if ($MatrixPreset -in @(
+            'formal-amd-r9700-contention-v1',
+            'formal-nvidia-rtx4090-surface-v1') -and
         -not $declaredExactSingleBinKeyPresent) {
         throw (
             "Formal contention scenario '$scenarioId' lacks " +
@@ -167,6 +171,7 @@ $contentionFormalContract = [ordered]@{
         graphicsDeviceVendorId = 0x1002
         graphicsDeviceId = 0x7551
         graphicsDeviceType = 'Direct3D12'
+        graphicsDeviceName = 'AMD Radeon AI PRO R9700'
     }
     crossoverBracket = [ordered]@{
         axis = 'dominant-set-cardinality'
@@ -218,6 +223,78 @@ $contentionFormalContract = [ordered]@{
         minimumAcceptedCellsPerBackendForCrossover = 2
     }
 }
+$nvidiaSurfaceFormalContract = [ordered]@{
+    unityVersion = '6000.5.2f1'
+    deviceIndex = 0
+    matrixPreset = 'formal-nvidia-rtx4090-surface-v1'
+    matrixRole = 'holdout'
+    superRounds = 4
+    expectedPairCount = 8
+    warmupFrames = 60
+    sampleFrames = 900
+    cooldownFrames = 15
+    dispatchesPerFrame = 1
+    editModeTimeoutMinutes = 30
+    primitiveBackend = 'wave-ops'
+    keyDomain = 'guaranteed-in-range'
+    orderingContract = 'unspecified-within-bin'
+    signedImprovementConvention = 'positive-radix-faster'
+    selectorPolicyClaimKind =
+        'classification-replay-not-recordadaptive-timing'
+    requiredInnerProfilerMarkersEnabled = $false
+    activeDevice = [ordered]@{
+        graphicsDeviceVendorId = 0x10DE
+        graphicsDeviceId = 0x2684
+        graphicsDeviceType = 'Direct3D12'
+        graphicsDeviceName = 'NVIDIA GeForce RTX 4090'
+    }
+    selectorSurface = [ordered]@{
+        axis = 'exact-workload-cell'
+        selectorPolicy =
+            'radix-if-calibrated-cell-else-direct'
+        selectorPolicyPredicate =
+            'element-count-bin-count-distribution-singlebin-key-mode'
+        radixCandidateCells = @(
+            [ordered]@{
+                elementCount = 1048576
+                binCount = 16
+                distribution = 'singlebin'
+                singleBinKeyMode = 'any-valid'
+            },
+            [ordered]@{
+                elementCount = 1048576
+                binCount = 16
+                distribution = 'hotset4'
+                singleBinKeyMode = 'not-applicable'
+            },
+            [ordered]@{
+                elementCount = 1048576
+                binCount = 16
+                distribution = 'uniform'
+                singleBinKeyMode = 'not-applicable'
+            })
+        requiredPredictionMatchCount = 5
+        requiredRadixAcceptedCells = 3
+        requiredDirectAcceptedCells = 2
+    }
+    selectorTailGuard = [ordered]@{
+        expectedPairCount = 8
+        minimumWinningP99Pairs = 7
+        minimumWorstPairP99ImprovementPercent = -10.0
+        requiredValidatedCellCount = 5
+        requireAcceptedWinner = $true
+    }
+    decisiveGate = [ordered]@{
+        minimumMedianImprovementPercent = 5.0
+        minimumMedianAbsoluteReductionMs = 0.005
+        minimumWinningPairs = 6
+        expectedPairs = 8
+        requireAbBaSameSign = $true
+        minimumMedianP99ImprovementPercent = -2.0
+        maximumEmptyScopeP99Ms = 0.005
+        minimumAcceptedCellsPerBackendForCrossover = 2
+    }
+}
 $legacyFormalContract = [ordered]@{
     unityVersion = '6000.5.2f1'
     deviceIndex = 0
@@ -238,6 +315,7 @@ $legacyFormalContract = [ordered]@{
         graphicsDeviceVendorId = 0x1002
         graphicsDeviceId = 0x7551
         graphicsDeviceType = 'Direct3D12'
+        graphicsDeviceName = 'AMD Radeon AI PRO R9700'
     }
     decisiveGate = [ordered]@{
         minimumMedianImprovementPercent = 5.0
@@ -250,11 +328,13 @@ $legacyFormalContract = [ordered]@{
         minimumAcceptedCellsPerBackendForCrossover = 2
     }
 }
-$formalContract = if ($MatrixPreset -ceq 'formal-amd-r9700-v1') {
-    $legacyFormalContract
-}
-else {
-    $contentionFormalContract
+$formalContract = switch ($MatrixPreset) {
+    'formal-amd-r9700-v1' { $legacyFormalContract; break }
+    'formal-nvidia-rtx4090-surface-v1' {
+        $nvidiaSurfaceFormalContract
+        break
+    }
+    default { $contentionFormalContract }
 }
 $discoveryScenarios = @(
     [ordered]@{ scenarioId='discover-uniform-n262144-c64'; elementCount=262144; binCount=64; distribution='uniform'; seed=20260801 },
@@ -290,6 +370,21 @@ $contentionFormalScenarios = @(
     [ordered]@{ scenarioId='hotset4-n1048576-c16'; elementCount=1048576; binCount=16; distribution='hotset4'; seed=20261002; exactSingleBinKey=-1 },
     [ordered]@{ scenarioId='uniform-n1048576-c16'; elementCount=1048576; binCount=16; distribution='uniform'; seed=20261002; exactSingleBinKey=-1 },
     [ordered]@{ scenarioId='uniform-n1048576-c65536'; elementCount=1048576; binCount=65536; distribution='uniform'; seed=20261005; exactSingleBinKey=-1 }
+)
+$nvidiaCalibrationScenarios = @(
+    [ordered]@{ scenarioId='cal-singlebin-n262144-c16'; elementCount=262144; binCount=16; distribution='singlebin'; seed=20261111 },
+    [ordered]@{ scenarioId='cal-singlebin-n1048576-c16'; elementCount=1048576; binCount=16; distribution='singlebin'; seed=20261112 },
+    [ordered]@{ scenarioId='cal-hotset4-n1048576-c16'; elementCount=1048576; binCount=16; distribution='hotset4'; seed=20261113 },
+    [ordered]@{ scenarioId='cal-uniform-n1048576-c16'; elementCount=1048576; binCount=16; distribution='uniform'; seed=20261114 },
+    [ordered]@{ scenarioId='cal-uniform-n1048576-c4096'; elementCount=1048576; binCount=4096; distribution='uniform'; seed=20261115 },
+    [ordered]@{ scenarioId='cal-uniform-n1048576-c65536'; elementCount=1048576; binCount=65536; distribution='uniform'; seed=20261116 }
+)
+$nvidiaSurfaceFormalScenarios = @(
+    [ordered]@{ scenarioId='hold-singlebin-n1048576-c16'; elementCount=1048576; binCount=16; distribution='singlebin'; seed=20261221; exactSingleBinKey=5 },
+    [ordered]@{ scenarioId='hold-hotset4-n1048576-c16'; elementCount=1048576; binCount=16; distribution='hotset4'; seed=20261222; exactSingleBinKey=-1 },
+    [ordered]@{ scenarioId='hold-uniform-n1048576-c16'; elementCount=1048576; binCount=16; distribution='uniform'; seed=20261223; exactSingleBinKey=-1 },
+    [ordered]@{ scenarioId='hold-uniform-n1048576-c4096'; elementCount=1048576; binCount=4096; distribution='uniform'; seed=20261224; exactSingleBinKey=-1 },
+    [ordered]@{ scenarioId='hold-uniform-n1048576-c65536'; elementCount=1048576; binCount=65536; distribution='uniform'; seed=20261225; exactSingleBinKey=-1 }
 )
 
 if ($FormalAcceptanceMode) {
@@ -334,7 +429,8 @@ if ($FormalAcceptanceMode) {
 }
 elseif ($MatrixPreset -in @(
         'formal-amd-r9700-v1',
-        'formal-amd-r9700-contention-v1')) {
+        'formal-amd-r9700-contention-v1',
+        'formal-nvidia-rtx4090-surface-v1')) {
     throw (
         "MatrixPreset='$MatrixPreset' requires -FormalAcceptanceMode.")
 }
@@ -827,6 +923,14 @@ $scenarios = switch ($MatrixPreset) {
     'formal-amd-r9700-v1' { $legacyFormalScenarios; break }
     'formal-amd-r9700-contention-v1' { $contentionFormalScenarios; break }
     'discovery-amd-r9700-v1' { $discoveryScenarios; break }
+    'calibration-nvidia-rtx4090-v1' {
+        $nvidiaCalibrationScenarios
+        break
+    }
+    'formal-nvidia-rtx4090-surface-v1' {
+        $nvidiaSurfaceFormalScenarios
+        break
+    }
     default {
         @([ordered]@{
             scenarioId = $ScenarioId
@@ -880,19 +984,23 @@ if ($FormalAcceptanceMode -and -not $editModeEvidenceBoundToSource) {
 
 $matrixRole = if ($MatrixPreset -in @(
         'formal-amd-r9700-v1',
-        'formal-amd-r9700-contention-v1')) {
+        'formal-amd-r9700-contention-v1',
+        'formal-nvidia-rtx4090-surface-v1')) {
     'holdout'
 }
 elseif ($MatrixPreset -ceq 'discovery-amd-r9700-v1') {
     'discovery'
 }
+elseif ($MatrixPreset -ceq 'calibration-nvidia-rtx4090-v1') {
+    'calibration'
+}
 else {
     'custom'
 }
 $runnerConfig = [ordered]@{
-    schemaVersion = 9
+    schemaVersion = 10
     suite = 'summit.gpu-adaptive-binning'
-    benchmarkSchemaVersion = 2
+    benchmarkSchemaVersion = 3
     formalAcceptanceMode = [bool]$FormalAcceptanceMode
     formalContract = $formalContract
     matrixPreset = $MatrixPreset

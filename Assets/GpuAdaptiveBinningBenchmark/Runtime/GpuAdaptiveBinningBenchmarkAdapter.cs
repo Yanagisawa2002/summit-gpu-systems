@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using Summit.GpuAdaptiveBinning;
-using Summit.GpuDirectBinning;
 using Summit.GpuPrimitives;
 using Unity.Collections;
 using UnityEngine;
@@ -34,6 +33,8 @@ internal sealed class GpuAdaptiveBinningBenchmarkAdapter : IDisposable
     public const string PrimitiveBackendName = "wave-ops";
     public const string KeyDomainName = "guaranteed-in-range";
     public const string OrderingContractName = "unspecified-within-bin";
+    public const string PrimitiveScratchOwnership =
+        "shared-across-forced-backends-v1";
     public const string DirectStageContract =
         "clear;trusted-count;exclusive-scan;prepare;trusted-scatter";
     public const string RadixStageContract =
@@ -50,8 +51,7 @@ internal sealed class GpuAdaptiveBinningBenchmarkAdapter : IDisposable
     private readonly int elementCount;
     private readonly int binCount;
     private readonly int dispatchesPerFrame;
-    private readonly GpuDirectSpatialBinner directBinner;
-    private readonly GpuRadixSpatialBinner radixBinner;
+    private readonly GpuAdaptiveSpatialBinner binner;
     private readonly GraphicsBuffer keys;
     private readonly GraphicsBuffer values;
     private readonly GraphicsBuffer binCounts;
@@ -127,11 +127,7 @@ internal sealed class GpuAdaptiveBinningBenchmarkAdapter : IDisposable
         keys.SetData(keyData);
         values.SetData(valueData);
 
-        directBinner = new GpuDirectSpatialBinner(
-            elementCount,
-            binCount,
-            emitProfilerMarkers: InnerProfilerMarkersEnabled);
-        radixBinner = new GpuRadixSpatialBinner(
+        binner = new GpuAdaptiveSpatialBinner(
             elementCount,
             binCount,
             emitProfilerMarkers: InnerProfilerMarkersEnabled);
@@ -166,29 +162,29 @@ internal sealed class GpuAdaptiveBinningBenchmarkAdapter : IDisposable
             sizeof(uint) * 3L);
 
     public long DirectPrimitiveScratchBytes =>
-        directBinner.PrimitiveScratchBytes;
+        binner.SharedPrimitiveScratchBytes;
 
     public long RadixPrimitiveScratchBytes =>
-        radixBinner.PrimitiveScratchBytes;
+        binner.SharedPrimitiveScratchBytes;
 
     /// <summary>
-    /// Actual union of the independently resident primitive allocations.
+    /// Actual union of the shared primitive allocation.
     /// Use CasePrimitiveScratchBytes for per-variant reporting.
     /// </summary>
     public long PrimitiveScratchBytes =>
-        checked(DirectPrimitiveScratchBytes + RadixPrimitiveScratchBytes);
+        binner.SharedPrimitiveScratchBytes;
 
     public long DirectInternalScratchBytes =>
-        directBinner.InternalScratchBytes;
+        binner.DirectInternalScratchBytes;
 
     public long RadixInternalScratchBytes =>
-        radixBinner.InternalScratchBytes;
+        binner.RadixInternalScratchBytes;
 
     public long DirectCaseScratchBytes =>
-        directBinner.ScratchBytes;
+        binner.DirectScratchBytes;
 
     public long RadixCaseScratchBytes =>
-        radixBinner.ScratchBytes;
+        binner.RadixScratchBytes;
 
     public long DirectCaseResidentBytes =>
         SharedInputBytes + SharedOutputBytes + DirectCaseScratchBytes;
@@ -199,8 +195,7 @@ internal sealed class GpuAdaptiveBinningBenchmarkAdapter : IDisposable
     public long ActualBenchmarkBufferResidentBytes =>
         SharedInputBytes +
         SharedOutputBytes +
-        DirectCaseScratchBytes +
-        RadixCaseScratchBytes;
+        binner.UnionScratchBytes;
 
     public string CaseId(GpuAdaptiveBinningBenchmarkVariant variant)
     {
@@ -440,8 +435,7 @@ internal sealed class GpuAdaptiveBinningBenchmarkAdapter : IDisposable
             return;
         }
         disposed = true;
-        directBinner.Dispose();
-        radixBinner.Dispose();
+        binner.Dispose();
         keys.Dispose();
         values.Dispose();
         binCounts.Dispose();
@@ -456,7 +450,7 @@ internal sealed class GpuAdaptiveBinningBenchmarkAdapter : IDisposable
     {
         if (variant == GpuAdaptiveBinningBenchmarkVariant.Radix)
         {
-            radixBinner.Record(
+            binner.Record(
                 commands,
                 keys,
                 values,
@@ -466,13 +460,14 @@ internal sealed class GpuAdaptiveBinningBenchmarkAdapter : IDisposable
                 diagnostics,
                 elementCount,
                 binCount,
+                GpuAdaptiveBinningBackend.Radix,
                 ForcedKeyDomain,
                 ForcedPrimitiveBackend);
             return;
         }
         if (variant == GpuAdaptiveBinningBenchmarkVariant.Direct)
         {
-            directBinner.RecordGuaranteedInRange(
+            binner.Record(
                 commands,
                 keys,
                 values,
@@ -482,6 +477,8 @@ internal sealed class GpuAdaptiveBinningBenchmarkAdapter : IDisposable
                 diagnostics,
                 elementCount,
                 binCount,
+                GpuAdaptiveBinningBackend.Direct,
+                ForcedKeyDomain,
                 ForcedPrimitiveBackend);
             return;
         }

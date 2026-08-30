@@ -1,11 +1,11 @@
 {
   "name": "com.summit.gpu-adaptive-binning",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "displayName": "SUMMIT GPU Adaptive Binning",
-  "description": "Backend-neutral GPU spatial binning with independently forceable direct and radix paths.",
+  "description": "Backend-neutral GPU CSR binning with forceable Direct/Radix paths and bounded device-keyed selection.",
   "unity": "6000.0",
   "dependencies": {
-    "com.summit.gpu-direct-binning": "0.1.0",
+    "com.summit.gpu-direct-binning": "0.2.0",
     "com.summit.gpu-primitives": "0.1.0"
   },
   "keywords": [

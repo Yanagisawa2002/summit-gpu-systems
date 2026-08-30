@@ -141,6 +141,36 @@ Assert-True (
     'Runner must normalize the exact five-row contention matrix, including ' +
     'uniform C16/C65536 cardinalities, without switch-variable rebinding.')
 
+$nvidiaNormalizationInputs = @(
+    [ordered]@{ scenarioId='hold-singlebin-n1048576-c16'; elementCount=1048576; binCount=16; distribution='singlebin'; seed=20261221; exactSingleBinKey=5 },
+    [ordered]@{ scenarioId='hold-hotset4-n1048576-c16'; elementCount=1048576; binCount=16; distribution='hotset4'; seed=20261222; exactSingleBinKey=-1 },
+    [ordered]@{ scenarioId='hold-uniform-n1048576-c16'; elementCount=1048576; binCount=16; distribution='uniform'; seed=20261223; exactSingleBinKey=-1 },
+    [ordered]@{ scenarioId='hold-uniform-n1048576-c4096'; elementCount=1048576; binCount=4096; distribution='uniform'; seed=20261224; exactSingleBinKey=-1 },
+    [ordered]@{ scenarioId='hold-uniform-n1048576-c65536'; elementCount=1048576; binCount=65536; distribution='uniform'; seed=20261225; exactSingleBinKey=-1 })
+$normalizedNvidiaRows = @(
+    $nvidiaNormalizationInputs | ForEach-Object {
+        $scenario = $_
+        ConvertTo-GpuAdaptiveBinningScenario `
+            -Scenario $scenario `
+            -MatrixPreset 'formal-nvidia-rtx4090-surface-v1'
+    })
+$normalizedNvidiaTuples = @(
+    $normalizedNvidiaRows | ForEach-Object {
+        "$($_.scenarioId)|$($_.elementCount)|$($_.binCount)|" +
+        "$($_.distribution)|$($_.seed)|$($_.exactSingleBinKey)|" +
+        "$($_.dominantSetCardinality)|$($_.bracketGroup)"
+    })
+$expectedNvidiaTuples = @(
+    'hold-singlebin-n1048576-c16|1048576|16|singlebin|20261221|5|1|n1048576-c16-contention',
+    'hold-hotset4-n1048576-c16|1048576|16|hotset4|20261222|-1|4|n1048576-c16-contention',
+    'hold-uniform-n1048576-c16|1048576|16|uniform|20261223|-1|16|n1048576-c16-contention',
+    'hold-uniform-n1048576-c4096|1048576|4096|uniform|20261224|-1|4096|',
+    'hold-uniform-n1048576-c65536|1048576|65536|uniform|20261225|-1|65536|')
+Assert-True (
+    ($normalizedNvidiaTuples -join ';') -ceq
+    ($expectedNvidiaTuples -join ';')) (
+    'Runner must normalize the frozen five-cell RTX 4090 holdout matrix.')
+
 $summaryTokens = $null
 $summaryErrors = $null
 $summaryAst = [System.Management.Automation.Language.Parser]::ParseFile(
@@ -149,12 +179,14 @@ $summaryAst = [System.Management.Automation.Language.Parser]::ParseFile(
     [ref]$summaryErrors)
 $probeFunctionNames = @(
     'Improvement',
+    'Get-UtcTicks',
     'Expected-Blocks',
     'Expected-ScheduleContract',
     'Test-SignChangingAcceptedWinner',
     'Test-CrossoverClaimUsable',
     'Test-SelectorDirectionValidated',
     'Test-SelectorPolicyClaimUsable',
+    'Test-SelectorSurfacePolicyClaimUsable',
     'Test-SelectorTailCellValidated',
     'Test-SelectorPolicyTailClaimUsable',
     'Test-FormalActiveDevice',
@@ -162,6 +194,8 @@ $probeFunctionNames = @(
     'Test-ExactSingleBinKeyContract',
     'Get-ExactCellSelectorPrediction',
     'Test-ExactCellSelectorPolicyContract',
+    'Get-CalibratedSurfaceSelectorPrediction',
+    'Test-CalibratedSurfaceSelectorPolicyContract',
     'Test-RequiredProfilerMarkersDisabled')
 $probeFunctionAsts = @(
     $summaryAst.FindAll({
@@ -170,8 +204,8 @@ $probeFunctionAsts = @(
             [System.Management.Automation.Language.FunctionDefinitionAst] -and
         $node.Name -in $probeFunctionNames
     }, $true))
-Assert-True ($probeFunctionAsts.Count -eq 15) (
-    'Summarizer must expose fifteen executable schedule/policy/tail/device/exact-cell helpers.')
+Assert-True ($probeFunctionAsts.Count -eq 19) (
+    'Summarizer must expose nineteen executable provenance/schedule/policy helpers.')
 $probeSource = @(
     $probeFunctionAsts | ForEach-Object { $_.Extent.Text }) -join "`n"
 . ([scriptblock]::Create($probeSource))
@@ -239,8 +273,30 @@ $wrongKeyPolicyCells = @(
 $missingKeyPolicyCells = @(
     [pscustomobject]@{ elementCount=262144; binCount=16; distribution='singlebin' },
     [pscustomobject]@{ elementCount=1048576; binCount=16; distribution='singlebin'; exactSingleBinKey=10 })
+$surfacePolicyLabel = 'radix-if-calibrated-cell-else-direct'
+$surfacePolicyPredicate =
+    'element-count-bin-count-distribution-singlebin-key-mode'
+$surfacePolicyCells = @(
+    [pscustomobject]@{ elementCount=1048576; binCount=16; distribution='singlebin'; singleBinKeyMode='any-valid' },
+    [pscustomobject]@{ elementCount=1048576; binCount=16; distribution='hotset4'; singleBinKeyMode='not-applicable' },
+    [pscustomobject]@{ elementCount=1048576; binCount=16; distribution='uniform'; singleBinKeyMode='not-applicable' })
 $exactSmallKey = Get-GeneratorV3SingleBinKey -Seed 20261001 -BinCount 16
 $exactLargeKey = Get-GeneratorV3SingleBinKey -Seed 20261002 -BinCount 16
+$timestampProbeIso = '2026-08-30T17:24:21.6239447Z'
+$timestampProbeDate = [DateTime]::Parse(
+    $timestampProbeIso,
+    [System.Globalization.CultureInfo]::InvariantCulture,
+    [System.Globalization.DateTimeStyles]::RoundtripKind)
+$timestampStringTicks = Get-UtcTicks `
+    -Value $timestampProbeIso `
+    -Label timestampString
+$timestampDateTicks = Get-UtcTicks `
+    -Value $timestampProbeDate `
+    -Label timestampDate
+Assert-True (
+    $timestampStringTicks -eq $timestampDateTicks -and
+    $timestampDateTicks -eq $timestampProbeDate.ToUniversalTime().Ticks) (
+    'Timestamp provenance must compare ISO strings and PowerShell 7 DateTime values by UTC ticks.')
 
 $predicateProbe = [pscustomobject]@{
     directToRadix = Test-SignChangingAcceptedWinner `
@@ -317,6 +373,22 @@ $predicateProbe = [pscustomobject]@{
         -SelectorDirectionValidatedCount 2 `
         -PolicyCellCount 5 `
         -PredictionMatchCount 4
+    selectorSurfaceAllGates = Test-SelectorSurfacePolicyClaimUsable `
+        -ABDataUsable $true `
+        -RadixAcceptedCellCount 3 `
+        -DirectAcceptedCellCount 2 `
+        -RequiredRadixAcceptedCells 3 `
+        -RequiredDirectAcceptedCells 2 `
+        -PolicyCellCount 5 `
+        -PredictionMatchCount 5
+    selectorSurfaceInsufficientRadix = Test-SelectorSurfacePolicyClaimUsable `
+        -ABDataUsable $true `
+        -RadixAcceptedCellCount 2 `
+        -DirectAcceptedCellCount 3 `
+        -RequiredRadixAcceptedCells 3 `
+        -RequiredDirectAcceptedCells 2 `
+        -PolicyCellCount 5 `
+        -PredictionMatchCount 5
     tailCellAtBoundary = Test-SelectorTailCellValidated `
         -PredictionMatchesWinner $true `
         -WinnerAccepted $true `
@@ -365,6 +437,13 @@ $predicateProbe = [pscustomobject]@{
         -GraphicsDeviceVendorId 0x1002 `
         -GraphicsDeviceId 0x7551 `
         -GraphicsDeviceType Direct3D11
+    formalNvidiaDeviceExact = Test-FormalActiveDevice `
+        -GraphicsDeviceVendorId 0x10DE `
+        -GraphicsDeviceId 0x2684 `
+        -GraphicsDeviceType Direct3D12 `
+        -ExpectedGraphicsDeviceVendorId 0x10DE `
+        -ExpectedGraphicsDeviceId 0x2684 `
+        -ExpectedGraphicsDeviceType Direct3D12
 }
 $exactCellProbe = [pscustomobject]@{
     generatorSmallKey = $exactSmallKey
@@ -383,6 +462,11 @@ $exactCellProbe = [pscustomobject]@{
     wrongPolicyLabel = Test-ExactCellSelectorPolicyContract -PolicyLabel 'radix-if-dominant-set-cardinality-eq-1-else-direct' -PolicyPredicate $exactPolicyPredicate -ExactRadixCandidateCells $exactPolicyCells
     wrongPolicyKey = Test-ExactCellSelectorPolicyContract -PolicyLabel $exactPolicyLabel -PolicyPredicate $exactPolicyPredicate -ExactRadixCandidateCells $wrongKeyPolicyCells
     missingPolicyKey = Test-ExactCellSelectorPolicyContract -PolicyLabel $exactPolicyLabel -PolicyPredicate $exactPolicyPredicate -ExactRadixCandidateCells $missingKeyPolicyCells
+    surfacePolicyContract = Test-CalibratedSurfaceSelectorPolicyContract -PolicyLabel $surfacePolicyLabel -PolicyPredicate $surfacePolicyPredicate -RadixCandidateCells $surfacePolicyCells
+    surfaceSingleBinPrediction = Get-CalibratedSurfaceSelectorPrediction -ElementCount 1048576 -BinCount 16 -Distribution singlebin -ExactSingleBinKey 5 -RadixCandidateCells $surfacePolicyCells
+    surfaceNewSingleBinKeyPrediction = Get-CalibratedSurfaceSelectorPrediction -ElementCount 1048576 -BinCount 16 -Distribution singlebin -ExactSingleBinKey 13 -RadixCandidateCells $surfacePolicyCells
+    surfaceHotsetPrediction = Get-CalibratedSurfaceSelectorPrediction -ElementCount 1048576 -BinCount 16 -Distribution hotset4 -ExactSingleBinKey (-1) -RadixCandidateCells $surfacePolicyCells
+    surfaceLargeBinPrediction = Get-CalibratedSurfaceSelectorPrediction -ElementCount 1048576 -BinCount 4096 -Distribution uniform -ExactSingleBinKey (-1) -RadixCandidateCells $surfacePolicyCells
     markersDisabled = Test-RequiredProfilerMarkersDisabled -FieldPresent $true -Value $false
     markersEnabled = Test-RequiredProfilerMarkersDisabled -FieldPresent $true -Value $true
     markersMissing = Test-RequiredProfilerMarkersDisabled -FieldPresent $false -Value $null
@@ -421,6 +505,10 @@ Assert-True (-not $predicateProbe.selectorPolicyReversed) (
     'Selector policy claim must reject a reversed crossover direction.')
 Assert-True (-not $predicateProbe.selectorPolicyPredictionMismatch) (
     'Selector policy claim must reject any prediction/forced-winner mismatch.')
+Assert-True (
+    $predicateProbe.selectorSurfaceAllGates -and
+    -not $predicateProbe.selectorSurfaceInsufficientRadix) (
+    'Surface selector claim must require the frozen 3-Radix/2-Direct split.')
 Assert-True ($predicateProbe.tailCellAtBoundary) (
     'Tail gate must accept exactly 7/8 P99 wins with a -10% worst pair.')
 Assert-True (
@@ -436,6 +524,8 @@ Assert-True (
     'Selector tail claim must fail independently when policy or one cell fails.')
 Assert-True ($predicateProbe.formalDeviceExact) (
     'Formal device gate must accept the AMD R9700 Direct3D12 identity.')
+Assert-True ($predicateProbe.formalNvidiaDeviceExact) (
+    'Formal device gate must accept an explicitly bound RTX 4090 identity.')
 Assert-True (
     -not $predicateProbe.formalDeviceWrongVendor -and
     -not $predicateProbe.formalDeviceWrongId -and
@@ -465,6 +555,13 @@ Assert-True (
     'Midpoint N and same-shape wrong-key cells must predict Direct.')
 Assert-True ($exactCellProbe.exactPolicyContract) (
     'The exact two-cell selector policy contract must validate.')
+Assert-True (
+    $exactCellProbe.surfacePolicyContract -and
+    $exactCellProbe.surfaceSingleBinPrediction -ceq 'radix' -and
+    $exactCellProbe.surfaceNewSingleBinKeyPrediction -ceq 'radix' -and
+    $exactCellProbe.surfaceHotsetPrediction -ceq 'radix' -and
+    $exactCellProbe.surfaceLargeBinPrediction -ceq 'direct') (
+    'The bounded RTX surface must generalize the single-bin key and fail closed outside calibrated cells.')
 Assert-True (
     -not $exactCellProbe.wrongPolicyLabel -and
     -not $exactCellProbe.wrongPolicyKey -and
@@ -568,12 +665,18 @@ $contentionFormalScenarios = [regex]::Matches(
     $runner,
     "scenarioId='[^']+'; elementCount=[0-9]+; binCount=[0-9]+; " +
         "distribution='(?:singlebin|hotset4|uniform)'; seed=2026100[1-5]")
+$nvidiaSurfaceFormalScenarios = [regex]::Matches(
+    $runner,
+    "scenarioId='hold-[^']+'; elementCount=1048576; binCount=(?:16|4096|65536); " +
+        "distribution='(?:singlebin|hotset4|uniform)'; seed=2026122[1-5]")
 Assert-True ($discoveryScenarios.Count -eq 16) (
     'Discovery matrix must contain exactly 16 preregistered cells.')
 Assert-True ($legacyFormalScenarios.Count -eq 8) (
     'Legacy formal holdout entry must retain exactly 8 cells.')
 Assert-True ($contentionFormalScenarios.Count -eq 5) (
     'Contention formal holdout matrix must contain exactly 5 cells.')
+Assert-True ($nvidiaSurfaceFormalScenarios.Count -eq 5) (
+    'RTX 4090 formal holdout matrix must contain exactly 5 cells.')
 foreach ($scenarioLine in @(
     "scenarioId='singlebin-n262144-c16'; elementCount=262144; binCount=16; distribution='singlebin'; seed=20261001; exactSingleBinKey=9",
     "scenarioId='singlebin-n1048576-c16'; elementCount=1048576; binCount=16; distribution='singlebin'; seed=20261002; exactSingleBinKey=10",
@@ -581,6 +684,14 @@ foreach ($scenarioLine in @(
     "scenarioId='uniform-n1048576-c16'; elementCount=1048576; binCount=16; distribution='uniform'; seed=20261002; exactSingleBinKey=-1",
     "scenarioId='uniform-n1048576-c65536'; elementCount=1048576; binCount=65536; distribution='uniform'; seed=20261005; exactSingleBinKey=-1")) {
     Assert-Contains $runner $scenarioLine 'Frozen contention formal cell'
+}
+foreach ($scenarioLine in @(
+    "scenarioId='hold-singlebin-n1048576-c16'; elementCount=1048576; binCount=16; distribution='singlebin'; seed=20261221; exactSingleBinKey=5",
+    "scenarioId='hold-hotset4-n1048576-c16'; elementCount=1048576; binCount=16; distribution='hotset4'; seed=20261222; exactSingleBinKey=-1",
+    "scenarioId='hold-uniform-n1048576-c16'; elementCount=1048576; binCount=16; distribution='uniform'; seed=20261223; exactSingleBinKey=-1",
+    "scenarioId='hold-uniform-n1048576-c4096'; elementCount=1048576; binCount=4096; distribution='uniform'; seed=20261224; exactSingleBinKey=-1",
+    "scenarioId='hold-uniform-n1048576-c65536'; elementCount=1048576; binCount=65536; distribution='uniform'; seed=20261225; exactSingleBinKey=-1")) {
+    Assert-Contains $runner $scenarioLine 'Frozen RTX 4090 formal cell'
 }
 $discoverySeeds = @(
     [regex]::Matches($runner, 'seed=(202608[0-9]{2})') |
@@ -605,13 +716,17 @@ Assert-True (
 Assert-Contains $runner "[int]`$SuperRounds = 4" 'Runner defaults'
 foreach ($matrixToken in @(
     'discovery-amd-r9700-v1',
+    'calibration-nvidia-rtx4090-v1',
     'formal-amd-r9700-v1',
     'formal-amd-r9700-contention-v1',
+    'formal-nvidia-rtx4090-surface-v1',
     "matrixRole = 'holdout'")) {
     Assert-Contains $runner $matrixToken 'Runner matrices'
 }
-Assert-Contains $runner 'schemaVersion = 9' 'Runner schema'
-Assert-Contains $summarizer 'schemaVersion -ne 9' 'Summarizer schema'
+Assert-Contains $runner 'schemaVersion = 10' 'Runner schema'
+Assert-Contains $runner 'benchmarkSchemaVersion = 3' 'Benchmark schema'
+Assert-Contains $summarizer '$runnerSchemaVersion -notin @(9, 10)' (
+    'Summarizer compatible runner schemas')
 
 foreach ($explicitContract in @(
     "primitiveBackend = 'wave-ops'",
@@ -653,6 +768,19 @@ foreach ($bracketContract in @(
     'requireAcceptedWinner = $true')) {
     Assert-Contains $runner $bracketContract (
         'Runner frozen contention-bracket contract')
+}
+foreach ($surfaceContract in @(
+    "axis = 'exact-workload-cell'",
+    "'radix-if-calibrated-cell-else-direct'",
+    "'element-count-bin-count-distribution-singlebin-key-mode'",
+    "singleBinKeyMode = 'any-valid'",
+    'requiredRadixAcceptedCells = 3',
+    'requiredDirectAcceptedCells = 2',
+    'graphicsDeviceVendorId = 0x10DE',
+    'graphicsDeviceId = 0x2684',
+    "graphicsDeviceName = 'NVIDIA GeForce RTX 4090'")) {
+    Assert-Contains $runner $surfaceContract (
+        'Runner frozen RTX selector-surface contract')
 }
 foreach ($gateToken in @(
     'minimumMedianImprovementPercent = 5.0',
@@ -707,10 +835,10 @@ foreach ($summaryGate in @(
     'crossoverRequiresBothRadixToDirectBrackets=0',
     'selectorPolicyTimingMeasured=0',
     'recordAdaptiveTimingMeasured=0',
-    'formalGraphicsDeviceVendorId=0x1002',
-    'formalGraphicsDeviceId=0x7551',
-    'formalGraphicsDeviceType=Direct3D12',
-    '$crossoverClaimUsable = if ($contentionFormal)',
+    'formalGraphicsDeviceVendorId=0x$(([int]$expectedFormalDevice.vendorId)',
+    'formalGraphicsDeviceId=0x$(([int]$expectedFormalDevice.deviceId)',
+    'formalGraphicsDeviceType=$($expectedFormalDevice.deviceType)',
+    '$crossoverClaimUsable = if ($selectorFormal)',
     'Get-ExactCellSelectorPrediction',
     'Test-ExactSingleBinKeyContract',
     'gpu-adaptive-binning-input-v3',
@@ -719,6 +847,12 @@ foreach ($summaryGate in @(
     'selectorExactRadixCandidateCell1=N262144,C16,singlebin,key9',
     'selectorExactRadixCandidateCell2=N1048576,C16,singlebin,key10',
     'selectorPolicySupportDomain=exact-five-cell-holdout-only',
+    'selectorPolicySupportDomain=frozen-five-cell-rtx4090-holdout-only',
+    'selectorPolicy=radix-if-calibrated-cell-else-direct',
+    'selectorPolicyPredicate=element-count-bin-count-distribution-singlebin-key-mode',
+    'selectorRadixCandidateCell1=N1048576,C16,singlebin,any-valid-key',
+    'Get-CalibratedSurfaceSelectorPrediction',
+    'Test-CalibratedSurfaceSelectorPolicyContract',
     'selectorBroaderThresholdValidated=0',
     'selectorRuntimeOverheadMeasured=0',
     'selectorProductionReady=0',
@@ -750,7 +884,7 @@ foreach ($controllerMarkerToken in @(
 }
 
 Assert-Contains $summarizer (
-    '$scenarioSelectorPolicyClaimKind = if ($contentionFormal) {') (
+    '$scenarioSelectorPolicyClaimKind = if ($selectorFormal) {') (
     'Per-scenario selector-policy claim conditioning')
 Assert-Contains $summarizer (
     'selectorPolicyClaimKind = $scenarioSelectorPolicyClaimKind') (
@@ -775,6 +909,8 @@ $conditionalQualityPattern =
     "classification-replay-not-recordadaptive-timing'.*?" +
     "'selectorPolicySupportDomain=exact-five-cell-holdout-only'.*?" +
     "'crossoverRequiresBothRadixToDirectBrackets=1'.*?" +
+    '\)\s*\}\s*elseif \(\$nvidiaSurfaceFormal\) \{.*?' +
+    "'selectorPolicySupportDomain=frozen-five-cell-rtx4090-holdout-only'.*?" +
     '\)\s*\}\s*else \{\s*\$qualityLines \+= @\(\s*' +
     "'selectorPolicyClaimKind=not-applicable'.*?" +
     "'selectorPolicySupportDomain=not-applicable'.*?" +
@@ -782,10 +918,10 @@ $conditionalQualityPattern =
 Assert-True ([regex]::IsMatch(
     $summarizer,
     $conditionalQualityPattern)) (
-    'Exact-five-cell selector claims must be confined to the contention ' +
-    'quality branch with explicit non-contention not-applicable metadata.')
+    'AMD and NVIDIA five-cell claims must stay in their formal branches ' +
+    'with explicit non-selector not-applicable metadata.')
 
-Assert-Contains $discoveryDoc 'summarizer accepts schema 9' (
+Assert-Contains $discoveryDoc 'summarizer accepts schemas 9 and 10' (
     'Discovery evidence compatibility note')
 Assert-True (-not $discoveryDoc.Contains(
     'summarizer accepts schema 8')) (
@@ -818,6 +954,7 @@ foreach ($adapterToken in @(
     'GPU.AdaptiveBinning/RadixLowBits/WaveOps',
     'GpuPrimitiveBackend.WaveOps',
     'GpuAdaptiveBinningKeyDomain.GuaranteedInRange',
+    'PrimitiveScratchOwnership',
     'DirectPrimitiveScratchBytes',
     'RadixPrimitiveScratchBytes',
     'DirectInternalScratchBytes',
@@ -927,8 +1064,8 @@ try {
     Assert-True ($tamperExitCode -ne 0) (
         'Summarizer must reject a stale/tampered runner schema.')
     Assert-True ($tamperText.Contains(
-        'Runner schema/suite contract does not match adaptive-binning v2.')) (
-        'Schema rejection must identify the adaptive-binning v2 contract.')
+        'Runner schema/suite contract does not match adaptive-binning.')) (
+        'Schema rejection must identify the adaptive-binning contract.')
 }
 finally {
     $resolvedFixture = [System.IO.Path]::GetFullPath($fixtureRoot)

@@ -94,7 +94,9 @@ namespace Summit.GpuAdaptiveBinning
     }
 
     /// <summary>
-    /// One exact workload cell classified through forced-backend replay.
+    /// One workload cell classified through forced-backend replay. Problem
+    /// size and concentration always match exactly. A single-bin cell may
+    /// either bind one measured key or accept any caller-validated key.
     /// </summary>
     public readonly struct GpuAdaptiveBinningCalibrationCell
     {
@@ -131,26 +133,55 @@ namespace Summit.GpuAdaptiveBinning
             !HasExactSingleBinKey &&
             ExactSingleBinKey == 0u;
 
-        public bool IsValid =>
-            ElementCount > 0 &&
-            BinCount > 0 &&
-            Concentration ==
-                GpuAdaptiveBinningWorkloadConcentration
-                    .SingleBinGuaranteed &&
-            HasExactSingleBinKey &&
-            ExactSingleBinKey < (uint)BinCount;
+        public bool IsValid
+        {
+            get
+            {
+                if (ElementCount <= 0 || BinCount <= 0)
+                {
+                    return false;
+                }
+
+                if (Concentration ==
+                    GpuAdaptiveBinningWorkloadConcentration
+                        .SingleBinGuaranteed)
+                {
+                    return HasExactSingleBinKey
+                        ? ExactSingleBinKey < (uint)BinCount
+                        : ExactSingleBinKey == 0u;
+                }
+
+                return (Concentration ==
+                            GpuAdaptiveBinningWorkloadConcentration.Hotset ||
+                        Concentration ==
+                            GpuAdaptiveBinningWorkloadConcentration.General) &&
+                    !HasExactSingleBinKey &&
+                    ExactSingleBinKey == 0u;
+            }
+        }
 
         public bool Matches(
             in GpuAdaptiveBinningWorkloadHint workloadHint)
         {
-            return IsValid &&
-                workloadHint.IsValid &&
-                ElementCount == workloadHint.ElementCount &&
-                BinCount == workloadHint.BinCount &&
-                Concentration == workloadHint.Concentration &&
-                workloadHint.HasExactSingleBinKey &&
-                ExactSingleBinKey ==
-                    workloadHint.ExactSingleBinKey;
+            if (!IsValid ||
+                !workloadHint.IsValid ||
+                ElementCount != workloadHint.ElementCount ||
+                BinCount != workloadHint.BinCount ||
+                Concentration != workloadHint.Concentration)
+            {
+                return false;
+            }
+
+            if (Concentration !=
+                GpuAdaptiveBinningWorkloadConcentration
+                    .SingleBinGuaranteed)
+            {
+                return true;
+            }
+
+            return workloadHint.HasExactSingleBinKey &&
+                (!HasExactSingleBinKey ||
+                 ExactSingleBinKey == workloadHint.ExactSingleBinKey);
         }
 
         public bool IsSameCell(GpuAdaptiveBinningCalibrationCell other)
@@ -162,15 +193,46 @@ namespace Summit.GpuAdaptiveBinning
                     other.HasExactSingleBinKey &&
                 ExactSingleBinKey == other.ExactSingleBinKey;
         }
+
+        internal bool Overlaps(
+            GpuAdaptiveBinningCalibrationCell other)
+        {
+            if (!IsValid ||
+                !other.IsValid ||
+                ElementCount != other.ElementCount ||
+                BinCount != other.BinCount ||
+                Concentration != other.Concentration)
+            {
+                return false;
+            }
+
+            if (Concentration !=
+                GpuAdaptiveBinningWorkloadConcentration
+                    .SingleBinGuaranteed)
+            {
+                return true;
+            }
+
+            return !HasExactSingleBinKey ||
+                !other.HasExactSingleBinKey ||
+                ExactSingleBinKey == other.ExactSingleBinKey;
+        }
     }
 
     /// <summary>
-    /// Versioned, caller-owned exact-cell classification derived from
-    /// forced-backend replay. There is no built-in profile.
+    /// Versioned, caller-owned bounded cell classification derived from
+    /// forced-backend replay. There is no built-in profile. Cell storage is
+    /// copied once at construction; selection itself is allocation-free.
     /// </summary>
     public readonly struct GpuAdaptiveBinningCalibrationProfile
     {
-        public const int CurrentSchemaVersion = 2;
+        public const int CurrentSchemaVersion = 3;
+
+        public const int MaximumRadixCellCount = 8;
+
+        private readonly GpuAdaptiveBinningCalibrationCell[] radixCells;
+
+        private readonly bool radixCellsAreValid;
 
         public GpuAdaptiveBinningCalibrationProfile(
             int schemaVersion,
@@ -182,6 +244,28 @@ namespace Summit.GpuAdaptiveBinning
             int radixCellCount,
             GpuAdaptiveBinningCalibrationCell radixCell0,
             GpuAdaptiveBinningCalibrationCell radixCell1)
+            : this(
+                schemaVersion,
+                profileId,
+                profileRevision,
+                deviceBinding,
+                requiredPrimitiveBackend,
+                requiredProfilerMarkersEnabled,
+                CreateLegacyCellArray(
+                    radixCellCount,
+                    radixCell0,
+                    radixCell1))
+        {
+        }
+
+        public GpuAdaptiveBinningCalibrationProfile(
+            int schemaVersion,
+            string profileId,
+            int profileRevision,
+            GpuAdaptiveBinningDeviceBinding deviceBinding,
+            GpuPrimitiveBackend requiredPrimitiveBackend,
+            bool requiredProfilerMarkersEnabled,
+            GpuAdaptiveBinningCalibrationCell[] radixCells)
         {
             SchemaVersion = schemaVersion;
             ProfileId = profileId;
@@ -190,9 +274,10 @@ namespace Summit.GpuAdaptiveBinning
             RequiredPrimitiveBackend = requiredPrimitiveBackend;
             RequiredProfilerMarkersEnabled =
                 requiredProfilerMarkersEnabled;
-            RadixCellCount = radixCellCount;
-            RadixCell0 = radixCell0;
-            RadixCell1 = radixCell1;
+            this.radixCells = radixCells == null
+                ? null
+                : (GpuAdaptiveBinningCalibrationCell[])radixCells.Clone();
+            radixCellsAreValid = HasValidCells(this.radixCells);
         }
 
         public int SchemaVersion { get; }
@@ -207,11 +292,13 @@ namespace Summit.GpuAdaptiveBinning
 
         public bool RequiredProfilerMarkersEnabled { get; }
 
-        public int RadixCellCount { get; }
+        public int RadixCellCount => radixCells?.Length ?? 0;
 
-        public GpuAdaptiveBinningCalibrationCell RadixCell0 { get; }
+        public GpuAdaptiveBinningCalibrationCell RadixCell0 =>
+            GetRadixCellOrDefault(0);
 
-        public GpuAdaptiveBinningCalibrationCell RadixCell1 { get; }
+        public GpuAdaptiveBinningCalibrationCell RadixCell1 =>
+            GetRadixCellOrDefault(1);
 
         public bool IsValid =>
             SchemaVersion == CurrentSchemaVersion &&
@@ -221,7 +308,7 @@ namespace Summit.GpuAdaptiveBinning
             RequiredPrimitiveBackend ==
                 GpuPrimitiveBackend.WaveOps &&
             !RequiredProfilerMarkersEnabled &&
-            HasValidCells();
+            radixCellsAreValid;
 
         public bool IsCompatibleWith(
             in GpuAdaptiveBinningDeviceIdentity identity)
@@ -237,22 +324,75 @@ namespace Summit.GpuAdaptiveBinning
                 return false;
             }
 
-            return RadixCell0.Matches(in workloadHint) ||
-                (RadixCellCount == 2 &&
-                 RadixCell1.Matches(in workloadHint));
-        }
-
-        private bool HasValidCells()
-        {
-            if (RadixCellCount == 1)
+            for (int index = 0; index < radixCells.Length; index++)
             {
-                return RadixCell0.IsValid && RadixCell1.IsEmpty;
+                if (radixCells[index].Matches(in workloadHint))
+                {
+                    return true;
+                }
             }
 
-            return RadixCellCount == 2 &&
-                RadixCell0.IsValid &&
-                RadixCell1.IsValid &&
-                !RadixCell0.IsSameCell(RadixCell1);
+            return false;
+        }
+
+        public GpuAdaptiveBinningCalibrationCell GetRadixCellOrDefault(
+            int index)
+        {
+            return radixCells != null &&
+                index >= 0 &&
+                index < radixCells.Length
+                    ? radixCells[index]
+                    : default;
+        }
+
+        private static GpuAdaptiveBinningCalibrationCell[]
+            CreateLegacyCellArray(
+                int radixCellCount,
+                GpuAdaptiveBinningCalibrationCell radixCell0,
+                GpuAdaptiveBinningCalibrationCell radixCell1)
+        {
+            if (radixCellCount == 1 && radixCell1.IsEmpty)
+            {
+                return new[] { radixCell0 };
+            }
+
+            if (radixCellCount == 2)
+            {
+                return new[] { radixCell0, radixCell1 };
+            }
+
+            return null;
+        }
+
+        private static bool HasValidCells(
+            GpuAdaptiveBinningCalibrationCell[] cells)
+        {
+            if (cells == null ||
+                cells.Length < 1 ||
+                cells.Length > MaximumRadixCellCount)
+            {
+                return false;
+            }
+
+            for (int first = 0; first < cells.Length; first++)
+            {
+                if (!cells[first].IsValid)
+                {
+                    return false;
+                }
+
+                for (int second = first + 1;
+                    second < cells.Length;
+                    second++)
+                {
+                    if (cells[first].Overlaps(cells[second]))
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            return true;
         }
     }
 

@@ -316,6 +316,45 @@ namespace Summit.GpuAdaptiveBinning.Tests
             }
         }
 
+        [Test]
+        public void AdaptiveFacadeSharesPrimitiveScratchAndCountsUnionOnce()
+        {
+            const int elementCapacity = 4097;
+            const int binCapacity = 257;
+            using (var binner = new GpuAdaptiveSpatialBinner(
+                       elementCapacity,
+                       binCapacity))
+            {
+                long shared = binner.SharedPrimitiveScratchBytes;
+                Assert.That(shared, Is.GreaterThan(0));
+                Assert.That(
+                    binner.DirectInternalScratchBytes,
+                    Is.EqualTo((long)binCapacity * sizeof(uint)));
+                Assert.That(
+                    binner.RadixInternalScratchBytes,
+                    Is.EqualTo((long)elementCapacity * sizeof(uint)));
+                Assert.That(
+                    binner.DirectScratchBytes,
+                    Is.EqualTo(
+                        shared + binner.DirectInternalScratchBytes));
+                Assert.That(
+                    binner.RadixScratchBytes,
+                    Is.EqualTo(
+                        shared + binner.RadixInternalScratchBytes));
+                Assert.That(
+                    binner.UnionScratchBytes,
+                    Is.EqualTo(
+                        shared +
+                        binner.DirectInternalScratchBytes +
+                        binner.RadixInternalScratchBytes));
+                Assert.That(
+                    binner.UnionScratchBytes,
+                    Is.LessThan(
+                        binner.DirectScratchBytes +
+                        binner.RadixScratchBytes));
+            }
+        }
+
         [TestCase(
             0x1002,
             9u,

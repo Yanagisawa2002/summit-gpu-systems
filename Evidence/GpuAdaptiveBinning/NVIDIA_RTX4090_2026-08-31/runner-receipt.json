@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "suite": "summit.gpu-adaptive-binning",
+  "testedCommit": "ab59ea6117c87a4464befa87775a1b1019dce458",
+  "branch": "codex/gpu-adaptive-csr-consolidation-20260831",
+  "matrixPreset": "formal-nvidia-rtx4090-surface-v1",
+  "matrixRole": "holdout",
+  "formalQualityDecision": "PASS_WITH_STRICT_TAIL_LIMITATION",
+  "selectorPolicyClaimUsable": true,
+  "selectorPolicyTailClaimUsable": false,
+  "recordAdaptiveTimingMeasured": false,
+  "sourceHashesStableAcrossBuildAndRun": true,
+  "playerPayloadStableThroughRun": true,
+  "finalGitClean": true,
+  "protocol": {
+    "superRounds": 4,
+    "pairsPerCell": 8,
+    "warmupFrames": 60,
+    "sampleFramesPerBlock": 900,
+    "cooldownFrames": 15,
+    "primitiveBackend": "wave-ops",
+    "innerProfilerMarkersEnabled": false,
+    "measurementReadbackBytes": 0
+  },
+  "editMode": {
+    "passed": 774,
+    "total": 774,
+    "failed": 0,
+    "skipped": 0,
+    "sha256": "EF804A8C463A0E6944C5F8275E5F938FA469A067480BF0A8905A395B88EF857E"
+  },
+  "evidenceCounts": {
+    "scenariosCompleted": 5,
+    "rawRows": 81000,
+    "validationPassed": 20,
+    "validationTotal": 20,
+    "radixAcceptedCells": 3,
+    "directAcceptedCells": 2,
+    "selectorPredictionMatches": 5,
+    "selectorPredictionTotal": 5,
+    "strictTailValidatedCells": 4,
+    "strictTailTotalCells": 5
+  },
+  "logicalScratch": {
+    "sharedPrimitiveBytes": 17334404,
+    "completeFacadeUnionReductionMinimumPercent": 33.1870284207133,
+    "completeFacadeUnionReductionMaximumPercent": 33.6942175818993,
+    "measuredVramClaim": false
+  },
+  "sourceSnapshotSha256": "B6AB2C58F1075F5C6B1C9F84B8817BC8F6AF95739763A7C0C2CDF41D089CD9A6",
+  "playerPayload": {
+    "fileCount": 281,
+    "sha256": "1AF7C3DC4D68D540314E12188D88F8AC0F48B824CA3E0F08329406EC0626EF83"
+  },
+  "directShaderSha256": "9D6CC10ACD0F07090DF5FC887FA2C48ECD483062983C82AFA3ADEBFB3C013915",
+  "radixShaderSha256": "28BD143F4EF018ECB1F168834F1ACEC5D4E238E794778F22FE18CAC8D8CA7D2E",
+  "runtimeApiSha256": "DE29E468E8CC9F2C520952B34C7A717177CE785A5E091770572F09555A6539CF",
+  "generatedReportHashes": {
+    "runnerConfigSha256": "9E5F3941D57EBEC0093461EF1B8FD42C78D07DBF240072E4CF2507F73FA7E026",
+    "matrixSummarySha256": "68C9E51896565A406B4DA4F16541A6C793DACD682787FD307D6D0359FE90F5B8",
+    "qualitySummarySha256": "6B24BE769435712F02A8D6B76278E3F637C31C3D394A4B839ACB5A96672599B7"
+  }
+}
