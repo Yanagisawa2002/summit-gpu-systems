@@ -74,7 +74,9 @@ $externalBrgRoot = Join-Path `
 foreach ($relativePath in @(
         'BENCHMARK_CONTRACT.md',
         'UPSTREAM_BENCHMARK_LOCK.json',
-        'Tools\Test-UpstreamBenchmarkLock.ps1')) {
+        'Tools\Test-UpstreamBenchmarkLock.ps1',
+        'Tools\Prepare-ExternalBrgFixture.ps1',
+        'Tools\Compare-ExternalBrgPair.ps1')) {
     $requiredPath = Join-Path $externalBrgRoot $relativePath
     if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
         $failures.Add("Missing external BRG contract file: $requiredPath")

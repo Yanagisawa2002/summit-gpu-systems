@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "suite": "gpu-systems.external-brg-shooter",
-  "status": "pinned-not-yet-migrated-or-measured",
+  "status": "bounded-smoke-invalid-formal-incomplete",
   "upstream": {
     "repository": "https://github.com/Unity-Technologies/brg-shooter.git",
     "branch": "main",
@@ -48,10 +48,10 @@
   "integration": {
     "targetEditor": "6000.5.2f1",
     "gpuSystemsRepository": "https://github.com/Yanagisawa2002/summit-gpu-systems.git",
-    "gpuSystemsCommit": "73a55fac428e44c137674a6faf859693a0c0492f",
+    "gpuSystemsCommit": "943e1f4e19945801c1de9a5c6a553de702061cc3",
     "fixtureTransport": "local pinned checkout; upstream files are not vendored",
     "packageTransport": "commit-pinned UPM dependencies; no machine-local paths in sealed evidence",
-    "migrationReceipt": "pending",
-    "formalEvidenceReceipt": "pending"
+    "migrationReceipt": "local migration and package-compile receipts retained outside the repository",
+    "formalEvidenceReceipt": "not produced; bounded E1 smoke failed image-parity and timing-coverage gates"
   }
 }

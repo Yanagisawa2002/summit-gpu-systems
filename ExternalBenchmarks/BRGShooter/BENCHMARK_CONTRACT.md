@@ -1,7 +1,42 @@
 # External BRG Shooter benchmark contract
 
-Status: source and experiment contract pinned; no migration, adapter build, or
-external performance claim has been accepted yet.
+Status: source lock, Unity 6000.5 migration, thin adapter, and a bounded E1
+smoke are complete. The smoke pair is invalid for performance claims because
+representative image hashes differ and GPU-frame timing coverage is below the
+frozen threshold. No external performance claim is accepted.
+
+## Current bounded result
+
+The pinned fixture was migrated in an isolated local checkout to Unity
+`6000.5.2f1` / URP `17.5.0`. All five package dependencies resolved, the
+adapter compiled, and a Windows D3D12 Development Player built with zero build
+errors. Local file-package transport was used for this development smoke and
+is explicitly ineligible for sealed evidence.
+
+One E1 smoke per path completed with 5 warmup, 5 convergence, and 30 measured
+frames on an RTX 4090:
+
+- Both receipts used the same state hash `F055132364219845` and produced
+  non-black images with the same 209,939 non-black pixels.
+- `gpu-systems` reported exactly 32,768 visible instances and zero contract
+  violations/error flags.
+- The representative image hashes differed (`75019FF1348A3B60` versus
+  `0DAD069480C1C5C0`). GPU-frame timing coverage was 76.7% for `engine-brg`
+  and 80.0% for `gpu-systems`, below the required 95%.
+- The diagnostic whole-frame deltas favored `gpu-systems`, but they are not
+  publishable because correctness/availability gates take precedence.
+
+Two bounded attempts to add a separate settled validation frame exposed unsafe
+runner placement: first a BRG upload, then a synchronous readback, could stall
+inside the SRP render callback. Both Players were terminated without receipts;
+those attempts are not evidence. The stable receipt-writing harness is kept,
+the failed validation-frame variants are not.
+
+Therefore T10 closes as `INVALID / INCOMPLETE FORMAL`, not `POSITIVE` and not
+a performance `NEGATIVE`. Use `Compare-ExternalBrgPair.ps1` to reproduce the
+fail-closed pair decision. A future attempt must fix validation scheduling,
+reach timing coverage, use commit-pinned Git UPM transport, and then run the
+counterbalanced formal matrix from scratch.
 
 ## Purpose
 
