@@ -116,6 +116,9 @@ The first formal matrix should include:
 - logical sizes: the sixteen correctness boundaries plus 65,536, 1,048,576, and
   4,194,304 elements;
 - histogram domains: 16, 256, 4,096, and 262,144 buckets where memory permits;
+- 16-bin histogram distributions: `uniform-16`, `hotset-4`, and `single-bin`;
+  non-default distributions are valid only in histogram-only runs so they do
+  not silently alter scan, compaction, or radix workloads;
 - compaction selectivity: 1%, 25%, 50%, 75%, and 99%;
 - radix key entropy: 4, 8, 16, 18, and 32 effective bits;
 - implementations: portable fallback and wave-optimized;

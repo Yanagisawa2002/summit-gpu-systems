@@ -33,6 +33,9 @@ param(
 
     [string]$Backends = 'portable,wave-ops',
 
+    [ValidateSet('uniform-16', 'hotset-4', 'single-bin')]
+    [string]$HistogramDistribution = 'uniform-16',
+
     [ValidateRange(5, 600)]
     [int]$ValidationTimeoutSeconds = 60,
 
@@ -65,6 +68,7 @@ $formalContract = [ordered]@{
     dispatchesPerFrame = 1
     operations = '*'
     backends = 'portable,wave-ops'
+    histogramDistribution = 'uniform-16'
 }
 if ($FormalAcceptanceMode) {
     $formalViolations = [System.Collections.Generic.List[string]]::new()
@@ -95,6 +99,14 @@ if ($FormalAcceptanceMode) {
         $formalViolations.Add(
             "Backends='$Backends'; expected '$($formalContract.backends)'")
     }
+    if (-not [string]::Equals(
+            $HistogramDistribution,
+            $formalContract.histogramDistribution,
+            [System.StringComparison]::Ordinal)) {
+        $formalViolations.Add(
+            "HistogramDistribution='$HistogramDistribution'; expected " +
+            "'$($formalContract.histogramDistribution)'")
+    }
     if ($SkipBuild) { $formalViolations.Add('SkipBuild is forbidden.') }
     if ($SkipSummary) { $formalViolations.Add('SkipSummary is forbidden.') }
     if ($AllowMissingGpuTiming) {
@@ -106,6 +118,15 @@ if ($FormalAcceptanceMode) {
     if ($formalViolations.Count -ne 0) {
         throw "Formal acceptance contract rejected:`n$($formalViolations -join "`n")"
     }
+}
+if ($HistogramDistribution -ne 'uniform-16' -and
+    -not [string]::Equals(
+        $Operations,
+        'histogram-16',
+        [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw (
+        "HistogramDistribution='$HistogramDistribution' requires " +
+        "Operations='histogram-16' so other primitive workloads remain unchanged.")
 }
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
@@ -513,6 +534,7 @@ $runnerConfiguration = [ordered]@{
     dispatchesPerFrame = $DispatchesPerFrame
     operations = $Operations
     backends = $Backends
+    histogramDistribution = $HistogramDistribution
     validationTimeoutSeconds = $ValidationTimeoutSeconds
     requireCompleteGpuTimings = (-not $AllowMissingGpuTiming)
     singlePlayerProcess = $true
@@ -694,6 +716,8 @@ $playerArguments = @(
     '-gpu-primitive-dispatches-per-frame', [string]$DispatchesPerFrame,
     '-gpu-primitive-operations', (Quote-ProcessArgument $Operations),
     '-gpu-primitive-backends', (Quote-ProcessArgument $Backends),
+    '-gpu-primitive-histogram-distribution',
+        (Quote-ProcessArgument $HistogramDistribution),
     '-gpu-primitive-validation-timeout-seconds', [string]$ValidationTimeoutSeconds,
     '-gpu-primitive-require-complete-gpu-timings',
         $(if ($AllowMissingGpuTiming) { '0' } else { '1' }),
