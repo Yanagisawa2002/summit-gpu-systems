@@ -58,6 +58,7 @@ $protocolAmendmentReason =
     'two-measured-axes-plus-atomic-resumable-phase-evidence'
 $formalSampleFrames = 900
 $formalWarmupFrames = 60
+$singleScenarioMinimumSampleFrames = 120
 $suite = 'summit.gpu-driven-instance-policy-runner'
 $measurementContract = @'
 summit.gpu-driven-instance-policy.measurement.v1
@@ -705,6 +706,11 @@ if ($Workflow -ceq 'FormalMatrix') {
     if ($violations.Count -ne 0) {
         throw "Formal matrix contract rejected:`n$($violations -join "`n")"
     }
+}
+elseif ($SampleFrames -lt $singleScenarioMinimumSampleFrames) {
+    throw "SingleScenario requires at least " +
+        "$singleScenarioMinimumSampleFrames sample frames per block so the " +
+        'four-frame timing latency can satisfy the 95% GPU-frame coverage gate.'
 }
 
 $expectedTestIdentities = @(

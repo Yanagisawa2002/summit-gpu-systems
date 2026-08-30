@@ -110,6 +110,8 @@ foreach ($requirement in @(
         @('gpu-driven-policy-upload-culling-v2-holdout-v1-replay-v2-checkpoint-v1',
             'Scoped resumable replay protocol'),
         @('$formalSampleFrames = 900', 'Formal sample cardinality'),
+        @('$singleScenarioMinimumSampleFrames = 120',
+            'Feasible SingleScenario GPU-frame coverage'),
         @('[ValidateSet(500, 2500, 7500, 10000)]',
             'Controller-compatible visibility set'),
         @('ABBA;BAAB', 'Counterbalanced schedule'),
