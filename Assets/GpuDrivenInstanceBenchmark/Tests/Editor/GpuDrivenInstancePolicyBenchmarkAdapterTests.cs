@@ -242,6 +242,25 @@ namespace Summit.GpuDrivenInstance.Benchmark.Tests
                 Is.False);
         }
 
+        [TestCase(19, 20, true)]
+        [TestCase(95, 100, true)]
+        [TestCase(18, 20, false)]
+        [TestCase(94, 100, false)]
+        [TestCase(0, 0, false)]
+        [TestCase(21, 20, false)]
+        public void PolicyGpuFrameBlockCoverageRequiresNinetyFivePercent(
+            int validCount,
+            int sampleCount,
+            bool expected)
+        {
+            Assert.That(
+                GpuDrivenInstancePolicyBenchmarkController
+                    .GpuFrameBlockCoveragePasses(
+                        validCount,
+                        sampleCount),
+                Is.EqualTo(expected));
+        }
+
         [TestCase("safe-baseline", "dirty-flat", false)]
         [TestCase("none-flat", "none-hierarchy", false)]
         [TestCase("actual-auto", "forced-selected", true)]

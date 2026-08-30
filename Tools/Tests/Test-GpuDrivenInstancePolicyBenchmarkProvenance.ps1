@@ -101,6 +101,14 @@ foreach ($requirement in @(
             'Exact engine indirect-argument validation'),
         @('renderTargetNonBlackHash=1',
             'Non-black render-target validation'),
+        @('gpuFrameUnavailableLiteral=unavailable',
+            'Explicit unavailable GPU-frame contract'),
+        @('gpuFrameBlockValidCoverage>=95%',
+            'GPU-frame block coverage contract'),
+        @('gpuFramePairedComparisonCoverage>=90%',
+            'GPU-frame paired coverage contract'),
+        @('otherTimedMetricCoverage=100%',
+            'Complete non-GPU-frame metric coverage'),
         @('validationLifecycle=single-pending-owner;timeout-fail-closed;dispose-requires-none',
             'Fail-closed validation lifecycle'),
         @("'-runTests'", 'Self-generated EditMode run'),
@@ -158,6 +166,14 @@ foreach ($requirement in @(
         @('cpuSubmissionWindowMs', 'CPU submission evidence'),
         @('cpuFrameMs', 'CPU frame-tail evidence'),
         @('gpuFrameMs', 'GPU frame-tail evidence'),
+        @('gpuFrameReadyRows', 'GPU frame availability summary'),
+        @('gpuFrameUnavailableRows', 'GPU frame unavailable summary'),
+        @('GpuFrameBlockMinimumCoveragePercent',
+            'GPU frame block coverage gate'),
+        @('GpuFramePairedMinimumCoveragePercent',
+            'GPU frame paired coverage gate'),
+        @('minimumPairCoveragePercent',
+            'Paired coverage comparison receipt'),
         @('measurementReadbackBytes', 'Timed readback gate'),
         @('mainThreadAllocatedBytes', 'Timed allocation gate'),
         @('slotWaitFrames', 'Slot wait gate'),
@@ -191,7 +207,7 @@ try {
     $measurementHash = 'd' * 64
     $protocol = 'gpu-driven-policy-calibration-v1-holdout-v1'
     $unity = '6000.5.2f1'
-    $sampleFrames = 2
+    $sampleFrames = 20
 
     $invalidVisibilityRejectedByBinding = $false
     try {
@@ -284,11 +300,18 @@ try {
             [Parameter(Mandatory = $true)][string]$RightCase,
             [switch]$AcceptedProfile,
             [switch]$SlowCandidate,
+            [switch]$GpuFrameCoverageBoundary,
             [string]$RuleId = 'synthetic-rule'
         )
         New-Item -ItemType Directory -Path $Directory -Force | Out-Null
         $processId = 42
         $expectedRows = 8 * $sampleFrames
+        $gpuFrameUnavailableRows = if ($GpuFrameCoverageBoundary) {
+            8
+        }
+        else { 0 }
+        $gpuFrameReadyRows =
+            $expectedRows - $gpuFrameUnavailableRows
         $engineIndirectWordCount = 5
         $engineIndirectReadbackBytes = 40
         $renderTargetReadbackBytes = 1048576
@@ -311,6 +334,8 @@ try {
             "rawFrameCount=$expectedRows",
             "expectedRawFrameCount=$expectedRows",
             "frameTimingReadyRows=$expectedRows",
+            "gpuFrameReadyRows=$gpuFrameReadyRows",
+            "gpuFrameUnavailableRows=$gpuFrameUnavailableRows",
             "submissionWindowReadyRows=$expectedRows",
             "nativeTimestampReadyRows=$expectedRows",
             "stableDecisionRows=$expectedRows",
@@ -385,6 +410,10 @@ try {
             measurementBlocks = 8
             scheduleContract = 'ABBA;BAAB'
             frameTimingResultLatencyFrames = 4
+            gpuFrameUnavailableLiteral = 'unavailable'
+            gpuFrameBlockMinimumCoveragePercent = 95
+            gpuFramePairedMinimumCoveragePercent = 90
+            otherTimedMetricCoveragePercent = 100
             stateResetOutsideMeasuredWindow = $true
             selectorResetOutsideMeasuredWindow = $true
             caseLocalConvergenceOutsideMeasuredWindow = $true
@@ -439,10 +468,14 @@ try {
         for ($block = 1; $block -le 8; $block++) {
             $side = $sides[$block - 1]
             $caseId = if ($side -ceq 'A') { $LeftCase } else { $RightCase }
+            $withinPairPosition = (($block - 1) % 2) + 1
             foreach ($sample in 1..$sampleFrames) {
                 $candidate = $side -ceq 'B'
                 $candidateMetric = if ($SlowCandidate) { 3.0 } else { 1.0 }
                 $metric = if ($candidate) { $candidateMetric } else { 2.0 }
+                $gpuFrameValid = -not (
+                    $GpuFrameCoverageBoundary -and
+                    $sample -eq $withinPairPosition)
                 $isDirtyDecision = $caseId -match 'dirty-flat$'
                 $isAutoDecision = $caseId -ceq 'gpu-driven-policy/actual-auto'
                 $isForcedSelected =
@@ -483,7 +516,10 @@ try {
                     cpuFrameMs = $metric + 3.0
                     cpuMainThreadFrameMs = $metric + 2.0
                     cpuRenderThreadFrameMs = $metric + 1.0
-                    gpuFrameMs = $metric + 4.0
+                    gpuFrameMs = if ($gpuFrameValid) {
+                        $metric + 4.0
+                    }
+                    else { 'unavailable' }
                     cpuSubmissionWindowMs = $metric + 0.5
                     mainThreadAllocatedBytes = 0
                     slotWaitFrames = 0
@@ -515,7 +551,7 @@ try {
                     frameTimingValid = 1
                     frameTimingCaptureLatencyFrames = 4
                     cpuRenderThreadFrameValid = 1
-                    gpuFrameValid = 1
+                    gpuFrameValid = if ($gpuFrameValid) { 1 } else { 0 }
                     submissionWindowValid = 1
                     measurementReadbackBytes = 0
                     timestampInstrumentationReadbackBytes = 16
@@ -540,6 +576,10 @@ try {
                 sampleCount = $sampleFrames
                 timestampReadyRows = $sampleFrames
                 frameTimingReadyRows = $sampleFrames
+                gpuFrameValidCount = if ($GpuFrameCoverageBoundary) {
+                    $sampleFrames - 1
+                }
+                else { $sampleFrames }
                 submissionWindowReadyRows = $sampleFrames
                 stableDecisionRows = $sampleFrames
                 mainThreadAllocationRows = 0
@@ -691,11 +731,140 @@ try {
         $leftCalibration $rightCalibration
     $candidateGate = Test-PolicyCandidateGate `
         $calibrationEvidence $leftCalibration $rightCalibration Upload
+    $expectedPairedRows = 4 * $sampleFrames
     if (-not $candidateGate.accepted -or
-        $candidateGate.comparisons.totalCpuMs.positiveWins -ne 8 -or
-        $candidateGate.comparisons.totalCpuMs.pairedDelta.count -ne 8) {
+        $candidateGate.comparisons.totalCpuMs.positiveWins -ne
+            $expectedPairedRows -or
+        $candidateGate.comparisons.totalCpuMs.pairedDelta.count -ne
+            $expectedPairedRows) {
         throw 'Synthetic candidate comparison did not pass exact paired gates.'
     }
+
+    $gpuCoverageDirectory =
+        Join-Path $temporaryRoot 'gpu-frame-coverage-boundary'
+    Write-SyntheticEvidence $gpuCoverageDirectory 20260830 `
+        $leftCalibration $rightCalibration -GpuFrameCoverageBoundary
+    $gpuCoverageEvidence = Assert-PolicyBenchmarkEvidence `
+        $gpuCoverageDirectory $sampleFrames 20260830 $commit $unity `
+        $pipelineHash $shaderHash $measurementHash $protocol `
+        $leftCalibration $rightCalibration
+    $gpuCoverageComparison = Get-PolicyPairedComparison `
+        -Rows $gpuCoverageEvidence.raw `
+        -BaselineCaseId $leftCalibration `
+        -CandidateCaseId $rightCalibration `
+        -Metric gpuFrameMs
+    if ($gpuCoverageComparison.totalPairCount -ne $expectedPairedRows -or
+        $gpuCoverageComparison.pairCount -ne
+            [int](0.9 * $expectedPairedRows) -or
+        $gpuCoverageComparison.unavailablePairCount -ne
+            [int](0.1 * $expectedPairedRows) -or
+        $gpuCoverageComparison.pairCoveragePercent -ne 90.0 -or
+        $gpuCoverageComparison.minimumPairCoveragePercent -ne 90.0 -or
+        @($gpuCoverageEvidence.raw | Where-Object {
+            [int]$_.gpuFrameValid -eq 0 -and
+            [string]$_.gpuFrameMs -cne 'unavailable'
+        }).Count -ne 0) {
+        throw 'GPU-frame boundary evidence did not retain exact availability receipts.'
+    }
+
+    $badGpuLiteralDirectory =
+        Join-Path $temporaryRoot 'gpu-frame-fabricated-zero'
+    Copy-Item -LiteralPath $gpuCoverageDirectory `
+        -Destination $badGpuLiteralDirectory -Recurse
+    $badGpuLiteralPath =
+        Join-Path $badGpuLiteralDirectory 'raw-frames.csv'
+    $badGpuLiteralRows = @(Import-Csv -LiteralPath $badGpuLiteralPath)
+    $badGpuLiteralRow = @($badGpuLiteralRows | Where-Object {
+        [int]$_.gpuFrameValid -eq 0
+    })[0]
+    $badGpuLiteralRow.gpuFrameMs = 0
+    $badGpuLiteralRows | Export-Csv -LiteralPath $badGpuLiteralPath `
+        -NoTypeInformation -Encoding utf8
+    Assert-Throws {
+        $null = Assert-PolicyBenchmarkEvidence `
+            $badGpuLiteralDirectory $sampleFrames 20260830 $commit $unity `
+            $pipelineHash $shaderHash $measurementHash $protocol `
+            $leftCalibration $rightCalibration
+    } 'Fabricated zero for unavailable GPU frame'
+
+    $badGpuBlockDirectory =
+        Join-Path $temporaryRoot 'gpu-frame-below-block-coverage'
+    Copy-Item -LiteralPath $gpuCoverageDirectory `
+        -Destination $badGpuBlockDirectory -Recurse
+    $badGpuBlockRawPath =
+        Join-Path $badGpuBlockDirectory 'raw-frames.csv'
+    $badGpuBlockRows = @(Import-Csv -LiteralPath $badGpuBlockRawPath)
+    $extraUnavailable = @($badGpuBlockRows | Where-Object {
+        [int]$_.blockIndex -eq 1 -and [int]$_.sampleIndex -eq 3
+    })[0]
+    $extraUnavailable.gpuFrameValid = 0
+    $extraUnavailable.gpuFrameMs = 'unavailable'
+    $badGpuBlockRows | Export-Csv -LiteralPath $badGpuBlockRawPath `
+        -NoTypeInformation -Encoding utf8
+    $badGpuBlockSummaryPath =
+        Join-Path $badGpuBlockDirectory 'block-summary.csv'
+    $badGpuBlockSummaries = @(
+        Import-Csv -LiteralPath $badGpuBlockSummaryPath)
+    $badGpuBlockSummaries[0].gpuFrameValidCount = $sampleFrames - 2
+    $badGpuBlockSummaries | Export-Csv `
+        -LiteralPath $badGpuBlockSummaryPath `
+        -NoTypeInformation -Encoding utf8
+    $badGpuRunSummaryPath =
+        Join-Path $badGpuBlockDirectory 'run-summary.txt'
+    $badGpuRunSummary = @(Get-Content -LiteralPath $badGpuRunSummaryPath |
+        ForEach-Object {
+            if ($_ -like 'gpuFrameReadyRows=*') {
+                'gpuFrameReadyRows=' + (8 * $sampleFrames - 9)
+            }
+            elseif ($_ -like 'gpuFrameUnavailableRows=*') {
+                'gpuFrameUnavailableRows=9'
+            }
+            else { $_ }
+        })
+    [IO.File]::WriteAllLines(
+        $badGpuRunSummaryPath,
+        $badGpuRunSummary,
+        [Text.UTF8Encoding]::new($false))
+    Assert-Throws {
+        $null = Assert-PolicyBenchmarkEvidence `
+            $badGpuBlockDirectory $sampleFrames 20260830 $commit $unity `
+            $pipelineHash $shaderHash $measurementHash $protocol `
+            $leftCalibration $rightCalibration
+    } 'GPU frame below 95 percent block coverage'
+
+    $badGpuPairRows = @($gpuCoverageEvidence.raw | ForEach-Object {
+        $_ | Select-Object -Property *
+    })
+    $extraPairUnavailable = @($badGpuPairRows | Where-Object {
+        [string]$_.caseId -ceq $rightCalibration -and
+        [int]$_.pairIndex -eq 1 -and [int]$_.sampleIndex -eq 3
+    })[0]
+    $extraPairUnavailable.gpuFrameValid = 0
+    $extraPairUnavailable.gpuFrameMs = 'unavailable'
+    Assert-Throws {
+        $null = Get-PolicyPairedComparison `
+            -Rows $badGpuPairRows `
+            -BaselineCaseId $leftCalibration `
+            -CandidateCaseId $rightCalibration `
+            -Metric gpuFrameMs
+    } 'GPU frame below 90 percent paired coverage'
+
+    $badCpuCoverageDirectory =
+        Join-Path $temporaryRoot 'cpu-frame-incomplete-coverage'
+    Copy-Item -LiteralPath $calibrationDirectory `
+        -Destination $badCpuCoverageDirectory -Recurse
+    $badCpuRawPath = Join-Path $badCpuCoverageDirectory 'raw-frames.csv'
+    $badCpuRows = @(Import-Csv -LiteralPath $badCpuRawPath)
+    $badCpuRows[0].cpuFrameMs = 'unavailable'
+    $badCpuRows | Export-Csv -LiteralPath $badCpuRawPath `
+        -NoTypeInformation -Encoding utf8
+    Assert-Throws {
+        $null = Assert-PolicyBenchmarkEvidence `
+            $badCpuCoverageDirectory $sampleFrames 20260830 $commit $unity `
+            $pipelineHash $shaderHash $measurementHash $protocol `
+            $leftCalibration $rightCalibration
+    } 'Incomplete non-GPU-frame metric coverage'
+
     $firstBaselineRow = @($calibrationEvidence.raw | Where-Object {
         [string]$_.caseId -ceq $leftCalibration
     })[0]

@@ -4,6 +4,8 @@ $script:Invariant = [Globalization.CultureInfo]::InvariantCulture
 $script:ExpectedSchedule = [string[]]@('A', 'B', 'B', 'A', 'B', 'A', 'A', 'B')
 $script:ExpectedPairOrders = [string[]]@('AB', 'AB', 'BA', 'BA', 'BA', 'BA', 'AB', 'AB')
 $script:ExpectedPairIndices = [int[]]@(1, 1, 2, 2, 3, 3, 4, 4)
+$script:GpuFrameBlockMinimumCoveragePercent = 95.0
+$script:GpuFramePairedMinimumCoveragePercent = 90.0
 
 function Get-PolicyTextSha256 {
     [CmdletBinding()]
@@ -226,6 +228,7 @@ function Get-PolicyPairedComparison {
         [Parameter(Mandatory = $true)][string]$Metric
     )
 
+    $gpuFrameMetric = $Metric -ceq 'gpuFrameMs'
     $baselineRows = @($Rows | Where-Object {
         [string]$_.caseId -ceq $BaselineCaseId
     })
@@ -273,6 +276,7 @@ function Get-PolicyPairedComparison {
     $pairedImprovementValues = [Collections.Generic.List[double]]::new()
     $positiveWins = 0
     $consumed = 0
+    $unavailablePairs = 0
     foreach ($key in @($baselineByKey.Keys | Sort-Object)) {
         $baselineRow = $baselineByKey[$key]
         $candidateRow = $candidateByKey[$key]
@@ -283,6 +287,40 @@ function Get-PolicyPairedComparison {
             [string]$baselineRow.expectedStateHash -cne
                 [string]$candidateRow.expectedStateHash) {
             throw "Paired logical input parity failed at '$key'."
+        }
+        if ($gpuFrameMetric) {
+            $baselineValidity =
+                $baselineRow.PSObject.Properties['gpuFrameValid']
+            $candidateValidity =
+                $candidateRow.PSObject.Properties['gpuFrameValid']
+            if ($null -eq $baselineValidity -or
+                $null -eq $candidateValidity) {
+                throw "GPU-frame validity is missing at paired key '$key'."
+            }
+            $baselineValid = ConvertTo-PolicyBoolean `
+                $baselineValidity.Value
+            $candidateValid = ConvertTo-PolicyBoolean `
+                $candidateValidity.Value
+            $baselineText = [string](
+                $baselineRow.PSObject.Properties[$Metric].Value)
+            $candidateText = [string](
+                $candidateRow.PSObject.Properties[$Metric].Value)
+            if ((-not $baselineValid -and
+                    $baselineText -cne 'unavailable') -or
+                (-not $candidateValid -and
+                    $candidateText -cne 'unavailable')) {
+                throw "Unavailable GPU-frame data is not literal 'unavailable' at '$key'."
+            }
+            if (($baselineValid -and
+                    (ConvertTo-PolicyDouble $baselineText) -le 0.0) -or
+                ($candidateValid -and
+                    (ConvertTo-PolicyDouble $candidateText) -le 0.0)) {
+                throw "Available GPU-frame data is not positive at '$key'."
+            }
+            if (-not $baselineValid -or -not $candidateValid) {
+                $unavailablePairs++
+                continue
+            }
         }
         $baseline = ConvertTo-PolicyDouble (
             $baselineRow.PSObject.Properties[$Metric].Value)
@@ -302,16 +340,32 @@ function Get-PolicyPairedComparison {
         }
         $consumed++
     }
-    if ($consumed -ne $baselineByKey.Count -or
-        $consumed -ne $candidateByKey.Count) {
+    $totalPairCount = $baselineByKey.Count
+    $pairCoveragePercent =
+        100.0 * [double]$consumed / [double]$totalPairCount
+    if (-not $gpuFrameMetric -and
+        ($consumed -ne $totalPairCount -or
+         $consumed -ne $candidateByKey.Count)) {
         throw "Metric '$Metric' did not consume every paired key exactly once."
+    }
+    if ($gpuFrameMetric -and
+        $pairCoveragePercent -lt
+            $script:GpuFramePairedMinimumCoveragePercent) {
+        throw "Metric '$Metric' paired coverage is $pairCoveragePercent%; expected at least $($script:GpuFramePairedMinimumCoveragePercent)%."
     }
 
     $baselineSummary = Get-PolicyMetricSummary $baselineValues.ToArray()
     $candidateSummary = Get-PolicyMetricSummary $candidateValues.ToArray()
     return [pscustomobject][ordered]@{
         metric = $Metric
+        totalPairCount = $totalPairCount
         pairCount = $consumed
+        unavailablePairCount = $unavailablePairs
+        pairCoveragePercent = $pairCoveragePercent
+        minimumPairCoveragePercent = if ($gpuFrameMetric) {
+            $script:GpuFramePairedMinimumCoveragePercent
+        }
+        else { 100.0 }
         positiveWins = $positiveWins
         positiveWinPercent = 100.0 * $positiveWins / $consumed
         baseline = $baselineSummary
@@ -581,6 +635,16 @@ function Assert-PolicyBenchmarkEvidence {
             throw "$root has incomplete $($entry[0]) evidence."
         }
     }
+    $summaryGpuFrameReadyRows = [int](Get-RequiredPolicyMapValue `
+        $summary 'gpuFrameReadyRows' $root)
+    $summaryGpuFrameUnavailableRows = [int](Get-RequiredPolicyMapValue `
+        $summary 'gpuFrameUnavailableRows' $root)
+    if ($summaryGpuFrameReadyRows -lt 0 -or
+        $summaryGpuFrameUnavailableRows -lt 0 -or
+        $summaryGpuFrameReadyRows + $summaryGpuFrameUnavailableRows -ne
+            $expectedRawCount) {
+        throw "$root has inconsistent GPU-frame availability totals."
+    }
     foreach ($name in @(
             'presentationValidationReadbackBytes',
             'minimumRenderTargetNonBlackPixels')) {
@@ -621,6 +685,10 @@ function Assert-PolicyBenchmarkEvidence {
         [int]$config.measurementBlocks -ne 8 -or
         [string]$config.scheduleContract -cne 'ABBA;BAAB' -or
         [int]$config.frameTimingResultLatencyFrames -ne 4 -or
+        [string]$config.gpuFrameUnavailableLiteral -cne 'unavailable' -or
+        [int]$config.gpuFrameBlockMinimumCoveragePercent -ne 95 -or
+        [int]$config.gpuFramePairedMinimumCoveragePercent -ne 90 -or
+        [int]$config.otherTimedMetricCoveragePercent -ne 100 -or
         -not [bool]$config.stateResetOutsideMeasuredWindow -or
         -not [bool]$config.selectorResetOutsideMeasuredWindow -or
         -not [bool]$config.caseLocalConvergenceOutsideMeasuredWindow -or
@@ -687,10 +755,12 @@ function Assert-PolicyBenchmarkEvidence {
         ([string]$config.leftCase) ([string]$config.rightCase) `
         ([string]$config.processId)
 
+    $rawGpuFrameReadyRows = 0
     for ($index = 0; $index -lt $raw.Count; $index++) {
         $row = $raw[$index]
         $actualAuto =
             [string]$row.caseId -ceq 'gpu-driven-policy/actual-auto'
+        $gpuFrameValid = ConvertTo-PolicyBoolean $row.gpuFrameValid
         if ([int]$row.sourceRowIndex -ne $index -or
             [string]$row.scenarioId -cne [string]$config.scenarioId -or
             [int64]$row.mainThreadAllocatedBytes -ne 0 -or
@@ -700,7 +770,6 @@ function Assert-PolicyBenchmarkEvidence {
             -not (ConvertTo-PolicyBoolean $row.frameTimingValid) -or
             [int]$row.frameTimingCaptureLatencyFrames -ne 4 -or
             -not (ConvertTo-PolicyBoolean $row.cpuRenderThreadFrameValid) -or
-            -not (ConvertTo-PolicyBoolean $row.gpuFrameValid) -or
             -not (ConvertTo-PolicyBoolean $row.submissionWindowValid) -or
             [int64]$row.measurementReadbackBytes -ne 0 -or
             [int64]$row.timestampInstrumentationReadbackBytes -ne 16 -or
@@ -719,19 +788,34 @@ function Assert-PolicyBenchmarkEvidence {
         foreach ($metric in @(
                 'totalCpuMs', 'gpuRegionElapsedMs', 'cpuFrameMs',
                 'cpuMainThreadFrameMs', 'cpuRenderThreadFrameMs',
-                'gpuFrameMs', 'cpuSubmissionWindowMs')) {
+                'cpuSubmissionWindowMs')) {
             if ((ConvertTo-PolicyDouble $row.PSObject.Properties[$metric].Value) `
                     -le 0.0) {
                 throw "$root row $index has invalid $metric."
             }
         }
+        if ($gpuFrameValid) {
+            if ((ConvertTo-PolicyDouble $row.gpuFrameMs) -le 0.0) {
+                throw "$root row $index has invalid gpuFrameMs."
+            }
+            $rawGpuFrameReadyRows++
+        }
+        elseif ([string]$row.gpuFrameMs -cne 'unavailable') {
+            throw "$root row $index must encode unavailable GPU frame time as literal 'unavailable'."
+        }
+    }
+    if ($rawGpuFrameReadyRows -ne $summaryGpuFrameReadyRows -or
+        $raw.Count - $rawGpuFrameReadyRows -ne
+            $summaryGpuFrameUnavailableRows) {
+        throw "$root GPU-frame availability totals do not match raw rows."
     }
 
     $blocks = @(Import-Csv -LiteralPath $paths.blocks)
     Assert-PolicyCsvColumns $blocks @(
         'blockIndex', 'pairIndex', 'pairOrder', 'withinPairPosition',
         'side', 'caseId', 'sampleCount', 'timestampReadyRows',
-        'frameTimingReadyRows', 'submissionWindowReadyRows',
+        'frameTimingReadyRows', 'gpuFrameValidCount',
+        'submissionWindowReadyRows',
         'stableDecisionRows', 'mainThreadAllocationRows',
         'mainThreadAllocatedBytes', 'slotWaitFrames',
         'residentStateHashBeforeMeasured',
@@ -739,10 +823,15 @@ function Assert-PolicyBenchmarkEvidence {
         'firstMeasuredResidentDifferenceRequired',
         'firstMeasuredStateDiffersFromResident',
         'completionFencesPassed') "$root block summaries"
+    $minimumGpuFrameValidRows = [int][Math]::Ceiling(
+        $ExpectedSampleFrames *
+            ($script:GpuFrameBlockMinimumCoveragePercent / 100.0))
     if ($blocks.Count -ne 8 -or @($blocks | Where-Object {
             [int]$_.sampleCount -ne $ExpectedSampleFrames -or
             [int]$_.timestampReadyRows -ne $ExpectedSampleFrames -or
             [int]$_.frameTimingReadyRows -ne $ExpectedSampleFrames -or
+            [int]$_.gpuFrameValidCount -lt $minimumGpuFrameValidRows -or
+            [int]$_.gpuFrameValidCount -gt $ExpectedSampleFrames -or
             [int]$_.submissionWindowReadyRows -ne $ExpectedSampleFrames -or
             [int]$_.stableDecisionRows -ne $ExpectedSampleFrames -or
             [int]$_.mainThreadAllocationRows -ne 0 -or
@@ -759,10 +848,16 @@ function Assert-PolicyBenchmarkEvidence {
             [string]$config.leftCase
         }
         else { [string]$config.rightCase }
-        $firstRawRows = @($raw | Where-Object {
+        $blockRawRows = @($raw | Where-Object {
+            [int]$_.blockIndex -eq $blockOffset + 1
+        })
+        $firstRawRows = @($blockRawRows | Where-Object {
             [int]$_.blockIndex -eq $blockOffset + 1 -and
             [int]$_.sampleIndex -eq 1
         })
+        $actualGpuFrameValidCount = @($blockRawRows | Where-Object {
+            ConvertTo-PolicyBoolean $_.gpuFrameValid
+        }).Count
         if ([int]$block.blockIndex -ne $blockOffset + 1 -or
             [int]$block.pairIndex -ne
                 $script:ExpectedPairIndices[$blockOffset] -or
@@ -772,6 +867,9 @@ function Assert-PolicyBenchmarkEvidence {
                 (($blockOffset % 2) + 1) -or
             [string]$block.side -cne $expectedSide -or
             [string]$block.caseId -cne $expectedCase -or
+            $blockRawRows.Count -ne $ExpectedSampleFrames -or
+            [int]$block.gpuFrameValidCount -ne
+                $actualGpuFrameValidCount -or
             $firstRawRows.Count -ne 1) {
             throw "$root block summary identity is invalid at block $($blockOffset + 1)."
         }

@@ -59,6 +59,10 @@ summit.gpu-driven-instance-policy.measurement.v1
 schedule=ABBA;BAAB
 blocks=8
 frameTimingLatency=4
+gpuFrameUnavailableLiteral=unavailable
+gpuFrameBlockValidCoverage>=95%
+gpuFramePairedComparisonCoverage>=90%
+otherTimedMetricCoverage=100%
 nativeTimestampAbi=2
 nativeTimestampCapabilities=0x1f
 timedAllocationBytes=0
@@ -718,6 +722,9 @@ if ($Workflow -ceq 'SingleScenario') {
         leftCase = [string]$singleEvidence.config.leftCase
         rightCase = [string]$singleEvidence.config.rightCase
         rawFrameCount = @($singleEvidence.raw).Count
+        gpuFrameReadyRows = [int]$singleEvidence.summary.gpuFrameReadyRows
+        gpuFrameUnavailableRows =
+            [int]$singleEvidence.summary.gpuFrameUnavailableRows
     }) (Join-Path $outputRoot 'single-scenario-receipt.json') 12
 }
 else {
@@ -913,6 +920,12 @@ else {
         totalRunCount = 4 * $cells.Count
         expectedRawFrameCount =
             4 * $cells.Count * 8 * $SampleFrames
+        gpuFrameCoverageContract = [ordered]@{
+            unavailableLiteral = 'unavailable'
+            minimumPerBlockValidPercent = 95.0
+            minimumPairedComparisonPercent = 90.0
+            otherTimedMetricsRequireCompleteCoverage = $true
+        }
         profilePath = $generatedProfilePath
         profileSha256 = $profileResult.profileSha256
         selectionReceiptPath = $selectionReceiptPath
@@ -1052,6 +1065,7 @@ else {
     $report.Add("- Formal runs: $($cells.Count * 4) total ($($cells.Count) calibration, $($cells.Count) holdout, $($cells.Count) selector-equivalence replay, $($cells.Count) end-to-end replay).")
     $report.Add("- Raw measured rows: $($cells.Count * 4 * 8 * $SampleFrames)")
     $report.Add('- Candidate failure policy: retain evidence and reuse the measured baseline decision (formal baseline is Full + Flat + Portable).')
+    $report.Add('- Metric availability: CPU/native/submission metrics require 100% coverage; GPU frame time uses literal `unavailable`, at least 95% valid rows per block, and at least 90% jointly valid paired comparisons.')
     $report.Add('- Selector-equivalence replay: ActualAuto decision equals ForcedSelected per row; selector overhead is recorded; no material P99 regression.')
     $report.Add('- End-to-end replay: Full+Flat versus ActualAuto on the replay seed. Accepted candidates repeat the full mean/wins/P95/P99 gate; rejected candidates remain Full+Flat+Portable with no material P99 regression.')
     $report.Add('')

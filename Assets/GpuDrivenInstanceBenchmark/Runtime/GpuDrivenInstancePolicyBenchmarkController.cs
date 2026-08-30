@@ -25,6 +25,8 @@ public sealed class GpuDrivenInstancePolicyBenchmarkController : MonoBehaviour
         "summit.gpu-driven-instance-policy";
     private const string ScheduleContract = "ABBA;BAAB";
     private const int FrameTimingResultLatencyFrames = 4;
+    private const int GpuFrameBlockMinimumCoveragePercent = 95;
+    private const int GpuFramePairedMinimumCoveragePercent = 90;
     private const int MeasurementBlockCount = 8;
     private const int ValidationCount = 4;
     private const int MaximumTimestampScopes = 64;
@@ -1869,7 +1871,9 @@ public sealed class GpuDrivenInstancePolicyBenchmarkController : MonoBehaviour
             case MetricKind.CpuRenderThreadFrame:
                 return row.CpuRenderThreadFrameMs;
             case MetricKind.GpuFrame:
-                return row.GpuFrameMs;
+                return row.GpuFrameValid
+                    ? row.GpuFrameMs
+                    : double.NaN;
             case MetricKind.SubmissionWindow:
                 return row.CpuSubmissionWindowMs;
             default:
@@ -1922,6 +1926,33 @@ public sealed class GpuDrivenInstancePolicyBenchmarkController : MonoBehaviour
                 return false;
             }
         }
+        for (int index = 0; index < blockSummaryCount; index++)
+        {
+            BlockSummary block = blockSummaries[index];
+            if (block.SampleCount != sampleFrames ||
+                block.State.ValidCount != sampleFrames ||
+                block.Plan.ValidCount != sampleFrames ||
+                block.Selector.ValidCount != sampleFrames ||
+                block.Record.ValidCount != sampleFrames ||
+                block.Fence.ValidCount != sampleFrames ||
+                block.Enqueue.ValidCount != sampleFrames ||
+                block.Total.ValidCount != sampleFrames ||
+                block.NativeGpu.ValidCount != sampleFrames ||
+                block.CpuFrame.ValidCount != sampleFrames ||
+                block.CpuMainThreadFrame.ValidCount != sampleFrames ||
+                block.CpuRenderThreadFrame.ValidCount != sampleFrames ||
+                !GpuFrameBlockCoveragePasses(
+                    block.GpuFrame.ValidCount,
+                    sampleFrames) ||
+                block.SubmissionWindow.ValidCount != sampleFrames ||
+                block.TimestampReadyRows != sampleFrames ||
+                block.FrameTimingReadyRows != sampleFrames ||
+                block.SubmissionWindowReadyRows != sampleFrames ||
+                block.StableDecisionRows != sampleFrames)
+            {
+                return false;
+            }
+        }
         for (int index = 0; index < rawSampleCount; index++)
         {
             RawSample row = rawSamples[index];
@@ -1931,6 +1962,8 @@ public sealed class GpuDrivenInstancePolicyBenchmarkController : MonoBehaviour
                 !row.CompletionFenceAppended ||
                 !row.FrameTimingValid ||
                 !row.SubmissionWindowValid ||
+                row.GpuFrameValid !=
+                    IsPositiveFinite(row.GpuFrameMs) ||
                 row.FrameTimingCaptureLatencyFrames !=
                     FrameTimingResultLatencyFrames ||
                 (row.BenchmarkCase.InvokesSelector &&
@@ -1941,6 +1974,24 @@ public sealed class GpuDrivenInstancePolicyBenchmarkController : MonoBehaviour
             }
         }
         return true;
+    }
+
+    internal static bool GpuFrameBlockCoveragePasses(
+        int validCount,
+        int sampleCount)
+    {
+        return sampleCount > 0 &&
+            validCount >= 0 &&
+            validCount <= sampleCount &&
+            (long)validCount * 100L >=
+                (long)sampleCount * GpuFrameBlockMinimumCoveragePercent;
+    }
+
+    private static bool IsPositiveFinite(double value)
+    {
+        return value > 0.0 &&
+            !double.IsNaN(value) &&
+            !double.IsInfinity(value);
     }
 
     private bool TimestampEvidenceComplete()
@@ -2064,6 +2115,12 @@ public sealed class GpuDrivenInstancePolicyBenchmarkController : MonoBehaviour
             scheduleContract = ScheduleContract,
             frameTimingResultLatencyFrames =
                 FrameTimingResultLatencyFrames,
+            gpuFrameUnavailableLiteral = "unavailable",
+            gpuFrameBlockMinimumCoveragePercent =
+                GpuFrameBlockMinimumCoveragePercent,
+            gpuFramePairedMinimumCoveragePercent =
+                GpuFramePairedMinimumCoveragePercent,
+            otherTimedMetricCoveragePercent = 100,
             stateResetOutsideMeasuredWindow = true,
             selectorResetOutsideMeasuredWindow = true,
             caseLocalConvergenceOutsideMeasuredWindow = true,
@@ -2316,7 +2373,10 @@ public sealed class GpuDrivenInstancePolicyBenchmarkController : MonoBehaviour
                     U64(row.CpuTimePresentCalled),
                     U64(row.CpuTimeFrameComplete),
                     M(row.CpuFrameMs), M(row.CpuMainThreadFrameMs),
-                    M(row.CpuRenderThreadFrameMs), M(row.GpuFrameMs),
+                    M(row.CpuRenderThreadFrameMs),
+                    M(row.GpuFrameValid
+                        ? row.GpuFrameMs
+                        : double.NaN),
                     M(row.CpuSubmissionWindowMs),
                     L(row.MeasurementReadbackBytes),
                     L(row.TimestampInstrumentationReadbackBytes),
@@ -2532,6 +2592,7 @@ public sealed class GpuDrivenInstancePolicyBenchmarkController : MonoBehaviour
         int allocationRows = 0;
         long allocationBytes = 0L;
         int frameTimingRows = 0;
+        int gpuFrameRows = 0;
         int submissionWindowRows = 0;
         int timestampRows = 0;
         int stableDecisionRows = 0;
@@ -2553,6 +2614,10 @@ public sealed class GpuDrivenInstancePolicyBenchmarkController : MonoBehaviour
                 if (row.FrameTimingValid)
                 {
                     frameTimingRows++;
+                }
+                if (row.GpuFrameValid)
+                {
+                    gpuFrameRows++;
                 }
                 if (row.SubmissionWindowValid)
                 {
@@ -2657,6 +2722,9 @@ public sealed class GpuDrivenInstancePolicyBenchmarkController : MonoBehaviour
             "frameTimingResultLatencyFrames=" +
                 I(FrameTimingResultLatencyFrames),
             "frameTimingReadyRows=" + I(frameTimingRows),
+            "gpuFrameReadyRows=" + I(gpuFrameRows),
+            "gpuFrameUnavailableRows=" +
+                I(rawSampleCount - gpuFrameRows),
             "submissionWindowReadyRows=" + I(submissionWindowRows),
             "nativeTimestampReadyRows=" + I(timestampRows),
             "stableDecisionRows=" + I(stableDecisionRows),
@@ -3849,6 +3917,10 @@ public sealed class GpuDrivenInstancePolicyBenchmarkController : MonoBehaviour
         public int measurementBlocks;
         public string scheduleContract;
         public int frameTimingResultLatencyFrames;
+        public string gpuFrameUnavailableLiteral;
+        public int gpuFrameBlockMinimumCoveragePercent;
+        public int gpuFramePairedMinimumCoveragePercent;
+        public int otherTimedMetricCoveragePercent;
         public bool stateResetOutsideMeasuredWindow;
         public bool selectorResetOutsideMeasuredWindow;
         public bool caseLocalConvergenceOutsideMeasuredWindow;
