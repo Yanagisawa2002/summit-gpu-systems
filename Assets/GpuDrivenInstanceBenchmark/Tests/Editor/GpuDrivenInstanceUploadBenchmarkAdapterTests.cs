@@ -15,11 +15,13 @@ namespace Summit.GpuDrivenInstance.Benchmark.Tests
             if (!SystemInfo.supportsComputeShaders ||
                 !SystemInfo.supportsInstancing ||
                 !SystemInfo.supportsIndirectArgumentsBuffer ||
-                !SystemInfo.supportsGraphicsFence)
+                !SystemInfo.supportsGraphicsFence ||
+                !SystemInfo.supportsAsyncCompute)
             {
                 Assert.Ignore(
-                    "Compute, instancing, indirect arguments, and fences " +
-                    "are required.");
+                    "Compute, instancing, indirect arguments, graphics " +
+                    "fences, and CPU-queryable async-compute fences are " +
+                    "required.");
             }
 
             const int instanceCount = 1024;

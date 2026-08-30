@@ -95,7 +95,57 @@ must remain immutable until an `AllGPUOperations` fence has passed. Immediate
 `UploadFull` and `UploadDirty` helpers exist for initialization and validation;
 timed rendering should use the matching command-buffer APIs for full and dirty
 variants. Version 0.2 requires Unity 6000.5 because its persistent scratch and
-public source contract use Unity Collections 6.5.
+public source contract use Unity Collections 6.5. Version 0.4 adds the
+single-use planned-upload contract described below.
+
+An external policy can inspect a normalized decision without paying for a
+second normalization pass:
+
+1. increment a caller-owned nonzero source revision whenever the authoritative
+   source contents or backing allocation changes;
+2. retain the nonzero resident destination revision from which the dirty ranges
+   were computed;
+3. call `PlanDirtyUpload(destination, source, activeCount, sourceRevision,
+   expectedResidentStateRevision, ranges, count)`;
+4. inspect the returned `GpuInstanceDirtyUploadPlan.Receipt`;
+5. pass that same token and source revision to `RecordPlanned` if the policy
+   selects dirty upload.
+
+The immutable token is bound to its uploader, scratch generation, active
+count, nonzero source revision, expected nonzero resident revision, exact source
+array, and exact destination buffer. In checked Unity Collections builds, the
+token also retains the source array's original `AtomicSafetyHandle`;
+`RecordPlanned` verifies that handle
+still exists before accepting any replacement allocation, including a native
+pointer reuse, and `IsValid` becomes false once the source allocation is
+disposed. The revision remains mandatory in every build, so release builds do
+not reduce source identity to a raw address comparison.
+
+Only one plan can be live per uploader because the uploader owns one fixed-
+capacity range scratch. Creating another plan invalidates the earlier token,
+and successful recording consumes every copy of a token. Stale, copied-after-
+use, cross-uploader, revision, source, destination, and active-count mismatches
+are rejected before any command is recorded. Capacity checks are repeated at
+record time. Argument validation failures do not consume an otherwise-current
+token, so a caller may correct the call without replanning. Warm planning and
+recording allocate no managed memory. The 64-bit scratch generation never
+wraps: after its state space is exhausted, that uploader permanently rejects
+later planning and must be replaced before another dirty plan.
+
+`RecordDirty` remains source-compatible and uses a private immediate single-
+plan path that does not expose a reusable token. Receipt-only `PlanDirty`,
+immediate uploads, and explicit `RecordFull` also remain available. Any later
+planning or full-upload call invalidates an outstanding planned token rather
+than risking use of overwritten scratch ranges. The `None`, `DirtyRanges`, and
+capacity-fallback `Full` semantics and accounting are identical across the
+legacy and token APIs.
+
+The legacy `PlanDirtyUpload` overload without
+`expectedResidentStateRevision` remains source-compatible and records zero for
+that fact. Such an unbound plan can still be recorded explicitly by its owner,
+but it cannot authorize the automatic selector's `Dirty` policy; first-frame or
+unknown-resident callers therefore fail closed to `Full` until they can provide
+an exact nonzero resident base revision.
 
 ## Safety and limits
 
@@ -116,7 +166,9 @@ Editor tests include an independent CPU oracle, dispatch boundaries, multiple
 views, view masks, LOD selection, culled-tail and visible-only membership,
 exact indirect arguments, zero work, invalid-contract diagnostics, argument
 validation, disposal, dirty-range normalization, safety fallback, allocation-
-free warmed planning, full-buffer GPU readback after partial updates, cluster
+free warmed planning/recording, planned-token ownership/revision/generation/
+single-use and generation-exhaustion checks, disposed-source safety-handle
+rejection, full-buffer GPU readback after partial updates, cluster
 builder boundaries, hierarchical/flat/oracle parity, malformed-cover fail-
 closed behavior, exact causal statistics, and the two-dimensional fine-dispatch
 boundary.

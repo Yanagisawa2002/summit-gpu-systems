@@ -38,6 +38,19 @@ namespace Summit.GpuAutotuning.Tests
                 Is.EqualTo(GpuPrimitiveBackend.Auto));
         }
 
+        [Test]
+        public void EvidenceSafeResolverFallsBackPortableForMissingWorkload()
+        {
+            GpuDeviceFingerprint device = Device(0x1002, 0x7551);
+            GpuPrimitiveBackendResolver resolver =
+                new GpuPrimitiveBackendResolver(
+                    Profile(device, true, "WaveOps"), device);
+            Assert.That(resolver.ResolveMeasuredOrPortable("radix-sort-32"),
+                Is.EqualTo(GpuPrimitiveBackend.Portable));
+            Assert.That(resolver.ResolveMeasuredOrPortable("exclusive-scan"),
+                Is.EqualTo(GpuPrimitiveBackend.WaveOps));
+        }
+
         private static GpuAutotuneProfile Profile(
             GpuDeviceFingerprint device,
             bool accepted,
