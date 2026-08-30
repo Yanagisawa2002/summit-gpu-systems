@@ -610,8 +610,10 @@ foreach ($matrixToken in @(
     "matrixRole = 'holdout'")) {
     Assert-Contains $runner $matrixToken 'Runner matrices'
 }
-Assert-Contains $runner 'schemaVersion = 9' 'Runner schema'
-Assert-Contains $summarizer 'schemaVersion -ne 9' 'Summarizer schema'
+Assert-Contains $runner 'schemaVersion = 10' 'Runner schema'
+Assert-Contains $runner 'benchmarkSchemaVersion = 3' 'Benchmark schema'
+Assert-Contains $summarizer '$runnerSchemaVersion -notin @(9, 10)' (
+    'Summarizer compatible runner schemas')
 
 foreach ($explicitContract in @(
     "primitiveBackend = 'wave-ops'",
@@ -785,7 +787,7 @@ Assert-True ([regex]::IsMatch(
     'Exact-five-cell selector claims must be confined to the contention ' +
     'quality branch with explicit non-contention not-applicable metadata.')
 
-Assert-Contains $discoveryDoc 'summarizer accepts schema 9' (
+Assert-Contains $discoveryDoc 'summarizer accepts schemas 9 and 10' (
     'Discovery evidence compatibility note')
 Assert-True (-not $discoveryDoc.Contains(
     'summarizer accepts schema 8')) (
@@ -818,6 +820,7 @@ foreach ($adapterToken in @(
     'GPU.AdaptiveBinning/RadixLowBits/WaveOps',
     'GpuPrimitiveBackend.WaveOps',
     'GpuAdaptiveBinningKeyDomain.GuaranteedInRange',
+    'PrimitiveScratchOwnership',
     'DirectPrimitiveScratchBytes',
     'RadixPrimitiveScratchBytes',
     'DirectInternalScratchBytes',
@@ -927,8 +930,8 @@ try {
     Assert-True ($tamperExitCode -ne 0) (
         'Summarizer must reject a stale/tampered runner schema.')
     Assert-True ($tamperText.Contains(
-        'Runner schema/suite contract does not match adaptive-binning v2.')) (
-        'Schema rejection must identify the adaptive-binning v2 contract.')
+        'Runner schema/suite contract does not match adaptive-binning.')) (
+        'Schema rejection must identify the adaptive-binning contract.')
 }
 finally {
     $resolvedFixture = [System.IO.Path]::GetFullPath($fixtureRoot)

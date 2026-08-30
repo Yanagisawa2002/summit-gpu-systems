@@ -3,6 +3,7 @@ using Summit.GpuDirectBinning;
 using Summit.GpuPrimitives;
 using UnityEngine;
 using UnityEngine.Rendering;
+using GpuPrimitivesRuntime = Summit.GpuPrimitives.GpuPrimitives;
 
 namespace Summit.GpuAdaptiveBinning
 {
@@ -13,9 +14,12 @@ namespace Summit.GpuAdaptiveBinning
     /// <remarks>
     /// There is no universal automatic policy. Adaptive calls require a
     /// caller-owned calibration profile, workload hint, and device identity.
+    /// Direct and Radix share one primitive scratch arena, so executions
+    /// recorded through one facade must not overlap.
     /// </remarks>
     public sealed class GpuAdaptiveSpatialBinner : IDisposable
     {
+        private readonly GpuPrimitivesRuntime primitives;
         private readonly GpuDirectSpatialBinner direct;
         private readonly GpuRadixSpatialBinner radix;
         private bool disposed;
@@ -25,28 +29,36 @@ namespace Summit.GpuAdaptiveBinning
             int binCapacity,
             bool emitProfilerMarkers = true)
         {
+            GpuPrimitivesRuntime selectedPrimitives = null;
             GpuDirectSpatialBinner selectedDirect = null;
             GpuRadixSpatialBinner selectedRadix = null;
             try
             {
+                selectedPrimitives = new GpuPrimitivesRuntime(
+                    Math.Max(elementCapacity, binCapacity),
+                    emitProfilerMarkers: emitProfilerMarkers);
                 selectedDirect = new GpuDirectSpatialBinner(
                     elementCapacity,
                     binCapacity,
+                    selectedPrimitives,
                     emitProfilerMarkers: emitProfilerMarkers);
                 selectedRadix = new GpuRadixSpatialBinner(
                     elementCapacity,
                     binCapacity,
+                    selectedPrimitives,
                     emitProfilerMarkers: emitProfilerMarkers);
             }
             catch
             {
                 selectedRadix?.Dispose();
                 selectedDirect?.Dispose();
+                selectedPrimitives?.Dispose();
                 throw;
             }
 
             ElementCapacity = elementCapacity;
             BinCapacity = binCapacity;
+            primitives = selectedPrimitives;
             direct = selectedDirect;
             radix = selectedRadix;
         }
@@ -57,6 +69,12 @@ namespace Summit.GpuAdaptiveBinning
 
         public bool EmitsProfilerMarkers => direct.EmitsProfilerMarkers;
 
+        public long SharedPrimitiveScratchBytes => primitives.ScratchBytes;
+
+        public long DirectInternalScratchBytes => direct.InternalScratchBytes;
+
+        public long RadixInternalScratchBytes => radix.InternalScratchBytes;
+
         public long DirectScratchBytes => direct.ScratchBytes;
 
         public long RadixScratchBytes => radix.ScratchBytes;
@@ -65,7 +83,10 @@ namespace Summit.GpuAdaptiveBinning
         /// Logical persistent scratch when both forceable backends are resident.
         /// </summary>
         public long UnionScratchBytes =>
-            checked(DirectScratchBytes + RadixScratchBytes);
+            checked(
+                SharedPrimitiveScratchBytes +
+                DirectInternalScratchBytes +
+                RadixInternalScratchBytes);
 
         public void Record(
             CommandBuffer commands,
@@ -204,6 +225,7 @@ namespace Summit.GpuAdaptiveBinning
             disposed = true;
             radix.Dispose();
             direct.Dispose();
+            primitives.Dispose();
         }
 
         private void ThrowIfDisposed()

@@ -159,6 +159,20 @@ Detailed nested profiler markers default to enabled for RGP/Profiler analysis.
 The formal microbenchmark disables them for both backends and retains identical
 outer A/B markers inside the native timestamp scope.
 
+## Scratch ownership
+
+One `GpuAdaptiveSpatialBinner` owns one `GpuPrimitives` scratch arena shared by
+its Direct and Radix backends. `DirectScratchBytes` and `RadixScratchBytes`
+describe each isolated execution path and therefore both include that shared
+arena. `UnionScratchBytes` counts the shared arena once plus the Direct
+write-head and Radix sorted-key buffers; it is the logical persistent payload
+of the complete facade.
+
+Because both backends reuse the same primitive scratch, executions recorded
+through one facade must not overlap. Use separate facade instances when two
+command streams may execute concurrently. Forced A/B remains sequential and
+uses the same facade, output buffers, and CSR oracle for both backends.
+
 All `Record` methods are allocation-free and readback-free. Scratch byte
 properties report logical buffer payload only, not driver allocation size or
 measured VRAM residency.

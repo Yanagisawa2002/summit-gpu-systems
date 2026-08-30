@@ -890,9 +890,9 @@ else {
     'custom'
 }
 $runnerConfig = [ordered]@{
-    schemaVersion = 9
+    schemaVersion = 10
     suite = 'summit.gpu-adaptive-binning'
-    benchmarkSchemaVersion = 2
+    benchmarkSchemaVersion = 3
     formalAcceptanceMode = [bool]$FormalAcceptanceMode
     formalContract = $formalContract
     matrixPreset = $MatrixPreset

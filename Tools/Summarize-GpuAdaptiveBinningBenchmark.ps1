@@ -405,10 +405,14 @@ function Expected-ScheduleContract {
 
 $runnerPath = Require-File (Join-Path $root 'runner-config.json')
 $runner = Get-Content -LiteralPath $runnerPath -Raw | ConvertFrom-Json
-if ([int]$runner.schemaVersion -ne 9 -or
+$runnerSchemaVersion = [int]$runner.schemaVersion
+$expectedBenchmarkSchemaVersion =
+    if ($runnerSchemaVersion -eq 9) { 2 } else { 3 }
+if ($runnerSchemaVersion -notin @(9, 10) -or
     [string]$runner.suite -cne 'summit.gpu-adaptive-binning' -or
-    [int]$runner.benchmarkSchemaVersion -ne 2) {
-    throw 'Runner schema/suite contract does not match adaptive-binning v2.'
+    [int]$runner.benchmarkSchemaVersion -ne
+        $expectedBenchmarkSchemaVersion) {
+    throw 'Runner schema/suite contract does not match adaptive-binning.'
 }
 if (-not [bool]$runner.runnerConfigFinalized) {
     throw 'runner-config.json is not finalized.'
@@ -926,7 +930,9 @@ foreach ($matrixRow in $matrix) {
         throw "Scenario '$scenarioId' Player binding is inconsistent."
     }
 
-    if ([int]$config.schemaVersion -ne 2 -or
+    $expectedScenarioSchemaVersion =
+        if ($runnerSchemaVersion -eq 9) { 2 } else { 3 }
+    if ([int]$config.schemaVersion -ne $expectedScenarioSchemaVersion -or
         [string]$config.suite -cne 'summit.gpu-adaptive-binning' -or
         [string]$config.scenarioId -cne $scenarioId) {
         throw "Scenario '$scenarioId' config schema is inconsistent."
@@ -1140,11 +1146,56 @@ foreach ($matrixRow in $matrix) {
         throw (
             "Scenario '$scenarioId' case-resident accounting is invalid.")
     }
+
+    $primitiveOwnershipProperty =
+        $config.PSObject.Properties['primitiveScratchOwnership']
+    if ($expectedScenarioSchemaVersion -eq 3 -and
+        $null -eq $primitiveOwnershipProperty) {
+        throw (
+            "Scenario '$scenarioId' lacks primitive scratch ownership.")
+    }
+    [string]$primitiveScratchOwnership =
+        if ($null -eq $primitiveOwnershipProperty) {
+            'independent-per-forced-backend-v0'
+        }
+        else {
+            [string]$primitiveOwnershipProperty.Value
+        }
+    [int64]$expectedUnionPrimitiveScratchBytes =
+        if ($primitiveScratchOwnership -ceq
+            'shared-across-forced-backends-v1') {
+            if ([int64]$config.directPrimitiveScratchBytes -ne
+                [int64]$config.radixPrimitiveScratchBytes) {
+                throw (
+                    "Scenario '$scenarioId' shared primitive scratch " +
+                    'must be identical for both forced backends.')
+            }
+            [int64]$config.directPrimitiveScratchBytes
+        }
+        elseif ($primitiveScratchOwnership -ceq
+            'independent-per-forced-backend-v0') {
+            [int64]$config.directPrimitiveScratchBytes +
+                [int64]$config.radixPrimitiveScratchBytes
+        }
+        else {
+            throw (
+                "Scenario '$scenarioId' has unknown primitive scratch " +
+                "ownership '$primitiveScratchOwnership'.")
+        }
+    if ([int64]$config.unionPrimitiveScratchBytes -ne
+        $expectedUnionPrimitiveScratchBytes) {
+        throw (
+            "Scenario '$scenarioId' union primitive scratch accounting " +
+            'is invalid.')
+    }
+    [int64]$expectedActualBenchmarkBufferResidentBytes =
+        [int64]$config.sharedInputBytes +
+        [int64]$config.sharedOutputBytes +
+        [int64]$config.directInternalScratchBytes +
+        [int64]$config.radixInternalScratchBytes +
+        $expectedUnionPrimitiveScratchBytes
     if ([int64]$config.actualBenchmarkBufferResidentBytes -ne
-        ([int64]$config.sharedInputBytes +
-            [int64]$config.sharedOutputBytes +
-            $directCaseScratchBytes +
-            $radixCaseScratchBytes)) {
+        $expectedActualBenchmarkBufferResidentBytes) {
         throw "Scenario '$scenarioId' resident-byte accounting is invalid."
     }
 

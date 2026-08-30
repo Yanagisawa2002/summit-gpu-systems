@@ -58,7 +58,7 @@ Its 81-entry SHA-256 manifest is `evidence-manifest-sha256.csv`.
 ### Schema-compatible re-summarization
 
 The retained `runner-config.json` files use runner schema 6. The current HEAD
-summarizer accepts schema 9 and intentionally fails closed on schema 6; that
+summarizer accepts schemas 9 and 10 and intentionally fails closed on schema 6; that
 rejection is a compatibility guard, not evidence corruption. Do not use the
 current HEAD summarizer to regenerate these discovery summaries.
 

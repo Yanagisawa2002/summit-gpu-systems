@@ -953,7 +953,7 @@ public sealed class GpuAdaptiveBinningBenchmarkController : MonoBehaviour
         }
         BenchmarkConfiguration config = new BenchmarkConfiguration
         {
-            schemaVersion = 2,
+            schemaVersion = 3,
             suite = "summit.gpu-adaptive-binning",
             processId = processId,
             unityVersion = Application.unityVersion,
@@ -1005,6 +1005,9 @@ public sealed class GpuAdaptiveBinningBenchmarkController : MonoBehaviour
             sharedOutputBytes = adapter.SharedOutputBytes,
             sharedContractResidentBytes =
                 adapter.SharedInputBytes + adapter.SharedOutputBytes,
+            primitiveScratchOwnership =
+                GpuAdaptiveBinningBenchmarkAdapter
+                    .PrimitiveScratchOwnership,
             unionPrimitiveScratchBytes =
                 adapter.PrimitiveScratchBytes,
             directPrimitiveScratchBytes =
@@ -1255,7 +1258,7 @@ public sealed class GpuAdaptiveBinningBenchmarkController : MonoBehaviour
         string[] lines =
         {
             "GPU adaptive spatial binning benchmark",
-            "schemaVersion=2",
+            "schemaVersion=3",
             "suite=summit.gpu-adaptive-binning",
             "passed=" + (passed ? "1" : "0"),
             "status=" + status,
@@ -1667,6 +1670,7 @@ public sealed class GpuAdaptiveBinningBenchmarkController : MonoBehaviour
         public long sharedInputBytes;
         public long sharedOutputBytes;
         public long sharedContractResidentBytes;
+        public string primitiveScratchOwnership;
         public long unionPrimitiveScratchBytes;
         public long directPrimitiveScratchBytes;
         public long radixPrimitiveScratchBytes;
