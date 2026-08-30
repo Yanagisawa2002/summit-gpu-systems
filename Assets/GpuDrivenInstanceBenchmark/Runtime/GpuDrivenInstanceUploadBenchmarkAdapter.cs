@@ -327,7 +327,8 @@ internal sealed class GpuDrivenInstanceUploadBenchmarkAdapter : IDisposable
     /// <summary>
     /// Reconstructs one deterministic logical state without managed or native
     /// allocations. Full writes every state record. Dirty restores only the
-    /// records dirtied by this slot's prior use, then writes the new ranges.
+    /// prior dirty records outside the new dirty union, then writes the new
+    /// ranges.
     /// </summary>
     internal GpuDrivenInstanceUploadPreparationReceipt PrepareSlot(
         int slotIndex,
@@ -340,15 +341,14 @@ internal sealed class GpuDrivenInstanceUploadBenchmarkAdapter : IDisposable
         WorkSlot slot = GetSlot(slotIndex);
         slot.RequireAcquired();
 
-        int restoredRecordCount = 0;
-        if (variant ==
-            GpuDrivenInstanceUploadBenchmarkVariant.DirtyRangeUpload)
+        bool dirtyVariant = variant ==
+            GpuDrivenInstanceUploadBenchmarkVariant.DirtyRangeUpload;
+        if (dirtyVariant)
         {
-            restoredRecordCount = slot.RestorePreviousDirtyRecords(
-                immutableBase);
+            slot.RotateDirtyRangeBuffers();
         }
         else if (variant !=
-                 GpuDrivenInstanceUploadBenchmarkVariant.FullUpload)
+                  GpuDrivenInstanceUploadBenchmarkVariant.FullUpload)
         {
             throw new ArgumentOutOfRangeException(nameof(variant));
         }
@@ -359,6 +359,11 @@ internal sealed class GpuDrivenInstanceUploadBenchmarkAdapter : IDisposable
                 movingPercent,
                 seed,
                 slot.DirtyRanges);
+        int restoredRecordCount = dirtyVariant
+            ? slot.RestorePreviousDirtyRecordsExceptCurrent(
+                immutableBase,
+                plan.RangeCount)
+            : 0;
         if (variant == GpuDrivenInstanceUploadBenchmarkVariant.FullUpload)
         {
             GpuDrivenInstanceUploadInputGenerator.PopulateFullState(
@@ -390,6 +395,91 @@ internal sealed class GpuDrivenInstanceUploadBenchmarkAdapter : IDisposable
             plan,
             logicalOrdinal,
             stateRecordsWritten);
+    }
+
+    /// <summary>
+    /// Restores exactly <c>previous - current</c> in two trusted, sorted,
+    /// non-overlapping range sets.
+    /// </summary>
+    /// <remarks>
+    /// Current dirty records are overwritten immediately after this call, so
+    /// restoring their previous values would be redundant. The inputs are
+    /// persistent benchmark-owned buffers produced by the frozen range
+    /// generator; validation remains at that producer boundary so this timed
+    /// path stays allocation-free and linear in range count plus restored
+    /// records.
+    /// </remarks>
+    internal static int RestorePreviousMinusCurrent(
+        NativeArray<GpuInstanceState> immutableBase,
+        NativeArray<GpuInstanceState> staging,
+        NativeArray<GpuInstanceDirtyRange> previousRanges,
+        int previousRangeCount,
+        NativeArray<GpuInstanceDirtyRange> currentRanges,
+        int currentRangeCount)
+    {
+        int restored = 0;
+        int currentIndex = 0;
+        for (int previousIndex = 0;
+             previousIndex < previousRangeCount;
+             previousIndex++)
+        {
+            GpuInstanceDirtyRange previous =
+                previousRanges[previousIndex];
+            int cursor = previous.StartIndex;
+            while (currentIndex < currentRangeCount &&
+                currentRanges[currentIndex].EndIndex <= cursor)
+            {
+                currentIndex++;
+            }
+
+            int scan = currentIndex;
+            while (scan < currentRangeCount &&
+                currentRanges[scan].StartIndex < previous.EndIndex)
+            {
+                GpuInstanceDirtyRange current = currentRanges[scan];
+                int restoreEnd = Math.Min(
+                    previous.EndIndex,
+                    current.StartIndex);
+                if (restoreEnd > cursor)
+                {
+                    RestoreRange(
+                        immutableBase,
+                        staging,
+                        cursor,
+                        restoreEnd - cursor);
+                    restored = checked(restored + restoreEnd - cursor);
+                }
+                cursor = Math.Max(cursor, current.EndIndex);
+                if (cursor >= previous.EndIndex)
+                {
+                    break;
+                }
+                scan++;
+            }
+            currentIndex = scan;
+
+            if (cursor < previous.EndIndex)
+            {
+                int count = previous.EndIndex - cursor;
+                RestoreRange(immutableBase, staging, cursor, count);
+                restored = checked(restored + count);
+            }
+        }
+        return restored;
+    }
+
+    private static void RestoreRange(
+        NativeArray<GpuInstanceState> immutableBase,
+        NativeArray<GpuInstanceState> staging,
+        int startIndex,
+        int count)
+    {
+        NativeArray<GpuInstanceState>.Copy(
+            immutableBase,
+            startIndex,
+            staging,
+            startIndex,
+            count);
     }
 
     /// <summary>
@@ -999,6 +1089,7 @@ internal sealed class GpuDrivenInstanceUploadBenchmarkAdapter : IDisposable
         private WorkSlotState state;
         private GraphicsFence fence;
         private int previousDirtyRangeCount;
+        private NativeArray<GpuInstanceDirtyRange> previousDirtyRanges;
 
         internal WorkSlot(
             NativeArray<GpuInstanceState> immutableBase,
@@ -1011,6 +1102,10 @@ internal sealed class GpuDrivenInstanceUploadBenchmarkAdapter : IDisposable
                 NativeArrayOptions.UninitializedMemory);
             NativeArray<GpuInstanceState>.Copy(immutableBase, States);
             DirtyRanges = new NativeArray<GpuInstanceDirtyRange>(
+                rangeCapacity,
+                Allocator.Persistent,
+                NativeArrayOptions.ClearMemory);
+            previousDirtyRanges = new NativeArray<GpuInstanceDirtyRange>(
                 rangeCapacity,
                 Allocator.Persistent,
                 NativeArrayOptions.ClearMemory);
@@ -1062,25 +1157,25 @@ internal sealed class GpuDrivenInstanceUploadBenchmarkAdapter : IDisposable
             return true;
         }
 
-        internal int RestorePreviousDirtyRecords(
-            NativeArray<GpuInstanceState> immutableBase)
+        internal void RotateDirtyRangeBuffers()
         {
-            int restored = 0;
-            for (int rangeIndex = 0;
-                 rangeIndex < previousDirtyRangeCount;
-                 rangeIndex++)
-            {
-                GpuInstanceDirtyRange range = DirtyRanges[rangeIndex];
-                for (int index = range.StartIndex;
-                     index < range.EndIndex;
-                     index++)
-                {
-                    States[index] = immutableBase[index];
-                }
-                restored = checked(restored + range.Count);
-            }
-            previousDirtyRangeCount = 0;
-            return restored;
+            NativeArray<GpuInstanceDirtyRange> previous =
+                previousDirtyRanges;
+            previousDirtyRanges = DirtyRanges;
+            DirtyRanges = previous;
+        }
+
+        internal int RestorePreviousDirtyRecordsExceptCurrent(
+            NativeArray<GpuInstanceState> immutableBase,
+            int currentDirtyRangeCount)
+        {
+            return RestorePreviousMinusCurrent(
+                immutableBase,
+                States,
+                previousDirtyRanges,
+                previousDirtyRangeCount,
+                DirtyRanges,
+                currentDirtyRangeCount);
         }
 
         internal void RequireAcquired()
@@ -1160,6 +1255,10 @@ internal sealed class GpuDrivenInstanceUploadBenchmarkAdapter : IDisposable
         public void Dispose()
         {
             Commands.Dispose();
+            if (previousDirtyRanges.IsCreated)
+            {
+                previousDirtyRanges.Dispose();
+            }
             if (DirtyRanges.IsCreated)
             {
                 DirtyRanges.Dispose();
