@@ -346,8 +346,10 @@ function Invoke-PolicyPlayer {
             throw "Policy profile is missing: $RunProfilePath"
         }
         if (-not [string]::IsNullOrWhiteSpace($script:frozenProfileSha256) -and
-            (Get-FileHash -LiteralPath $RunProfilePath -Algorithm SHA256).Hash `
-                -cne $script:frozenProfileSha256) {
+            -not (Test-PolicySha256Equal `
+                -Left (Get-FileHash -LiteralPath $RunProfilePath `
+                    -Algorithm SHA256).Hash `
+                -Right $script:frozenProfileSha256)) {
             throw 'Frozen policy profile changed before replay.'
         }
         $arguments += @(
@@ -395,8 +397,9 @@ function Invoke-PolicyPlayer {
     if ($requireProfile) {
         $expectedProfileSha = (Get-FileHash -LiteralPath $RunProfilePath `
             -Algorithm SHA256).Hash
-        if ([string]$evidence.config.profileSha256 -cne
-            $expectedProfileSha) {
+        if (-not (Test-PolicySha256Equal `
+                -Left ([string]$evidence.config.profileSha256) `
+                -Right $expectedProfileSha)) {
             throw "$scenarioId loaded a different profile payload."
         }
     }
@@ -807,8 +810,9 @@ else {
     $script:frozenProfileSha256 =
         (Get-FileHash -LiteralPath $generatedProfilePath `
             -Algorithm SHA256).Hash
-    if ($script:frozenProfileSha256 -cne
-        [string]$profileResult.profileSha256) {
+    if (-not (Test-PolicySha256Equal `
+            -Left $script:frozenProfileSha256 `
+            -Right ([string]$profileResult.profileSha256))) {
         throw 'Generated policy profile hash does not match its receipt.'
     }
 
@@ -950,8 +954,10 @@ else {
     }
     Write-Utf8Json $formalReceipt (
         Join-Path $outputRoot 'formal-matrix-receipt.json') 40
-    if ((Get-FileHash -LiteralPath $generatedProfilePath `
-            -Algorithm SHA256).Hash -cne $script:frozenProfileSha256) {
+    if (-not (Test-PolicySha256Equal `
+            -Left (Get-FileHash -LiteralPath $generatedProfilePath `
+                -Algorithm SHA256).Hash `
+            -Right $script:frozenProfileSha256)) {
         throw 'Frozen policy profile changed during replay.'
     }
 

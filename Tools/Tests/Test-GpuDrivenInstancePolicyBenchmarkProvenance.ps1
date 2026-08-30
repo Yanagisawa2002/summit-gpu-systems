@@ -130,6 +130,7 @@ foreach ($requirement in @(
         @('actual-auto', 'Actual auto replay'),
         @('Test-PolicyReplayEquivalence', 'Replay equivalence gate'),
         @('Test-PolicyEndToEndReplay', 'End-to-end replay gate'),
+        @('Test-PolicySha256Equal', 'Case-neutral SHA-256 identity gate'),
         @("-Phase 'replay-end-to-end'", 'Independent end-to-end replay'),
         @('endToEndReplayRunCount', 'End-to-end replay run count'),
         @('expectedRawFrameCount', 'Formal raw-row count'),
@@ -189,6 +190,7 @@ foreach ($requirement in @(
         @('pairedDelta', 'Paired delta summary'),
         @('pairedImprovementPercent', 'Paired percent summary'),
         @('Test-PolicyEndToEndReplay', 'End-to-end policy helper'),
+        @('Test-PolicySha256Equal', 'SHA-256 identity helper'),
         @('safeRejectedDecision', 'Rejected-rule safety evidence'),
         @('p95RegressionPercent', 'P95 comparison'),
         @('p99RegressionPercent', 'P99 comparison'))) {
@@ -196,6 +198,22 @@ foreach ($requirement in @(
 }
 
 Import-Module -Name $modulePath -Force
+
+$mixedCaseSha = 'A1b2C3d4' * 8
+if (-not (Test-PolicySha256Equal `
+        -Left $mixedCaseSha.ToUpperInvariant() `
+        -Right $mixedCaseSha.ToLowerInvariant())) {
+    throw 'SHA-256 identity rejected case-only hexadecimal differences.'
+}
+$differentSha = $mixedCaseSha.Substring(0, 63) + '0'
+if (Test-PolicySha256Equal -Left $mixedCaseSha -Right $differentSha) {
+    throw 'SHA-256 identity accepted a different digest.'
+}
+foreach ($malformedSha in @('', ('a' * 63), ('g' * 64))) {
+    if (Test-PolicySha256Equal -Left $mixedCaseSha -Right $malformedSha) {
+        throw 'SHA-256 identity accepted a malformed digest.'
+    }
+}
 
 $temporaryRoot = Join-Path ([IO.Path]::GetTempPath()) (
     'summit-policy-provenance-' + [Guid]::NewGuid().ToString('N'))

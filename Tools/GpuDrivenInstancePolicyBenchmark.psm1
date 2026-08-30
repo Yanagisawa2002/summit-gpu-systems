@@ -22,6 +22,23 @@ function Get-PolicyTextSha256 {
     }
 }
 
+function Test-PolicySha256Equal {
+    [CmdletBinding()]
+    param(
+        [AllowEmptyString()][string]$Left,
+        [AllowEmptyString()][string]$Right
+    )
+
+    if ($Left -notmatch '\A[0-9a-fA-F]{64}\z' -or
+        $Right -notmatch '\A[0-9a-fA-F]{64}\z') {
+        return $false
+    }
+    return [string]::Equals(
+        $Left,
+        $Right,
+        [StringComparison]::OrdinalIgnoreCase)
+}
+
 function Get-PolicyCombinedSha256 {
     [CmdletBinding()]
     param(
@@ -1326,6 +1343,7 @@ function Test-PolicyEndToEndReplay {
 
 Export-ModuleMember -Function @(
     'Get-PolicyTextSha256',
+    'Test-PolicySha256Equal',
     'Get-PolicyCombinedSha256',
     'Read-PolicyKeyValueFile',
     'Get-RequiredPolicyMapValue',
