@@ -1364,12 +1364,18 @@ else {
         }
     }
     else {
-        $selectionOutputs = @(
-            $selectionManifestPath,
-            $generatedProfilePath,
-            $selectionReceiptPath) | Where-Object {
-                Test-Path -LiteralPath $_
+        $selectionOutputs =
+            [Collections.Generic.List[string]]::new()
+        foreach ($candidateSelectionOutput in @(
+                $selectionManifestPath,
+                $generatedProfilePath,
+                $selectionReceiptPath)) {
+            if (Test-Path `
+                    -LiteralPath $candidateSelectionOutput `
+                    -PathType Leaf) {
+                $selectionOutputs.Add($candidateSelectionOutput)
             }
+        }
         if ($selectionOutputs.Count -ne 0) {
             if (-not ($Resume -and $RecoverInterrupted)) {
                 throw 'Unsealed selection outputs require -Resume -RecoverInterrupted.'
