@@ -179,6 +179,7 @@ $summaryAst = [System.Management.Automation.Language.Parser]::ParseFile(
     [ref]$summaryErrors)
 $probeFunctionNames = @(
     'Improvement',
+    'Get-UtcTicks',
     'Expected-Blocks',
     'Expected-ScheduleContract',
     'Test-SignChangingAcceptedWinner',
@@ -203,8 +204,8 @@ $probeFunctionAsts = @(
             [System.Management.Automation.Language.FunctionDefinitionAst] -and
         $node.Name -in $probeFunctionNames
     }, $true))
-Assert-True ($probeFunctionAsts.Count -eq 18) (
-    'Summarizer must expose eighteen executable schedule/policy/tail/device/cell helpers.')
+Assert-True ($probeFunctionAsts.Count -eq 19) (
+    'Summarizer must expose nineteen executable provenance/schedule/policy helpers.')
 $probeSource = @(
     $probeFunctionAsts | ForEach-Object { $_.Extent.Text }) -join "`n"
 . ([scriptblock]::Create($probeSource))
@@ -281,6 +282,21 @@ $surfacePolicyCells = @(
     [pscustomobject]@{ elementCount=1048576; binCount=16; distribution='uniform'; singleBinKeyMode='not-applicable' })
 $exactSmallKey = Get-GeneratorV3SingleBinKey -Seed 20261001 -BinCount 16
 $exactLargeKey = Get-GeneratorV3SingleBinKey -Seed 20261002 -BinCount 16
+$timestampProbeIso = '2026-08-30T17:24:21.6239447Z'
+$timestampProbeDate = [DateTime]::Parse(
+    $timestampProbeIso,
+    [System.Globalization.CultureInfo]::InvariantCulture,
+    [System.Globalization.DateTimeStyles]::RoundtripKind)
+$timestampStringTicks = Get-UtcTicks `
+    -Value $timestampProbeIso `
+    -Label timestampString
+$timestampDateTicks = Get-UtcTicks `
+    -Value $timestampProbeDate `
+    -Label timestampDate
+Assert-True (
+    $timestampStringTicks -eq $timestampDateTicks -and
+    $timestampDateTicks -eq $timestampProbeDate.ToUniversalTime().Ticks) (
+    'Timestamp provenance must compare ISO strings and PowerShell 7 DateTime values by UTC ticks.')
 
 $predicateProbe = [pscustomobject]@{
     directToRadix = Test-SignChangingAcceptedWinner `

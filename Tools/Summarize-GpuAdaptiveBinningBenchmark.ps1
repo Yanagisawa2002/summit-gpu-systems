@@ -163,6 +163,26 @@ function Test-SelectorPolicyClaimUsable {
         $PredictionMatchCount -eq 5)
 }
 
+function Get-UtcTicks {
+    param(
+        [Parameter(Mandatory = $true)][object]$Value,
+        [Parameter(Mandatory = $true)][string]$Label
+    )
+    if ($Value -is [DateTime]) {
+        return ([DateTime]$Value).ToUniversalTime().Ticks
+    }
+
+    $parsed = [DateTime]::MinValue
+    if (-not [DateTime]::TryParse(
+            [string]$Value,
+            [System.Globalization.CultureInfo]::InvariantCulture,
+            [System.Globalization.DateTimeStyles]::RoundtripKind,
+            [ref]$parsed)) {
+        throw "Unable to parse $Label='$Value' as an ISO-8601 timestamp."
+    }
+    return $parsed.ToUniversalTime().Ticks
+}
+
 function Test-SelectorSurfacePolicyClaimUsable {
     param(
         [Parameter(Mandatory = $true)][bool]$ABDataUsable,
@@ -659,11 +679,14 @@ if ($formal) {
     }
     $resolvedEditModeLogPath = Require-File $expectedEditModeLogPath
     $editModeLog = Get-Item -LiteralPath $resolvedEditModeLogPath
+    $recordedEditModeLogTicks = Get-UtcTicks `
+        -Value $runner.editModeResults.logLastWriteUtc `
+        -Label 'editModeResults.logLastWriteUtc'
     if ($editModeLog.Length -le 0 -or
         (Get-FileHash -LiteralPath $resolvedEditModeLogPath -Algorithm SHA256).Hash -cne
             [string]$runner.editModeResults.logSha256 -or
-        $editModeLog.LastWriteTimeUtc.ToString('o') -cne
-            [string]$runner.editModeResults.logLastWriteUtc) {
+        $editModeLog.LastWriteTimeUtc.Ticks -ne
+            $recordedEditModeLogTicks) {
         throw 'Formal runner-generated Unity EditMode log is inconsistent.'
     }
     if (@($runner.windowsVideoControllers).Count -eq 0) {
@@ -909,12 +932,17 @@ if ($formal) {
     $copiedEditModeFile = Get-Item -LiteralPath $copiedEditModePath
     $copiedEditModeSha =
         (Get-FileHash -LiteralPath $copiedEditModePath -Algorithm SHA256).Hash
+    $sourceEditModeTicks = Get-UtcTicks `
+        -Value $runner.editModeResults.sourceLastWriteUtc `
+        -Label 'editModeResults.sourceLastWriteUtc'
+    $copiedEditModeTicks = Get-UtcTicks `
+        -Value $runner.editModeResults.copiedLastWriteUtc `
+        -Label 'editModeResults.copiedLastWriteUtc'
     if ($copiedEditModeSha -cne
             [string]$runner.editModeResults.copiedSha256 -or
-        $copiedEditModeFile.LastWriteTimeUtc.ToString('o') -cne
-            [string]$runner.editModeResults.copiedLastWriteUtc -or
-        [string]$runner.editModeResults.sourceLastWriteUtc -cne
-            [string]$runner.editModeResults.copiedLastWriteUtc) {
+        $copiedEditModeFile.LastWriteTimeUtc.Ticks -ne
+            $copiedEditModeTicks -or
+        $sourceEditModeTicks -ne $copiedEditModeTicks) {
         throw 'Formal copied EditMode XML file evidence is inconsistent.'
     }
     [xml]$editModeXml =
