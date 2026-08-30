@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "suite": "summit.gpu-driven-instance-upload",
+  "testedCommit": "7d9b2c94b22274586410a73ee0fb7252bd9f26ed",
+  "branch": "codex/gpu-driven-dirty-range-upload-20260830",
+  "unityVersion": "6000.5.2f1",
+  "formalQualityDecision": "PASS",
+  "evidenceValid": true,
+  "performanceGateApplied": false,
+  "hundredPercentNonInferiority": "reported-only-negative-control",
+  "sourceHashesStableAcrossBuildAndRun": true,
+  "playerPayloadStableThroughRun": true,
+  "finalGitClean": true,
+  "editMode": {
+    "passed": 615,
+    "total": 615,
+    "skipped": 0,
+    "sha256": "A46A614C29CA13C29F3E99774F5C01F5A8222387A12893B8B60DDA42ADC12288"
+  },
+  "evidenceCounts": {
+    "scenariosCompleted": 8,
+    "rawMeasuredRows": 57600,
+    "requiredFrameTimingReadyRows": 57600,
+    "validationPassed": 64,
+    "validationTotal": 64,
+    "mainThreadAllocationRows": 0,
+    "mainThreadAllocatedBytes": 0,
+    "slotWaitFrames": 0,
+    "measurementReadbackBytes": 0
+  },
+  "performanceCharacterization": {
+    "sparseCellsImproved": 6,
+    "sparseCellsTotal": 6,
+    "sparseCpuSubmissionP95ImprovementMinimumPercent": 38.58649893516912,
+    "sparseCpuSubmissionP95ImprovementMaximumPercent": 96.12793631496115,
+    "denseControlCpuSubmissionP95RegressionMinimumPercent": 27.195983031281664,
+    "denseControlCpuSubmissionP95RegressionMaximumPercent": 30.713098195488392
+  },
+  "sourceSnapshotSha256": "523091B17BEAD8CE579209E7DD39FD75985ACBA5B289F0BB40F1B64EB1CEEDD4",
+  "runtimeShaderSha256": "C8F365BC2883FD85C6F9DEE94AD738DA7D2DFD061B785E935FCF2E41421B278D",
+  "renderShaderSha256": "A686325CC7FB292919FD57841E64916A8B7194BD673F0EA7D3BF1C33CBE80FB6",
+  "playerPayload": {
+    "fileCount": 283,
+    "lengthBytes": 156055842,
+    "sha256": "9066A22AFF9833D1AA4D3F32A0F456A9F9EB0CABBDDFF2B9D3745DF67BFE99D9"
+  },
+  "generatedReportHashes": {
+    "matrixSummarySha256": "D3664C9BEC9B470ECF16B9B8EF48500849CCD60FE817905C8739C7D3F54ADFAD",
+    "benchmarkReportSha256": "B253700070110B74AD40F534187EC07F427F3557BB80A06DE145931E327BF790",
+    "runnerConfigSha256": "178AC8B9215A8AE8909D994873942D548C840ABB66E76CEDF6AC1E65C8857256",
+    "playerPayloadManifestSha256": "F5B73D4C5B4522B1142C644D28C2C702C1135DD57AFD7099C76ACFCD51F03CD6"
+  }
+}

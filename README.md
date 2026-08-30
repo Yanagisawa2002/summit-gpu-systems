@@ -12,7 +12,7 @@ This repository is a Unity 6 benchmark host and a monorepo of reusable UPM packa
 | Spatial binning | `com.summit.gpu-direct-binning` | Count → exclusive scan → scatter into a CSR spatial index. |
 | Adaptive backend | `com.summit.gpu-adaptive-binning` | Device/workload-aware selection between direct and radix spatial backends. |
 | Autotuning | `com.summit.gpu-autotuning` | Device fingerprints, calibration profiles, persistence, and backend resolution. |
-| GPU-driven instances | `com.summit.gpu-driven-instances` | Multi-view visibility, LOD grouping, CSR compaction, and indirect draw arguments. |
+| GPU-driven instances | `com.summit.gpu-driven-instances` | Persistent full/dirty state upload, multi-view visibility, LOD grouping, CSR compaction, and indirect draw arguments. |
 | Sensor pipeline | `com.summit.gpu-sensor-pipeline` | GPU-resident sensor generation, packed SoA data, shared indexing, and range-query consumers. |
 | Scheduling | `com.summit.gpu-deadline-scheduler` | Slack-aware copy/compute/graphics planning with a deterministic GPU workload. |
 | Residency | `com.summit.gpu-residency-manager` | Virtual-page-to-physical-slot residency for large maps and point clouds. |
@@ -61,6 +61,7 @@ These results are workload-specific, not universal performance guarantees. Defin
    .\Tools\Run-GpuPrimitiveBenchmark.ps1
    .\Tools\Run-GpuDirectBinningBenchmark.ps1
    .\Tools\Run-GpuDrivenInstanceBenchmark.ps1
+   .\Tools\Run-GpuDrivenInstanceDirtyRangeBenchmark.ps1
    .\Tools\Run-GpuSensorPipelineBenchmark.ps1
    ```
 
