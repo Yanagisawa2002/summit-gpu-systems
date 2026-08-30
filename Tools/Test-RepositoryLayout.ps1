@@ -76,7 +76,14 @@ foreach ($relativePath in @(
         'Packages\com.yanagisawa.gpu-systems-toolkit\package.json',
         'Packages\com.yanagisawa.gpu-systems-toolkit\README.md',
         'Packages\com.yanagisawa.gpu-systems-toolkit\CHANGELOG.md',
+        'Packages\com.yanagisawa.gpu-systems-toolkit\Samples~\Policy Quick Start\GpuSystemsPolicyQuickStart.cs',
+        'Packages\com.yanagisawa.gpu-systems-toolkit\Samples~\Policy Quick Start\GpuSystems.PolicyQuickStart.asmdef',
+        'Docs\Images\gpu-systems-toolkit-architecture.svg',
+        'CONTRIBUTING.md',
+        'Assets\GpuDrivenInstanceBenchmark\Runtime\GpuSystemsShowcaseController.cs',
+        'Assets\GpuDrivenInstanceBenchmark\Editor\GpuSystemsShowcaseBuild.cs',
         'Tools\Install-GpuSystemsToolkit.ps1',
+        'Tools\Run-GpuSystemsShowcase.ps1',
         'Tools\Test-StablePackageBoundary.ps1',
         'Tools\Tests\Test-GpuSystemsToolkitInstaller.ps1')) {
     $requiredPath = Join-Path $RepositoryRoot $relativePath

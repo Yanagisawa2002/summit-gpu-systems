@@ -33,6 +33,11 @@ The stable default intentionally excludes:
 Use `-IncludeDiagnostics` or `-IncludeLabs` only when the additional platform
 and evidence boundaries are acceptable.
 
+After installation, import **Policy Quick Start** from Package Manager. Add
+`GpuSystemsPolicyQuickStart` to an empty GameObject and enter Play Mode. The
+sample demonstrates candidate gating and exact-device fail-closed behavior
+with synthetic timings; it is deliberately not presented as a benchmark.
+
 ## Public contract
 
 - Output layout is a caller semantic constraint; policy does not silently

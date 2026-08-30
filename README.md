@@ -1,89 +1,220 @@
-# SUMMIT GPU Systems
+# GPU Systems Toolkit
 
-Private, asset-independent GPU performance engineering code extracted from the SUMMIT real-time simulation project.
+Reusable Unity GPU building blocks, device-keyed policy, and reproducible
+performance evidence extracted from a large real-time simulation codebase.
 
-This repository is a Unity 6 benchmark host and a monorepo of reusable UPM packages. It contains GPU algorithms, DX12 timestamp instrumentation, deterministic A/B harnesses, tests, PowerShell automation, engineering reports, and an isolated snapshot of the NYCGIS/BFP2 integration. City geometry, imagery, textures, scenes, generated players, raw captures, and third-party assets are intentionally excluded.
+> **Portfolio preview — not an open-source release.** This repository is
+> private and currently carries a proprietary license. Public redistribution,
+> package publication, or reuse outside authorized private work requires a
+> written rights decision or a clean-room reimplementation.
 
-## What is here
+![GPU Systems Toolkit architecture](Docs/Images/gpu-systems-toolkit-architecture.svg)
 
-| Area | Package | Purpose |
-| --- | --- | --- |
-| GPU primitives | `com.summit.gpu-primitives` | CommandBuffer-first scan, histogram, stable compaction, and radix sort with portable and WaveOps backends. |
-| Spatial binning | `com.summit.gpu-direct-binning` | Count → exclusive scan → scatter into a CSR spatial index. |
-| Adaptive backend | `com.summit.gpu-adaptive-binning` | Device/workload-aware selection between direct and radix spatial backends. |
-| Autotuning | `com.summit.gpu-autotuning` | Device fingerprints, calibration profiles, persistence, and backend resolution. |
-| GPU-driven instances | `com.summit.gpu-driven-instances` | Persistent full/dirty state upload, multi-view visibility, LOD grouping, CSR compaction, and indirect draw arguments. |
-| Sensor pipeline | `com.summit.gpu-sensor-pipeline` | GPU-resident sensor generation, packed SoA data, shared indexing, and range-query consumers. |
-| Scheduling | `com.summit.gpu-deadline-scheduler` | Slack-aware copy/compute/graphics planning with a deterministic GPU workload. |
-| Residency | `com.summit.gpu-residency-manager` | Virtual-page-to-physical-slot residency for large maps and point clouds. |
-| Instrumentation | `com.summit.gpu-timestamps` | Nonblocking native D3D12 timestamp scopes integrated with Unity CommandBuffers. |
+The project is deliberately narrower than “make every GPU workload faster.” It
+provides forceable implementations, validates output before timing, selects
+only from measured choices, and falls back when device/workload evidence is
+missing or a tail-latency guardrail fails.
 
-`Assets/Gpu*Benchmark` contains procedural, asset-free player builders and deterministic benchmark controllers for the packages. The benchmark scenes are generated temporarily during a build and are not checked in.
+## What the stable toolkit contains
 
-`Integrations/NYCGIS` contains the project-specific cluster renderer and showcase snapshot, including wave-level compaction, no-copy visible tiles, cluster-local 16-bit indices, sensor paths, and GPU vegetation. It is deliberately outside the root Unity `Assets` directory because it depends on types and data contracts owned by the SUMMIT/NYCGIS host project.
+Install the neutral meta-package `com.yanagisawa.gpu-systems-toolkit@0.1.0`
+to obtain the stable default surface:
 
-## Validated results
+| Layer | Legacy package ID | Responsibility |
+|---|---|---|
+| Core | `com.summit.gpu-primitives` | CommandBuffer-first scan, histogram, stable compaction, and radix sort with Portable/WaveOps backends. |
+| Spatial | `com.summit.gpu-direct-binning` | Count → exclusive scan → scatter into a GPU-resident CSR index. |
+| Spatial policy | `com.summit.gpu-adaptive-binning` | Forceable Direct/Radix implementations plus exact-cell measured selection. |
+| Rendering | `com.summit.gpu-driven-instances` | Persistent full/dirty upload, multi-view visibility, grouping, CSR compaction, and indirect arguments. |
+| Policy | `com.summit.gpu-autotuning` | Device fingerprints, holdout-accepted profiles, upload/culling selection, primitive composition, and fail-closed fallback. |
 
-The retained measurements were collected on AMD Radeon AI PRO R9700 and NVIDIA GeForce RTX 4090 with Direct3D 12 and Unity `6000.5.2f1`. Results remain device- and workload-specific.
+`com.summit.*` IDs and `Summit.*` namespaces remain as compatibility
+identifiers. They do not import SUMMIT scenes, GIS data, buildings, imagery,
+traffic, weather, or other application assets.
 
-- Native GPU primitives: wave exclusive scan improved GPU average by `29.70%` on AMD and `38.81%` on NVIDIA; stable compaction improved `26.57%` and `29.35%`. Wave radix sort improved `16.82%` on AMD but only `1.42%` on NVIDIA and was neutral under the frozen gate.
-- Device-keyed autotuning on RTX 4090 selected WaveOps for scan and stable compaction, but retained the portable radix backend. Independent rounds confirmed `38.86%` and `29.38%` GPU-average improvements for the selected WaveOps workloads; `37,800/37,800` native timestamp samples were valid.
-- GPU-driven visible-only scatter on RTX 4090 reduced the measured classification/binning/indirect GPU region by `93.13%`, `76.14%`, and `44.84%` at `5%`, `25%`, and `75%` dispersed visibility for `1.05M` instances across four views. The `100%` visible control remained at parity; `36,000/36,000` native timestamp rows and `16/16` CPU-oracle validations passed.
-- GPU-resident sensor pipeline: GPU average improved `85.99%–89.66%` and GPU P99 improved `82.85%–87.81%` across the two retained workloads, with `8/8` wins.
-- NYCGIS wave64 cluster compaction: returned atomic reservations reduced by at least `98.19%`; four-camera GPU average improved `2.28%` and GPU P99 improved `6.69%`.
-- NYCGIS no-copy visible tiles: compact output reduced from approximately `385.7 MiB` of visible indices to `8.04 MiB` of descriptors. The dedicated single-camera comparison improved GPU average/P99 by `52.5%/51.9%` relative to WaveCompact.
+The following are intentionally opt-in:
 
-These results are workload-specific, not universal performance guarantees. Definitions, validation gates, counterbalancing, and caveats are retained in [`Docs`](Docs/) and [`Evidence/README.md`](Evidence/README.md).
+- `com.summit.gpu-timestamps`: Windows/D3D12 diagnostics.
+- `com.summit.gpu-sensor-pipeline`: experimental Lab.
+- `com.summit.gpu-residency-manager`: experimental Lab.
+- `com.summit.gpu-deadline-scheduler`: experimental Lab.
 
-## Requirements
+## Architecture contract
 
-- Windows x64
-- Unity `6000.5.2f1`
-- Direct3D 12 for native timestamp measurements
-- PowerShell 7 recommended
-- Visual Studio C++ toolchain plus the Unity native plugin headers when rebuilding `SummitGpuTimestamps.dll`
-
-## Quick start
-
-1. Clone the repository and open its root as a Unity project.
-2. Let Unity resolve the embedded packages and compile the benchmark assemblies.
-3. Run the repository checks:
-
-   ```powershell
-   .\Tools\Test-RepositoryLayout.ps1
-   .\Tools\Run-UnityEditModeTests.ps1
-   .\Tools\Run-UnityEditModeTests.ps1 -UseGraphics -ForceDirect3D12
-   ```
-
-4. Run a benchmark, for example:
-
-   ```powershell
-   .\Tools\Run-GpuPrimitiveBenchmark.ps1
-   .\Tools\Run-GpuDirectBinningBenchmark.ps1
-   .\Tools\Run-GpuDrivenInstanceBenchmark.ps1
-   .\Tools\Run-GpuDrivenInstanceDirtyRangeBenchmark.ps1
-   .\Tools\Run-GpuSensorPipelineBenchmark.ps1
-   ```
-
-Use `Get-Help <script> -Detailed` or inspect the parameter block for workload matrices, repetitions, output paths, and build reuse switches.
-
-## Consuming a package from another Unity project
-
-During local development, add an embedded package with a `file:` dependency. After pushing a tag, a consumer can reference a package subdirectory with a Git UPM URL, for example:
-
-```json
-{
-  "com.summit.gpu-primitives": "https://github.com/Yanagisawa2002/summit-gpu-systems.git?path=/Packages/com.summit.gpu-primitives#v0.1.0"
-}
+```text
+caller-owned output semantics
+        ↓
+upload policy: None / Dirty / Full
+        ↓
+culling policy: Flat / Hierarchy
+        ↓
+independent primitive resolver: Portable / WaveOps
+        ↓
+forceable executor + correctness oracle + evidence receipt
 ```
 
-Packages with internal dependencies require the corresponding `com.summit.*` dependencies to be added to the consumer manifest as well. Access requires credentials because this repository is private.
+- Output layout is a semantic constraint, never a hidden tuning axis.
+- Upload/culling policy and primitive policy have separate evidence contracts.
+- Unknown, stale, mismatched, or unvalidated profiles fall back to conservative
+  execution.
+- Forced candidates remain benchmarkable even when Auto rejects them, so a
+  fallback cannot erase a negative result.
 
-## Repository policy
+## Verified positive results
 
-- Portable packages and benchmark harnesses must not reference NYCGIS, BFP2, FishNet, city datasets, or asset paths outside their own generated benchmark folders.
-- Project-specific adapters remain under `Integrations/` until their host contracts are generalized.
-- Generated players, Unity caches, raw captures, screenshots, and large datasets stay out of Git.
-- Performance claims require deterministic workloads, correctness hashes/oracles, counterbalanced ordering, native GPU timestamps where applicable, and documented hardware/driver context.
+All numbers below are device-, workload-, scope-, and commit-specific. They
+are not universal FPS or product-wide speedups.
 
-See [`MIGRATION_MANIFEST.md`](MIGRATION_MANIFEST.md) for provenance and exclusions.
+| Mechanism | Frozen evidence | Result allowed for portfolio use |
+|---|---|---|
+| Wave scan / stable compaction | Unity 6000.5.2f1, D3D12, AMD Radeon AI PRO R9700 + NVIDIA RTX 4090 | Scan GPU scope `29.70% / 38.81%` lower; compaction `26.57% / 29.35%` lower (AMD / NVIDIA). |
+| Visible-only instance scatter | RTX 4090, `1.05M × 4 views`, dispersed visibility | Classification/binning/indirect GPU scope `44.84%–93.13%` lower for `75%–5%` visibility; 100% control remained at parity. |
+| Sparse dirty upload | RTX 4090, 10K/100K instances, 0/1/10% moving | Logical upload bytes `90%–100%` lower and CPU submission P95 `38.59%–96.13%` lower in the original sealed matrix. |
+| Batched hierarchy | RTX 4090, `1.05M × 4 views`, 5/25/75/100% visibility | GPU mean `32.50%–53.41%` lower and GPU P95 `12.37%–16.26%` lower; frame/enqueue tail guardrails passed 4/4. |
+| Adaptive CSR facade | RTX 4090, five unseen-seed holdout cells | Selected GPU average `45.69%–93.84%` lower and policy replay 5/5; strict per-pair tail gate was only 4/5 and is not claimed. |
+
+Primary reports: [AMD primitives](Docs/GPU_PRIMITIVES_AMD_R9700_FORMAL_RESULTS_2026-07-30.md),
+[NVIDIA primitives](Docs/GPU_PRIMITIVES_NVIDIA_RTX4090_FORMAL_RESULTS_2026-08-29.md),
+[visible-only instances](Docs/GPU_DRIVEN_VISIBLE_ONLY_NVIDIA_RTX4090_FORMAL_2026-08-29.md),
+[dirty upload](Docs/GPU_DRIVEN_INSTANCES_DIRTY_RANGE_UPLOAD_RTX4090_FORMAL_2026-08-30.md),
+[hierarchy](Docs/GPU_DRIVEN_INSTANCES_HIERARCHY_BATCHED_RESERVATION_RTX4090_2026-08-31.md),
+and [adaptive CSR](Docs/GPU_ADAPTIVE_BINNING_NVIDIA_RTX4090_FORMAL_2026-08-31.md).
+
+## Negative and incomplete results are retained
+
+| Result | Honest conclusion |
+|---|---|
+| WaveOps append | Counterbalanced 3-seed replay was negative and far below the practical gate; Auto keeps Portable. |
+| Small `10K / 1 view / 1 group` GPU-driven system | A local fast path improved its forced-GPU scope, but the frozen engine-native system matrix still failed 2/4 GPU-tail cells; no “GPU always wins” claim. |
+| Selected end-to-end internal formal | Stopped at 16/32 phases after a primitive-policy semantic defect was found; the defect was fixed, but the old artifact was not reused. No selected-system performance claim. |
+| Official BRG Shooter adapter | Migration/build/correctness smoke ran, but image parity and native GPU timing coverage failed. Diagnostic timing is invalid for claims. |
+
+See the experiment ledger and per-report limitations before quoting any number.
+The official external sample work proves integration progress, not cross-project
+performance portability.
+
+## Installation
+
+Requirements for the currently validated surface:
+
+- Unity `6000.5.2f1` or newer within the `6000.5` line;
+- Windows x64;
+- Direct3D 12 for the validated GPU integration tests and native timestamps;
+- PowerShell 7 for repository automation.
+
+For local development:
+
+```powershell
+.\Tools\Install-GpuSystemsToolkit.ps1 `
+  -ProjectRoot C:\path\to\UnityProject `
+  -LocalRepositoryRoot $PWD
+```
+
+For a private commit-pinned Git install:
+
+```powershell
+.\Tools\Install-GpuSystemsToolkit.ps1 `
+  -ProjectRoot C:\path\to\UnityProject `
+  -Commit <full-40-character-commit>
+```
+
+The installer writes all sibling monorepo dependencies, sorts the manifest,
+and emits a SHA-256 receipt. Installing only the meta-package Git URL cannot
+resolve its sibling semantic-version dependencies until a scoped registry or
+split repositories exist. Private-repository credentials are currently
+required.
+
+To remove every toolkit-owned dependency while preserving unrelated packages:
+
+```powershell
+.\Tools\Install-GpuSystemsToolkit.ps1 `
+  -ProjectRoot C:\path\to\UnityProject `
+  -Mode Uninstall
+```
+
+## Five-minute API quick start
+
+1. Install the stable meta-package with the command above.
+2. In Unity Package Manager, import **Policy Quick Start** from
+   `GPU Systems Toolkit`.
+3. Add `GpuSystemsPolicyQuickStart` to an empty GameObject and enter Play Mode.
+4. Observe a validated synthetic candidate selection and a missing-profile
+   fallback to `Portable`.
+
+The sample intentionally uses fixed teaching data. It demonstrates the public
+selection API and does not benchmark the current GPU.
+
+## Visible preview
+
+The side-by-side showcase renders the same procedural input through the
+engine-native CPU reference and GPU-driven indirect path. It validates the two
+offscreen image hashes before capturing the window, and labels itself
+`PREVIEW ONLY — NOT FORMAL TIMING`.
+
+```powershell
+.\Tools\Run-GpuSystemsShowcase.ps1 `
+  -EvidenceDirectory C:\path\to\showcase-evidence
+```
+
+The Player output is visual communication only. Formal runners remain
+offscreen, counterbalanced, and free of preview UI work.
+
+## Reproducing tests and measurements
+
+```powershell
+# Static package/application boundary
+.\Tools\Test-RepositoryLayout.ps1
+
+# Contract/provenance tests
+Get-ChildItem .\Tools\Tests\Test-*.ps1 |
+  ForEach-Object { pwsh -NoProfile -File $_.FullName }
+
+# Full Unity API + GPU integration suite
+.\Tools\Run-UnityEditModeTests.ps1 -UseGraphics -ForceDirect3D12
+```
+
+Benchmark design rules and runner entry points are in
+[Docs/BENCHMARKS.md](Docs/BENCHMARKS.md). A result is invalid when correctness
+or image hashes differ, timing coverage is incomplete, the scope changes,
+ordering is not counterbalanced, or the exact source/device contract is absent.
+
+## Repository map
+
+- `Packages/`: reusable stable components plus opt-in Labs.
+- `Assets/Gpu*Benchmark/`: procedural asset-free internal benchmark hosts.
+- `ExternalBenchmarks/BRGShooter/`: lock, overlay, and preparation tools only;
+  upstream Unity content is not vendored.
+- `Integrations/NYCGIS/`: isolated private case-study snapshot; excluded from
+  the stable package, quick start, external benchmark, and release surface.
+- `Docs/` and `Evidence/`: methods, compact reports, limitations, and hashes.
+- `Tools/`: deterministic install, test, build, run, selection, and summary
+  scripts.
+
+## FAQ
+
+**Is this already an open-source Unity plugin?**
+No. The package boundary is installable and tested, but the repository license
+does not permit public reuse or redistribution.
+
+**Does Auto benchmark the user’s GPU on every launch?**
+No. Runtime resolution consumes exact-device, holdout-accepted profiles and
+fails closed. Calibration and formal measurement are explicit workflows.
+
+**Why keep negative results?**
+They define selection boundaries. Append remains Portable, small instance
+workloads may remain engine-native, dense upload selects Full, and small sparse
+multi-view work can remain Flat.
+
+**Are the large percentage improvements whole-frame speedups?**
+No. Each row names its measured GPU or CPU scope. Whole-frame metrics are
+reported separately when available.
+
+**Can the NYCGIS integration be installed?**
+Not from the stable meta-package. It depends on private host contracts and is
+retained only as an isolated case study.
+
+## License and contribution status
+
+See [LICENSE.md](LICENSE.md), [NOTICE.md](NOTICE.md), and
+[CONTRIBUTING.md](CONTRIBUTING.md). Until the rights gate is resolved, this is
+a private portfolio engineering artifact rather than a public release.

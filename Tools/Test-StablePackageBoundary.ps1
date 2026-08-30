@@ -94,6 +94,12 @@ if (Test-Path -LiteralPath $metaPath -PathType Leaf) {
             "Meta-package dependency count mismatch: " +
             "$($actualDependencies.Count), expected $($expected.Count)")
     }
+    $samples = @($meta.samples)
+    if ($samples.Count -ne 1 -or
+        [string]$samples[0].displayName -cne 'Policy Quick Start' -or
+        [string]$samples[0].path -cne 'Samples~/Policy Quick Start') {
+        $failures.Add('Stable meta-package sample contract is missing or invalid.')
+    }
 }
 
 if ($failures.Count -gt 0) {

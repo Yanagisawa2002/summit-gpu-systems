@@ -40,3 +40,25 @@ Generated outputs default to `Reports/` and `Builds/`, both ignored by Git. Prom
 - A result is invalid if correctness hashes differ, timing samples are missing, the scope changes between variants, or ordering is not counterbalanced.
 
 The D3D12 timestamp package fails closed when the graphics API or native plugin is unavailable. Scripts must report that state instead of silently substituting an estimated whole-frame value.
+
+## Preview is not measurement
+
+`Tools/Run-GpuSystemsShowcase.ps1` builds a human-facing side-by-side preview.
+It renders the same deterministic input through the CPU reference and
+GPU-driven path, validates the two offscreen image hashes, and then captures
+UI-labelled frames. It deliberately writes `formalTiming=false` and
+`timingClaimsAllowed=false` in its receipt.
+
+The showcase must never be inserted into a formal timing loop: GUI layout,
+screen capture, two simultaneous adapters, and video-frame encoding all alter
+CPU/GPU work. Formal benchmark Players remain offscreen and use their own
+counterbalanced schedules, validation phases, timestamp coverage gates, and
+atomic receipts.
+
+## External benchmark boundary
+
+The official Unity BRG Shooter fixture is pinned and prepared outside this
+repository. Its current adapter smoke is not formal performance evidence:
+baseline/candidate image parity and native GPU timing coverage did not pass.
+The diagnostic CPU/upload observations from that run must not be quoted as
+speedups. Upstream content is not vendored.

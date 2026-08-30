@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+  <title id="title">GPU Systems Toolkit architecture</title>
+  <desc id="desc">Caller semantics flow through upload and culling policy, then device-keyed primitive selection, stable GPU executors, and evidence receipts. Diagnostics and experimental labs are opt-in.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#07111f"/>
+      <stop offset="1" stop-color="#111c31"/>
+    </linearGradient>
+    <linearGradient id="core" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#123b58"/>
+      <stop offset="1" stop-color="#0d273d"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#000" flood-opacity="0.38"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#64d8ff"/>
+    </marker>
+    <style>
+      .title { font: 700 46px 'Segoe UI', Arial, sans-serif; fill: #f4f8ff; letter-spacing: 1px; }
+      .subtitle { font: 400 22px 'Segoe UI', Arial, sans-serif; fill: #9fb3ca; }
+      .label { font: 700 24px 'Segoe UI', Arial, sans-serif; fill: #eef7ff; }
+      .body { font: 400 18px 'Segoe UI', Arial, sans-serif; fill: #b7c9dc; }
+      .tag { font: 700 15px 'Segoe UI', Arial, sans-serif; fill: #07111f; letter-spacing: 1px; }
+      .small { font: 400 16px 'Segoe UI', Arial, sans-serif; fill: #8fa6bd; }
+    </style>
+  </defs>
+
+  <rect width="1600" height="900" fill="url(#bg)"/>
+  <circle cx="1390" cy="90" r="240" fill="#103452" opacity="0.32"/>
+  <circle cx="120" cy="850" r="280" fill="#20305c" opacity="0.28"/>
+
+  <text x="90" y="92" class="title">GPU SYSTEMS TOOLKIT</text>
+  <text x="92" y="132" class="subtitle">Measured policy · reusable GPU building blocks · fail-closed execution</text>
+
+  <g filter="url(#shadow)">
+    <rect x="90" y="205" width="280" height="168" rx="22" fill="#18263c" stroke="#5d7592" stroke-width="2"/>
+    <rect x="112" y="226" width="154" height="28" rx="14" fill="#ffd166"/>
+    <text x="127" y="246" class="tag">CALLER CONTRACT</text>
+    <text x="122" y="292" class="label">Output semantics</text>
+    <text x="122" y="326" class="body">Visible-only / culled-tail</text>
+    <text x="122" y="350" class="small">Never tuned behind the caller</text>
+
+    <rect x="465" y="185" width="390" height="208" rx="22" fill="url(#core)" stroke="#36c5f0" stroke-width="3"/>
+    <rect x="487" y="206" width="135" height="28" rx="14" fill="#64d8ff"/>
+    <text x="504" y="226" class="tag">POLICY LAYER</text>
+    <text x="497" y="273" class="label">Upload + culling</text>
+    <text x="497" y="309" class="body">None / Dirty / Full</text>
+    <text x="497" y="337" class="body">Flat / Hierarchy</text>
+    <text x="497" y="367" class="small">Exact device + workload + hard gates</text>
+
+    <rect x="950" y="185" width="390" height="208" rx="22" fill="url(#core)" stroke="#36c5f0" stroke-width="3"/>
+    <rect x="972" y="206" width="171" height="28" rx="14" fill="#64d8ff"/>
+    <text x="989" y="226" class="tag">PRIMITIVE POLICY</text>
+    <text x="982" y="273" class="label">Portable / WaveOps</text>
+    <text x="982" y="309" class="body">Scan · histogram · compact</text>
+    <text x="982" y="337" class="body">Radix / direct CSR backend</text>
+    <text x="982" y="367" class="small">Missing profile → Portable</text>
+  </g>
+
+  <path d="M 370 289 C 405 289 425 289 465 289" stroke="#64d8ff" stroke-width="4" fill="none" marker-end="url(#arrow)"/>
+  <path d="M 855 289 C 890 289 910 289 950 289" stroke="#64d8ff" stroke-width="4" fill="none" marker-end="url(#arrow)"/>
+
+  <g filter="url(#shadow)">
+    <rect x="170" y="500" width="1260" height="210" rx="26" fill="#101b2c" stroke="#354b66" stroke-width="2"/>
+    <rect x="198" y="524" width="158" height="29" rx="14" fill="#8ce99a"/>
+    <text x="216" y="545" class="tag">STABLE EXECUTORS</text>
+
+    <rect x="210" y="577" width="252" height="94" rx="16" fill="#172b3f" stroke="#4e6f8c"/>
+    <text x="234" y="613" class="label">Primitives</text>
+    <text x="234" y="644" class="small">scan · histogram · compact</text>
+
+    <rect x="492" y="577" width="252" height="94" rx="16" fill="#172b3f" stroke="#4e6f8c"/>
+    <text x="516" y="613" class="label">Spatial / CSR</text>
+    <text x="516" y="644" class="small">count · scan · scatter</text>
+
+    <rect x="774" y="577" width="252" height="94" rx="16" fill="#172b3f" stroke="#4e6f8c"/>
+    <text x="798" y="613" class="label">Instances</text>
+    <text x="798" y="644" class="small">upload · cull · indirect args</text>
+
+    <rect x="1056" y="577" width="330" height="94" rx="16" fill="#172b3f" stroke="#4e6f8c"/>
+    <text x="1080" y="613" class="label">Evidence contract</text>
+    <text x="1080" y="644" class="small">oracle · hashes · tails · receipts</text>
+  </g>
+
+  <path d="M 660 393 L 660 472" stroke="#64d8ff" stroke-width="4" fill="none" marker-end="url(#arrow)"/>
+  <path d="M 1145 393 L 1145 472" stroke="#64d8ff" stroke-width="4" fill="none" marker-end="url(#arrow)"/>
+
+  <g>
+    <rect x="90" y="778" width="520" height="68" rx="18" fill="#241f35" stroke="#9a7bd1"/>
+    <text x="118" y="808" class="label">OPT-IN DIAGNOSTICS</text>
+    <text x="118" y="832" class="small">D3D12 native timestamps</text>
+
+    <rect x="650" y="778" width="860" height="68" rx="18" fill="#2d1e2c" stroke="#d47bb1"/>
+    <text x="678" y="808" class="label">LABS — NOT INSTALLED BY DEFAULT</text>
+    <text x="678" y="832" class="small">Sensor pipeline · residency manager · deadline scheduler</text>
+  </g>
+</svg>

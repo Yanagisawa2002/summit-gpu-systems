@@ -18,6 +18,13 @@
     "spatial-binning",
     "autotuning"
   ],
+  "samples": [
+    {
+      "displayName": "Policy Quick Start",
+      "description": "A synthetic, non-benchmark example of validated candidate selection and fail-closed device fallback.",
+      "path": "Samples~/Policy Quick Start"
+    }
+  ],
   "author": {
     "name": "GPU Systems Toolkit Contributors"
   }
