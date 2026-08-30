@@ -69,8 +69,9 @@ Available recording methods:
 All public buffers are structured `uint` buffers. Histogram domains must be a
 power of two and no larger than `GpuPrimitives.MaxElementCount`; with the
 current dispatch bound, the largest permitted power of two is 8,388,608 bins.
-The initial wave histogram supports up to 16 bins, while larger domains select
-the portable path. Stable compaction defines order; append compaction only
+The wave histogram supports up to 16 bins. The portable path uses a
+group-shared 16-bin reduction for the same small domain and retains the global
+atomic fallback for larger domains. Stable compaction defines order; append compaction only
 defines membership and count. Radix sorting is a stable unsigned 32-bit
 key/value sort.
 

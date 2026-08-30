@@ -3,6 +3,7 @@
 #pragma kernel ScanBlocksPortable
 #pragma kernel AddBlockOffsets
 #pragma kernel HistogramAtomic
+#pragma kernel HistogramGroupShared16
 #pragma kernel StableCompactScatter
 #pragma kernel AppendCompactAtomic
 #pragma kernel RadixHistogramPortable
@@ -41,6 +42,7 @@ int _RadixGroupCount;
 int _RadixShift;
 
 groupshared uint _ScanShared[256];
+groupshared uint _HistogramShared[16];
 groupshared uint _RadixHistogramShared[16];
 groupshared uint _RadixDigits[256];
 groupshared uint _RadixKeysShared[256];
@@ -149,6 +151,42 @@ void HistogramAtomic(uint3 dispatchThreadId : SV_DispatchThreadID)
         ((uint)_BinCount - 1u);
     uint ignored;
     InterlockedAdd(_Histogram[bin], 1u, ignored);
+}
+
+// Small domains first aggregate in low-latency group memory, then emit at
+// most one global atomic per non-empty group/bin. This keeps the Portable
+// backend wave-size agnostic while avoiding one global atomic per key.
+[numthreads(256, 1, 1)]
+void HistogramGroupShared16(
+    uint3 groupThreadId : SV_GroupThreadID,
+    uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    uint localIndex = groupThreadId.x;
+    if (localIndex < 16u)
+    {
+        _HistogramShared[localIndex] = 0u;
+    }
+    GroupMemoryBarrierWithGroupSync();
+
+    uint index = dispatchThreadId.x;
+    if (index < (uint)_Count)
+    {
+        uint bin = (_Keys[index] >> (uint)_KeyShift) &
+            ((uint)_BinCount - 1u);
+        uint ignored;
+        InterlockedAdd(_HistogramShared[bin], 1u, ignored);
+    }
+    GroupMemoryBarrierWithGroupSync();
+
+    if (localIndex < (uint)_BinCount)
+    {
+        uint groupCount = _HistogramShared[localIndex];
+        if (groupCount > 0u)
+        {
+            uint ignored;
+            InterlockedAdd(_Histogram[localIndex], groupCount, ignored);
+        }
+    }
 }
 
 [numthreads(256, 1, 1)]
