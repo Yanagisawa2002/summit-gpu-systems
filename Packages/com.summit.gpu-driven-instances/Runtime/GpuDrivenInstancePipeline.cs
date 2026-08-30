@@ -102,7 +102,6 @@ namespace Summit.GpuDrivenInstances
         private readonly int initializeHierarchyFrameKernel;
         private readonly int validateAndClassifyClustersKernel;
         private readonly int classifyClusterInstancesKernel;
-        private readonly int mergeHierarchyDiagnosticsKernel;
         private readonly GpuDirectSpatialBinner binner;
         private readonly GraphicsBuffer keys;
         private readonly GraphicsBuffer values;
@@ -199,7 +198,6 @@ namespace Summit.GpuDrivenInstances
             int selectedInitializeHierarchyFrameKernel = -1;
             int selectedValidateAndClassifyClustersKernel = -1;
             int selectedClassifyClusterInstancesKernel = -1;
-            int selectedMergeHierarchyDiagnosticsKernel = -1;
             if (hierarchicalClusterCapacity > 0)
             {
                 selectedHierarchicalArgumentsKernel =
@@ -211,8 +209,6 @@ namespace Summit.GpuDrivenInstances
                     selectedShader.FindKernel("ValidateAndClassifyClusters");
                 selectedClassifyClusterInstancesKernel =
                     selectedShader.FindKernel("ClassifyClusterInstances");
-                selectedMergeHierarchyDiagnosticsKernel =
-                    selectedShader.FindKernel("MergeHierarchyDiagnostics");
             }
 
             GpuDirectSpatialBinner selectedBinner = null;
@@ -308,8 +304,6 @@ namespace Summit.GpuDrivenInstances
                 selectedValidateAndClassifyClustersKernel;
             classifyClusterInstancesKernel =
                 selectedClassifyClusterInstancesKernel;
-            mergeHierarchyDiagnosticsKernel =
-                selectedMergeHierarchyDiagnosticsKernel;
             binner = selectedBinner;
             keys = selectedKeys;
             values = selectedValues;
@@ -861,23 +855,6 @@ namespace Summit.GpuDrivenInstances
                 visibleBinCount,
                 scanBackend);
 
-            commands.SetComputeBufferParam(
-                shader,
-                mergeHierarchyDiagnosticsKernel,
-                BinningDiagnosticsId,
-                hierarchyBinningDiagnostics);
-            commands.SetComputeBufferParam(
-                shader,
-                mergeHierarchyDiagnosticsKernel,
-                DiagnosticsId,
-                diagnostics);
-            commands.DispatchCompute(
-                shader,
-                mergeHierarchyDiagnosticsKernel,
-                1,
-                1,
-                1);
-
             RecordBuildHierarchicalIndirectArguments(
                 commands,
                 drawTemplates,
@@ -1033,6 +1010,11 @@ namespace Summit.GpuDrivenInstances
                 buildHierarchicalIndirectArgumentsKernel,
                 DiagnosticsId,
                 diagnostics);
+            commands.SetComputeBufferParam(
+                shader,
+                buildHierarchicalIndirectArgumentsKernel,
+                BinningDiagnosticsId,
+                hierarchyBinningDiagnostics);
             commands.DispatchCompute(
                 shader,
                 buildHierarchicalIndirectArgumentsKernel,

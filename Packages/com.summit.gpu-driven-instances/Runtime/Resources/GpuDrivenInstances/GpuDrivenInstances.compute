@@ -3,7 +3,6 @@
 #pragma kernel InitializeHierarchyFrame
 #pragma kernel ValidateAndClassifyClusters
 #pragma kernel ClassifyClusterInstances
-#pragma kernel MergeHierarchyDiagnostics
 #pragma kernel BuildIndirectArguments
 #pragma kernel BuildHierarchicalIndirectArguments
 #pragma target 5.0
@@ -356,6 +355,10 @@ void ValidateAndClassifyClusters(
 }
 
 groupshared uint HierarchicalGroupCandidateCount;
+groupshared uint HierarchicalGroupVisibleCount;
+groupshared uint HierarchicalGroupVisibleBase;
+groupshared uint HierarchicalGroupReservationValid;
+groupshared uint HierarchicalGroupBinCounts[64];
 
 [numthreads(64, 1, 1)]
 void ClassifyClusterInstances(
@@ -366,6 +369,15 @@ void ClassifyClusterInstances(
     if (lane == 0u)
     {
         HierarchicalGroupCandidateCount = 0u;
+        HierarchicalGroupVisibleCount = 0u;
+        HierarchicalGroupVisibleBase = 0u;
+        HierarchicalGroupReservationValid = 1u;
+    }
+    bool useGroupBinCounts =
+        (uint)_VisibleBinCount <= MaximumClusterInstanceCount;
+    if (useGroupBinCounts && lane < (uint)_VisibleBinCount)
+    {
+        HierarchicalGroupBinCounts[lane] = 0u;
     }
     GroupMemoryBarrierWithGroupSync();
 
@@ -417,38 +429,15 @@ void ClassifyClusterInstances(
         HierarchicalGroupCandidateCount,
         countbits(candidateViews),
         ignoredSharedCount);
-    GroupMemoryBarrierWithGroupSync();
 
-    if (lane == 0u && groupIsActive)
+    uint visibleViews = 0u;
+    uint packedLodsLow = 0u;
+    uint packedLodsHigh = 0u;
+    uint remainingCandidateViews = candidateViews;
+    while (remainingCandidateViews != 0u)
     {
-        uint coarseViewCount =
-            countbits(_ClusterViewMasks[clusterIndex]);
-        uint ignoredStatistic;
-        if (coarseViewCount > 0u)
-        {
-            InterlockedAdd(
-                _HierarchyStatistics[CoarseVisibleClusterViewCountWord],
-                coarseViewCount,
-                ignoredStatistic);
-        }
-        if (HierarchicalGroupCandidateCount > 0u)
-        {
-            InterlockedAdd(
-                _HierarchyStatistics[CandidateInstanceViewCountWord],
-                HierarchicalGroupCandidateCount,
-                ignoredStatistic);
-        }
-    }
-
-    if (!laneIsValid)
-    {
-        return;
-    }
-
-    while (candidateViews != 0u)
-    {
-        uint viewIndex = (uint)firstbitlow(candidateViews);
-        candidateViews &= candidateViews - 1u;
+        uint viewIndex = (uint)firstbitlow(remainingCandidateViews);
+        remainingCandidateViews &= remainingCandidateViews - 1u;
         if (viewIndex >= (uint)_ViewCount)
         {
             continue;
@@ -484,46 +473,103 @@ void ClassifyClusterInstances(
             continue;
         }
 
-        uint destination;
-        InterlockedAdd(
-            _HierarchyStatistics[HierarchicalVisiblePairCountWord],
-            1u,
-            destination);
-        if (destination >= (uint)_PairCapacity)
+        visibleViews |= 1u << viewIndex;
+        uint lodShift = (viewIndex & 15u) * 2u;
+        if (viewIndex < 16u)
         {
-            ReportError(HierarchicalPairCapacityExceeded);
-            continue;
+            packedLodsLow |= selectedLod << lodShift;
         }
+        else
+        {
+            packedLodsHigh |= selectedLod << lodShift;
+        }
+    }
 
+    uint laneVisibleOffset;
+    uint laneVisibleCount = countbits(visibleViews);
+    InterlockedAdd(
+        HierarchicalGroupVisibleCount,
+        laneVisibleCount,
+        laneVisibleOffset);
+    GroupMemoryBarrierWithGroupSync();
+
+    if (lane == 0u && groupIsActive)
+    {
+        uint coarseViewCount =
+            countbits(_ClusterViewMasks[clusterIndex]);
+        uint ignoredStatistic;
+        if (coarseViewCount > 0u)
+        {
+            InterlockedAdd(
+                _HierarchyStatistics[CoarseVisibleClusterViewCountWord],
+                coarseViewCount,
+                ignoredStatistic);
+        }
+        if (HierarchicalGroupCandidateCount > 0u)
+        {
+            InterlockedAdd(
+                _HierarchyStatistics[CandidateInstanceViewCountWord],
+                HierarchicalGroupCandidateCount,
+                ignoredStatistic);
+        }
+        if (HierarchicalGroupVisibleCount > 0u)
+        {
+            uint groupBase;
+            InterlockedAdd(
+                _HierarchyStatistics[HierarchicalVisiblePairCountWord],
+                HierarchicalGroupVisibleCount,
+                groupBase);
+            HierarchicalGroupVisibleBase = groupBase;
+            uint pairCapacity = (uint)_PairCapacity;
+            if (groupBase > pairCapacity ||
+                HierarchicalGroupVisibleCount > pairCapacity - groupBase)
+            {
+                HierarchicalGroupReservationValid = 0u;
+                ReportError(HierarchicalPairCapacityExceeded);
+            }
+        }
+    }
+    GroupMemoryBarrierWithGroupSync();
+
+    uint destination = HierarchicalGroupVisibleBase + laneVisibleOffset;
+    while (visibleViews != 0u &&
+           HierarchicalGroupReservationValid != 0u)
+    {
+        uint viewIndex = (uint)firstbitlow(visibleViews);
+        visibleViews &= visibleViews - 1u;
+        uint lodShift = (viewIndex & 15u) * 2u;
+        uint selectedLod = viewIndex < 16u
+            ? (packedLodsLow >> lodShift) & 3u
+            : (packedLodsHigh >> lodShift) & 3u;
         uint drawGroup = instance.DrawGroupBase + selectedLod;
         uint bin = viewIndex * (uint)_DrawGroupCount + drawGroup;
         _Keys[destination] = bin;
         _Values[destination] = instanceIndex;
         uint ignoredCount;
-        InterlockedAdd(_BinCounts[bin], 1u, ignoredCount);
+        if (useGroupBinCounts)
+        {
+            InterlockedAdd(
+                HierarchicalGroupBinCounts[bin],
+                1u,
+                ignoredCount);
+        }
+        else
+        {
+            InterlockedAdd(_BinCounts[bin], 1u, ignoredCount);
+        }
+        destination++;
     }
-}
 
-[numthreads(1, 1, 1)]
-void MergeHierarchyDiagnostics(uint3 dispatchThreadId : SV_DispatchThreadID)
-{
-    uint violationCount = _BinningDiagnostics[ContractViolationCountWord];
-    uint errorFlags = _BinningDiagnostics[ErrorFlagsWord];
-    if (violationCount == 0u && errorFlags == 0u)
+    GroupMemoryBarrierWithGroupSync();
+    if (useGroupBinCounts && lane < (uint)_VisibleBinCount)
     {
-        return;
+        uint groupBinCount = HierarchicalGroupBinCounts[lane];
+        if (groupBinCount > 0u)
+        {
+            uint ignoredCount;
+            InterlockedAdd(_BinCounts[lane], groupBinCount, ignoredCount);
+        }
     }
-
-    uint ignoredCount;
-    uint ignoredFlags;
-    InterlockedAdd(
-        _Diagnostics[ContractViolationCountWord],
-        max(1u, violationCount),
-        ignoredCount);
-    InterlockedOr(
-        _Diagnostics[ErrorFlagsWord],
-        HierarchicalBinningInvariantViolation,
-        ignoredFlags);
 }
 
 [numthreads(256, 1, 1)]
@@ -555,9 +601,27 @@ void BuildHierarchicalIndirectArguments(
         return;
     }
 
-    bool failClosed =
+    uint binningViolationCount =
+        _BinningDiagnostics[ContractViolationCountWord];
+    uint binningErrorFlags = _BinningDiagnostics[ErrorFlagsWord];
+    bool binningFailed =
+        binningViolationCount != 0u || binningErrorFlags != 0u;
+    bool failClosed = binningFailed ||
         _Diagnostics[ContractViolationCountWord] != 0u ||
         _Diagnostics[ErrorFlagsWord] != 0u;
+    if (bin == 0u && binningFailed)
+    {
+        uint ignoredCount;
+        uint ignoredFlags;
+        InterlockedAdd(
+            _Diagnostics[ContractViolationCountWord],
+            max(1u, binningViolationCount),
+            ignoredCount);
+        InterlockedOr(
+            _Diagnostics[ErrorFlagsWord],
+            HierarchicalBinningInvariantViolation,
+            ignoredFlags);
+    }
     uint drawGroup = bin % (uint)_DrawGroupCount;
     GpuDrawTemplate draw = _DrawTemplates[drawGroup];
     uint argumentBase = bin * 5u;
