@@ -108,9 +108,12 @@ and tests only the composition boundary.
 - Environment timing gate: a short `SingleScenario` run is diagnostic only;
   sample count cannot guarantee that Unity will publish whole-frame GPU values.
   Before a new formal matrix, replay one frozen formal-equivalent cell and
-  require all existing coverage gates. If the same frozen Player loses GPU
-  timing availability, classify the environment as invalid and do not start or
-  resume the matrix, relax the gates, or substitute zero for `unavailable`.
+  require the runner's visible-windowed launch semantics and all existing
+  coverage gates. `WindowStyle Hidden` diagnostics are invalid: the same frozen
+  D3D12 Player retained valid frame-timing records while losing the GPU values
+  when hidden. If a correctly launched frozen Player loses GPU timing
+  availability, classify the environment as invalid and do not start or resume
+  the matrix, relax the gates, or substitute zero for `unavailable`.
 - CPU baseline weakness: include engine-native instancing/Entities Graphics where applicable.
 - Hardware overclaim: keep results per device and mark unrun hardware unavailable.
 - Timing ambiguity: report native GPU scopes separately from CPU markers and end-to-end frame tails.

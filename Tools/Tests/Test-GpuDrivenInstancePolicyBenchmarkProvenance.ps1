@@ -110,6 +110,10 @@ foreach ($requirement in @(
         @('gpu-driven-policy-upload-culling-v2-holdout-v1-replay-v2-checkpoint-v1',
             'Scoped resumable replay protocol'),
         @('$formalSampleFrames = 900', 'Formal sample cardinality'),
+        @('visible-windowed-swapchain-v1',
+            'Visible Player timing contract'),
+        @('WindowStyle-Hidden-forbidden',
+            'Hidden Player rejection contract'),
         @('Short SingleScenario runs are diagnostics only.',
             'SingleScenario evidence warning'),
         @('does not guarantee Unity GPU-frame availability',
@@ -182,6 +186,16 @@ foreach ($requirement in @(
     Assert-Contains $runner $requirement[0] $requirement[1]
 }
 Assert-NotContains $runner '[switch]$SkipBuild' 'Fresh build runner'
+$playerLaunch = [regex]::Match(
+    $runner,
+    '(?s)\$process = Start-Process.*?\$completed = Wait-PolicyProcess')
+if (-not $playerLaunch.Success) {
+    throw 'Player launch block could not be identified.'
+}
+Assert-NotContains `
+    $playerLaunch.Value `
+    '-WindowStyle' `
+    'Visible Player timing launch'
 
 foreach ($requirement in @(
         @('Get-MeasuredDecision', 'Measured decision extraction'),

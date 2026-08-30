@@ -58,11 +58,13 @@ $protocolAmendmentReason =
     'two-measured-axes-plus-atomic-resumable-phase-evidence'
 $formalSampleFrames = 900
 $formalWarmupFrames = 60
+$playerWindowContract = 'visible-windowed-swapchain-v1'
 $suite = 'summit.gpu-driven-instance-policy-runner'
 $measurementContract = @'
 summit.gpu-driven-instance-policy.measurement.v1
 schedule=ABBA;BAAB
 blocks=8
+playerWindow=visible-windowed-swapchain-v1;WindowStyle-Hidden-forbidden
 frameTimingLatency=4
 gpuFrameUnavailableLiteral=unavailable
 gpuFrameBlockValidCoverage>=95%
@@ -582,6 +584,9 @@ function Invoke-PolicyPlayer {
     }
 
     $startedUtc = (Get-Date).ToUniversalTime().ToString('O')
+    # Keep the benchmark Player windowed and visible. On D3D12, launching the
+    # same frozen Player with WindowStyle Hidden can preserve a valid
+    # FrameTimingManager record while suppressing its whole-frame GPU value.
     $process = Start-Process `
         -FilePath $resolvedPlayerPath `
         -ArgumentList $arguments `
@@ -876,6 +881,7 @@ $runContract = [ordered]@{
     unityPath = $resolvedUnityPath
     unityVersion = $expectedUnityVersion
     graphicsApi = 'Direct3D12'
+    playerWindowContract = $playerWindowContract
     gitCommit = $gitCommit
     gitBranch = [string]$gitStart.branch
     sourceSnapshotSha256 = $sourceSnapshotSha256
