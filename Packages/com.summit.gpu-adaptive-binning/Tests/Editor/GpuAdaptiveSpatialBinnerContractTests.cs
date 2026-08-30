@@ -10,7 +10,7 @@ namespace Summit.GpuAdaptiveBinning.Tests
         private const int AmdVendorId = 0x1002;
         private const int R9700DeviceId = 0x7551;
         private const string CandidateProfileId =
-            "test-amd-r9700-dx12-exact-cells-v2";
+            "test-device-dx12-bounded-cells-v3";
 
         [TestCase(1, 1)]
         [TestCase(2, 1)]
@@ -361,7 +361,7 @@ namespace Summit.GpuAdaptiveBinning.Tests
         [TestCase(GpuPrimitiveBackend.Portable, false, false)]
         [TestCase(GpuPrimitiveBackend.WaveOps, true, false)]
         [TestCase((GpuPrimitiveBackend)99, false, false)]
-        public void SchemaV2ProfileAcceptsOnlyMeasuredExecutionContract(
+        public void SchemaV3ProfileAcceptsOnlyMeasuredExecutionContract(
             GpuPrimitiveBackend requiredPrimitiveBackend,
             bool requiredProfilerMarkersEnabled,
             bool expectedValid)
@@ -406,9 +406,16 @@ namespace Summit.GpuAdaptiveBinning.Tests
             262144,
             16,
             GpuAdaptiveBinningWorkloadConcentration.Hotset,
-            true,
-            9u,
-            false)]
+            false,
+            0u,
+            true)]
+        [TestCase(
+            262144,
+            16,
+            GpuAdaptiveBinningWorkloadConcentration.SingleBinGuaranteed,
+            false,
+            0u,
+            true)]
         [TestCase(
             262144,
             16,
@@ -419,11 +426,18 @@ namespace Summit.GpuAdaptiveBinning.Tests
         [TestCase(
             262144,
             16,
+            GpuAdaptiveBinningWorkloadConcentration.General,
+            false,
+            0u,
+            true)]
+        [TestCase(
+            262144,
+            16,
             GpuAdaptiveBinningWorkloadConcentration.SingleBinGuaranteed,
             true,
             16u,
             false)]
-        public void CalibrationCellRequiresExactValidSingleBinKey(
+        public void CalibrationCellRequiresConsistentConcentrationEvidence(
             int elementCount,
             int binCount,
             GpuAdaptiveBinningWorkloadConcentration concentration,
@@ -442,7 +456,7 @@ namespace Summit.GpuAdaptiveBinning.Tests
         }
 
         [Test]
-        public void ProfileAcceptsOneOrTwoDistinctValidCellsOnly()
+        public void LegacyConstructorAcceptsOneOrTwoDistinctValidCellsOnly()
         {
             GpuAdaptiveBinningCalibrationCell cell0 =
                 CreateCandidateCell0();
@@ -480,6 +494,94 @@ namespace Summit.GpuAdaptiveBinning.Tests
             Assert.That(
                 CreateProfile(2, cell0, cell0).IsValid,
                 Is.False);
+        }
+
+        [Test]
+        public void ProfileSupportsBoundedMixedSurfaceAndRejectsOverlap()
+        {
+            var anySingleBin = new GpuAdaptiveBinningCalibrationCell(
+                1048576,
+                16,
+                GpuAdaptiveBinningWorkloadConcentration
+                    .SingleBinGuaranteed,
+                hasExactSingleBinKey: false,
+                exactSingleBinKey: 0u);
+            var exactSingleBin = new GpuAdaptiveBinningCalibrationCell(
+                1048576,
+                16,
+                GpuAdaptiveBinningWorkloadConcentration
+                    .SingleBinGuaranteed,
+                hasExactSingleBinKey: true,
+                exactSingleBinKey: 5u);
+            var hotset = new GpuAdaptiveBinningCalibrationCell(
+                1048576,
+                16,
+                GpuAdaptiveBinningWorkloadConcentration.Hotset,
+                hasExactSingleBinKey: false,
+                exactSingleBinKey: 0u);
+            var general = new GpuAdaptiveBinningCalibrationCell(
+                1048576,
+                16,
+                GpuAdaptiveBinningWorkloadConcentration.General,
+                hasExactSingleBinKey: false,
+                exactSingleBinKey: 0u);
+            GpuAdaptiveBinningCalibrationProfile profile =
+                CreateArrayProfile(anySingleBin, hotset, general);
+
+            Assert.That(profile.IsValid, Is.True);
+            Assert.That(profile.RadixCellCount, Is.EqualTo(3));
+            Assert.That(
+                profile.MatchesRadixCell(
+                    new GpuAdaptiveBinningWorkloadHint(
+                        1048576,
+                        16,
+                        GpuAdaptiveBinningWorkloadConcentration
+                            .SingleBinGuaranteed,
+                        hasExactSingleBinKey: true,
+                        exactSingleBinKey: 13u)),
+                Is.True);
+            Assert.That(
+                profile.MatchesRadixCell(
+                    new GpuAdaptiveBinningWorkloadHint(
+                        1048576,
+                        16,
+                        GpuAdaptiveBinningWorkloadConcentration.Hotset,
+                        hasExactSingleBinKey: false,
+                        exactSingleBinKey: 0u)),
+                Is.True);
+            Assert.That(
+                CreateArrayProfile(anySingleBin, exactSingleBin).IsValid,
+                Is.False);
+
+            var tooMany = new GpuAdaptiveBinningCalibrationCell[
+                GpuAdaptiveBinningCalibrationProfile
+                    .MaximumRadixCellCount + 1];
+            for (int index = 0; index < tooMany.Length; index++)
+            {
+                tooMany[index] = new GpuAdaptiveBinningCalibrationCell(
+                    1048576 + index,
+                    16,
+                    GpuAdaptiveBinningWorkloadConcentration.General,
+                    hasExactSingleBinKey: false,
+                    exactSingleBinKey: 0u);
+            }
+
+            Assert.That(CreateArrayProfile(tooMany).IsValid, Is.False);
+        }
+
+        [Test]
+        public void ProfileCopiesCallerOwnedCellStorage()
+        {
+            GpuAdaptiveBinningCalibrationCell original =
+                CreateCandidateCell0();
+            var cells = new[] { original };
+            GpuAdaptiveBinningCalibrationProfile profile =
+                CreateArrayProfile(cells);
+
+            cells[0] = default;
+
+            Assert.That(profile.IsValid, Is.True);
+            Assert.That(profile.RadixCell0.IsSameCell(original), Is.True);
         }
 
         [Test]
@@ -607,6 +709,20 @@ namespace Summit.GpuAdaptiveBinning.Tests
                 radixCellCount,
                 radixCell0,
                 radixCell1);
+        }
+
+        private static GpuAdaptiveBinningCalibrationProfile
+            CreateArrayProfile(
+                params GpuAdaptiveBinningCalibrationCell[] radixCells)
+        {
+            return new GpuAdaptiveBinningCalibrationProfile(
+                GpuAdaptiveBinningCalibrationProfile.CurrentSchemaVersion,
+                CandidateProfileId,
+                profileRevision: 3,
+                CreateR9700Dx12Binding(),
+                GpuPrimitiveBackend.WaveOps,
+                requiredProfilerMarkersEnabled: false,
+                radixCells);
         }
 
         private static GpuAdaptiveBinningCalibrationCell

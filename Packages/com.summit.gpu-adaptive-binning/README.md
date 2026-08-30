@@ -42,8 +42,9 @@ This is forced-backend A/B plus offline classification replay. It is not
 timing evidence for `RecordAdaptive`, selector overhead, a broader threshold,
 or a production workload. The exact Radix cells require
 `SingleBinGuaranteed`, explicit caller-owned exact-key evidence, WaveOps,
-profiler markers disabled, and the exact R9700 / DX12 identity. Selector
-schema v2 does not interpolate between cells. A midpoint, cross-key
+profiler markers disabled, and the exact R9700 / DX12 identity. The historical
+AMD profile used selector schema v2 and did not interpolate between cells. A
+midpoint, cross-key
 combination, missing or invalid exact key, another bin count, distribution,
 device, API, primitive backend, or marker state selects `Direct`. That
 fail-closed fallback is a safety policy, not evidence that Direct is optimal
@@ -76,7 +77,7 @@ var cell1 = new GpuAdaptiveBinningCalibrationCell(
 
 var profile = new GpuAdaptiveBinningCalibrationProfile(
     GpuAdaptiveBinningCalibrationProfile.CurrentSchemaVersion,
-    "amd-r9700-dx12-53058f0-exact-cells-v2",
+    "amd-r9700-dx12-53058f0-exact-cells-v3",
     profileRevision: 1,
     deviceBinding: new GpuAdaptiveBinningDeviceBinding(
         vendorId: 0x1002,
@@ -115,26 +116,32 @@ GpuAdaptiveBinningBackend selected = binner.RecordAdaptive(
 ```
 
 `SingleBinGuaranteed` is an upstream contract, not an estimate. The caller
-must also assert the exact single-bin key, and that key must be less than the
-active bin count. `Hotset` does not satisfy the contract, regardless of how
-concentrated the distribution appears. The selector performs no GPU readback
-and does not infer either the distribution or the key.
+must always assert the actual single-bin key, and that key must be less than
+the active bin count. A schema-v3 calibration cell may bind that exact key or
+use `hasExactSingleBinKey: false, exactSingleBinKey: 0` to accept any valid
+caller-provided key at the same exact `N/C` cell. `Hotset` and `General` cells
+are also exact `N/C/concentration` registrations; they do not satisfy the
+single-bin contract. The selector performs no GPU readback and does not infer
+the distribution or key.
 
-In schema v2, vendor ID, device ID, and graphics API are all mandatory and
+In schema v3, vendor ID, device ID, and graphics API are all mandatory and
 must match exactly. There are no wildcard bindings: zero device ID or
 `GraphicsDeviceType.Null` makes the profile invalid, and every invalid or
-mismatched profile selects `Direct`. Schema v2 also requires explicit
+mismatched profile selects `Direct`. Schema v3 also requires explicit
 `GpuPrimitiveBackend.WaveOps` with profiler markers disabled. `Auto`,
 `Portable`, an invalid backend enum, or a markers-enabled binner selects
-`Direct`; the default `RecordAdaptive` backend is therefore fail-closed.
+`Direct`; the default `RecordAdaptive` backend is therefore fail-closed. A
+profile contains one to eight copied, non-overlapping Radix cells; duplicate
+or overlapping cells and older schema versions invalidate the entire profile.
 
 The runtime does not inspect the graphics driver version, Unity version, or
 shader hashes. After a driver, Unity, or shader change, rerun the forced A/B,
 rotate the profile ID or revision, and revalidate each exact cell before using
 it again. Repeat the calibration on NVIDIA before making a cross-vendor claim.
 
-Cache `CaptureCurrent()` outside the frame loop. Selection is a pure,
-allocation-free classification method and `RecordAdaptive` returns the chosen
+Cache `CaptureCurrent()` outside the frame loop. Profile construction copies
+its bounded cell list once. Selection is a pure, allocation-free
+classification method and `RecordAdaptive` returns the chosen
 backend for telemetry and auditing; that return value is not performance
 evidence. Existing `Record(..., backend, ...)` calls remain backward compatible
 and are still the authoritative forced A/B interface.

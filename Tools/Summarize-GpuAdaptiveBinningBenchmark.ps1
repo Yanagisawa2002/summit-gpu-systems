@@ -163,6 +163,24 @@ function Test-SelectorPolicyClaimUsable {
         $PredictionMatchCount -eq 5)
 }
 
+function Test-SelectorSurfacePolicyClaimUsable {
+    param(
+        [Parameter(Mandatory = $true)][bool]$ABDataUsable,
+        [Parameter(Mandatory = $true)][int]$RadixAcceptedCellCount,
+        [Parameter(Mandatory = $true)][int]$DirectAcceptedCellCount,
+        [Parameter(Mandatory = $true)][int]$RequiredRadixAcceptedCells,
+        [Parameter(Mandatory = $true)][int]$RequiredDirectAcceptedCells,
+        [Parameter(Mandatory = $true)][int]$PolicyCellCount,
+        [Parameter(Mandatory = $true)][int]$PredictionMatchCount
+    )
+    return (
+        $ABDataUsable -and
+        $RadixAcceptedCellCount -ge $RequiredRadixAcceptedCells -and
+        $DirectAcceptedCellCount -ge $RequiredDirectAcceptedCells -and
+        $PolicyCellCount -eq 5 -and
+        $PredictionMatchCount -eq 5)
+}
+
 function Test-SelectorTailCellValidated {
     param(
         [Parameter(Mandatory = $true)][bool]$PredictionMatchesWinner,
@@ -193,12 +211,15 @@ function Test-FormalActiveDevice {
     param(
         [Parameter(Mandatory = $true)][int]$GraphicsDeviceVendorId,
         [Parameter(Mandatory = $true)][int]$GraphicsDeviceId,
-        [Parameter(Mandatory = $true)][string]$GraphicsDeviceType
+        [Parameter(Mandatory = $true)][string]$GraphicsDeviceType,
+        [int]$ExpectedGraphicsDeviceVendorId = 0x1002,
+        [int]$ExpectedGraphicsDeviceId = 0x7551,
+        [string]$ExpectedGraphicsDeviceType = 'Direct3D12'
     )
     return (
-        $GraphicsDeviceVendorId -eq 0x1002 -and
-        $GraphicsDeviceId -eq 0x7551 -and
-        $GraphicsDeviceType -ceq 'Direct3D12')
+        $GraphicsDeviceVendorId -eq $ExpectedGraphicsDeviceVendorId -and
+        $GraphicsDeviceId -eq $ExpectedGraphicsDeviceId -and
+        $GraphicsDeviceType -ceq $ExpectedGraphicsDeviceType)
 }
 
 function Test-RequiredProfilerMarkersDisabled {
@@ -280,6 +301,41 @@ function Get-ExactCellSelectorPrediction {
     return 'direct'
 }
 
+function Get-CalibratedSurfaceSelectorPrediction {
+    param(
+        [Parameter(Mandatory = $true)][int]$ElementCount,
+        [Parameter(Mandatory = $true)][int]$BinCount,
+        [Parameter(Mandatory = $true)][string]$Distribution,
+        [Parameter(Mandatory = $true)][int]$ExactSingleBinKey,
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()][object[]]$RadixCandidateCells
+    )
+    foreach ($cell in $RadixCandidateCells) {
+        if ([int]$cell.elementCount -ne $ElementCount -or
+            [int]$cell.binCount -ne $BinCount -or
+            [string]$cell.distribution -cne $Distribution) {
+            continue
+        }
+
+        $keyMode = [string]$cell.singleBinKeyMode
+        if ($Distribution -ceq 'singlebin') {
+            if ($keyMode -ceq 'any-valid' -and
+                $ExactSingleBinKey -ge 0 -and
+                $ExactSingleBinKey -lt $BinCount) {
+                return 'radix'
+            }
+            continue
+        }
+
+        if ($keyMode -ceq 'not-applicable' -and
+            $ExactSingleBinKey -eq -1) {
+            return 'radix'
+        }
+    }
+
+    return 'direct'
+}
+
 function Test-ExactCellSelectorPolicyContract {
     param(
         [Parameter(Mandatory = $true)][string]$PolicyLabel,
@@ -313,6 +369,43 @@ function Test-ExactCellSelectorPolicyContract {
     $expected = @(
         '262144|16|singlebin|9',
         '1048576|16|singlebin|10')
+    return ($actual -join ';') -ceq ($expected -join ';')
+}
+
+function Test-CalibratedSurfaceSelectorPolicyContract {
+    param(
+        [Parameter(Mandatory = $true)][string]$PolicyLabel,
+        [Parameter(Mandatory = $true)][string]$PolicyPredicate,
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()][object[]]$RadixCandidateCells
+    )
+    if ($PolicyLabel -cne
+            'radix-if-calibrated-cell-else-direct' -or
+        $PolicyPredicate -cne
+            'element-count-bin-count-distribution-singlebin-key-mode' -or
+        $RadixCandidateCells.Count -ne 3) {
+        return $false
+    }
+    foreach ($cell in $RadixCandidateCells) {
+        foreach ($field in @(
+                'elementCount',
+                'binCount',
+                'distribution',
+                'singleBinKeyMode')) {
+            if ($null -eq $cell.PSObject.Properties[$field]) {
+                return $false
+            }
+        }
+    }
+    $actual = @(
+        $RadixCandidateCells | ForEach-Object {
+            "$([int]$_.elementCount)|$([int]$_.binCount)|" +
+            "$([string]$_.distribution)|$([string]$_.singleBinKeyMode)"
+        })
+    $expected = @(
+        '1048576|16|singlebin|any-valid',
+        '1048576|16|hotset4|not-applicable',
+        '1048576|16|uniform|not-applicable')
     return ($actual -join ';') -ceq ($expected -join ';')
 }
 
@@ -421,9 +514,29 @@ $formal = [bool]$runner.formalAcceptanceMode
 $contentionFormal =
     $formal -and [string]$runner.matrixPreset -ceq
         'formal-amd-r9700-contention-v1'
+$nvidiaSurfaceFormal =
+    $formal -and [string]$runner.matrixPreset -ceq
+        'formal-nvidia-rtx4090-surface-v1'
+$selectorFormal = $contentionFormal -or $nvidiaSurfaceFormal
 $legacyFormal =
     $formal -and [string]$runner.matrixPreset -ceq
         'formal-amd-r9700-v1'
+$expectedFormalDevice = if ($nvidiaSurfaceFormal) {
+    [pscustomobject]@{
+        vendorId = 0x10DE
+        deviceId = 0x2684
+        deviceType = 'Direct3D12'
+        deviceName = 'NVIDIA GeForce RTX 4090'
+    }
+}
+else {
+    [pscustomobject]@{
+        vendorId = 0x1002
+        deviceId = 0x7551
+        deviceType = 'Direct3D12'
+        deviceName = 'AMD Radeon AI PRO R9700'
+    }
+}
 if ($formal) {
     foreach ($gate in @(
         'formalContractSatisfied',
@@ -574,7 +687,7 @@ if ($formal) {
                 "expected '$($expectedFormalNumbers[$field])'.")
         }
     }
-    if (-not ($contentionFormal -or $legacyFormal) -or
+    if (-not ($selectorFormal -or $legacyFormal) -or
         [string]$runner.matrixRole -cne 'holdout') {
         throw (
             "Formal runner matrix is '$($runner.matrixPreset)'/" +
@@ -600,12 +713,20 @@ if ($formal) {
                 [int]$contractDevice.graphicsDeviceVendorId) `
             -GraphicsDeviceId ([int]$contractDevice.graphicsDeviceId) `
             -GraphicsDeviceType (
-                [string]$contractDevice.graphicsDeviceType))) {
+                [string]$contractDevice.graphicsDeviceType) `
+            -ExpectedGraphicsDeviceVendorId (
+                [int]$expectedFormalDevice.vendorId) `
+            -ExpectedGraphicsDeviceId (
+                [int]$expectedFormalDevice.deviceId) `
+            -ExpectedGraphicsDeviceType (
+                [string]$expectedFormalDevice.deviceType)) -or
+        [string]$contractDevice.graphicsDeviceName -cne
+            [string]$expectedFormalDevice.deviceName) {
         throw (
-            'Formal active-device contract must be AMD vendor 0x1002, ' +
-            'device 0x7551, and Direct3D12.')
+            'Formal active-device contract differs from the frozen ' +
+            "identity for '$($runner.matrixPreset)'.")
     }
-    if ($contentionFormal) {
+    if ($selectorFormal) {
         if ([string]$runner.formalContract.selectorPolicyClaimKind -cne
                 'classification-replay-not-recordadaptive-timing') {
             throw (
@@ -627,6 +748,8 @@ if ($formal) {
                 -Value $requiredMarkersValue)) {
             throw 'Formal contention contract requires inner profiler markers off.'
         }
+    }
+    if ($contentionFormal) {
         $bracket = $runner.formalContract.crossoverBracket
         $orderedCardinalities = @(
             $bracket.orderedDominantSetCardinalities |
@@ -676,6 +799,33 @@ if ($formal) {
                 'of at least -10% in all five policy cells.')
         }
     }
+    if ($nvidiaSurfaceFormal) {
+        $surface = $runner.formalContract.selectorSurface
+        if ([string]$surface.axis -cne 'exact-workload-cell' -or
+            [int]$surface.requiredPredictionMatchCount -ne 5 -or
+            [int]$surface.requiredRadixAcceptedCells -ne 3 -or
+            [int]$surface.requiredDirectAcceptedCells -ne 2 -or
+            -not (Test-CalibratedSurfaceSelectorPolicyContract `
+                -PolicyLabel ([string]$surface.selectorPolicy) `
+                -PolicyPredicate (
+                    [string]$surface.selectorPolicyPredicate) `
+                -RadixCandidateCells @($surface.radixCandidateCells))) {
+            throw (
+                'Formal NVIDIA selector surface differs from the frozen ' +
+                'three-Radix-cell, Direct-fallback v1 contract.')
+        }
+        $tail = $runner.formalContract.selectorTailGuard
+        if ([int]$tail.expectedPairCount -ne 8 -or
+            [int]$tail.minimumWinningP99Pairs -ne 7 -or
+            (Number $tail.minimumWorstPairP99ImprovementPercent `
+                'selector tail worst-pair threshold') -ne -10.0 -or
+            [int]$tail.requiredValidatedCellCount -ne 5 -or
+            -not [bool]$tail.requireAcceptedWinner) {
+            throw (
+                'Formal NVIDIA selector tail guard differs from the ' +
+                'frozen five-cell v1 contract.')
+        }
+    }
     $gate = $runner.decisiveGate
     if ((Number $gate.minimumMedianImprovementPercent 'gate percent') -ne 5.0 -or
         (Number $gate.minimumMedianAbsoluteReductionMs 'gate absolute') -ne 0.005 -or
@@ -700,7 +850,7 @@ if ($formal) {
         throw 'Formal runner must require complete GPU timings.'
     }
     $expectedFormalScenarioCount =
-        if ($contentionFormal) { 5 } else { 8 }
+        if ($selectorFormal) { 5 } else { 8 }
     if (@($runner.scenarios).Count -ne $expectedFormalScenarioCount -or
         @($runner.playerRuns).Count -ne $expectedFormalScenarioCount) {
         throw (
@@ -830,6 +980,14 @@ if ($formal) {
             'uniform-n1048576-c16|1048576|16|uniform|20261002|-1|16|n1048576-c16-contention',
             'uniform-n1048576-c65536|1048576|65536|uniform|20261005|-1|65536|')
     }
+    elseif ($nvidiaSurfaceFormal) {
+        @(
+            'hold-singlebin-n1048576-c16|1048576|16|singlebin|20261221|5|1|n1048576-c16-contention',
+            'hold-hotset4-n1048576-c16|1048576|16|hotset4|20261222|-1|4|n1048576-c16-contention',
+            'hold-uniform-n1048576-c16|1048576|16|uniform|20261223|-1|16|n1048576-c16-contention',
+            'hold-uniform-n1048576-c4096|1048576|4096|uniform|20261224|-1|4096|',
+            'hold-uniform-n1048576-c65536|1048576|65536|uniform|20261225|-1|65536|')
+    }
     else {
         @(
             'uniform-n1048576-c64|1048576|64|uniform|20260901|-1|64|',
@@ -849,7 +1007,7 @@ if ($formal) {
         })
     if (($actual -join ';') -cne ($frozen -join ';')) {
         throw (
-            "Formal AMD holdout matrix '$($runner.matrixPreset)' differs " +
+            "Formal holdout matrix '$($runner.matrixPreset)' differs " +
             'from its frozen matrix.')
     }
 }
@@ -957,7 +1115,7 @@ foreach ($matrixRow in $matrix) {
             "Scenario '$scenarioId' config has a missing, mismatched, or " +
             'generator-v3-inconsistent exactSingleBinKey.')
     }
-    if ($contentionFormal) {
+    if ($selectorFormal) {
         $configMarkersProperty =
             $config.PSObject.Properties['innerProfilerMarkersEnabled']
         $configMarkersValue = if ($null -eq $configMarkersProperty) {
@@ -1044,14 +1202,20 @@ foreach ($matrixRow in $matrix) {
     $formalDeviceMatches = Test-FormalActiveDevice `
         -GraphicsDeviceVendorId ([int]$device.graphicsDeviceVendorId) `
         -GraphicsDeviceId ([int]$device.graphicsDeviceId) `
-        -GraphicsDeviceType ([string]$device.graphicsDeviceType)
+        -GraphicsDeviceType ([string]$device.graphicsDeviceType) `
+        -ExpectedGraphicsDeviceVendorId (
+            [int]$expectedFormalDevice.vendorId) `
+        -ExpectedGraphicsDeviceId (
+            [int]$expectedFormalDevice.deviceId) `
+        -ExpectedGraphicsDeviceType (
+            [string]$expectedFormalDevice.deviceType)
     if ($formal -and (
             -not $formalDeviceMatches -or
             [string]$device.graphicsDeviceName -cne
-                'AMD Radeon AI PRO R9700')) {
+                [string]$expectedFormalDevice.deviceName)) {
         throw (
-            "Formal scenario '$scenarioId' requires AMD R9700 " +
-            "(vendor 0x1002, device 0x7551, Direct3D12); observed " +
+            "Formal scenario '$scenarioId' requires the frozen device " +
+            "for '$($runner.matrixPreset)'; observed " +
             "'$($device.graphicsDeviceName)' vendorId=" +
             "'$($device.graphicsDeviceVendorId)' deviceId=" +
             "'$($device.graphicsDeviceId)' type=" +
@@ -1635,10 +1799,19 @@ foreach ($matrixRow in $matrix) {
             -Distribution ([string]$matrixRow.distribution) `
             -ExactSingleBinKey ([int]$matrixRow.exactSingleBinKey)
     }
+    elseif ($nvidiaSurfaceFormal) {
+        Get-CalibratedSurfaceSelectorPrediction `
+            -ElementCount ([int]$matrixRow.elementCount) `
+            -BinCount ([int]$matrixRow.binCount) `
+            -Distribution ([string]$matrixRow.distribution) `
+            -ExactSingleBinKey ([int]$matrixRow.exactSingleBinKey) `
+            -RadixCandidateCells @(
+                $runner.formalContract.selectorSurface.radixCandidateCells)
+    }
     else {
         'not-applicable'
     }
-    $selectorPolicyPredictionApplicable = $contentionFormal
+    $selectorPolicyPredictionApplicable = $selectorFormal
     $selectorPolicyPredictionMatchesForcedWinner =
         $selectorPolicyPredictionApplicable -and
         [string]$winner -ceq [string]$selectorPolicyPrediction
@@ -1673,7 +1846,7 @@ foreach ($matrixRow in $matrix) {
     if ($radixAccepted) { $radixAcceptedCellCount++ }
     if ($directAccepted) { $directAcceptedCellCount++ }
 
-    $scenarioSelectorPolicyClaimKind = if ($contentionFormal) {
+    $scenarioSelectorPolicyClaimKind = if ($selectorFormal) {
         'classification-replay-not-recordadaptive-timing'
     }
     else {
@@ -1695,7 +1868,10 @@ foreach ($matrixRow in $matrix) {
         winner = $winner
         selectorPolicyClaimKind = $scenarioSelectorPolicyClaimKind
         selectorPolicy = if ($contentionFormal) {
-            'radix-if-exact-calibrated-cell-else-direct'
+            [string]$runner.formalContract.crossoverBracket.selectorPolicy
+        }
+        elseif ($nvidiaSurfaceFormal) {
+            [string]$runner.formalContract.selectorSurface.selectorPolicy
         }
         else {
             'not-applicable'
@@ -1871,7 +2047,7 @@ $selectorTailValidatedCellCount = @(
         [int]$_.selectorPolicyTailCellValidated -eq 1
     }).Count
 $expectedFormalScenarioCount =
-    if ($contentionFormal) { 5 } elseif ($legacyFormal) { 8 } else { 0 }
+    if ($selectorFormal) { 5 } elseif ($legacyFormal) { 8 } else { 0 }
 $aBDataUsable =
     $formal -and
     $allExploratoryUsable -and
@@ -1882,9 +2058,8 @@ $genericCrossoverClaimUsable = Test-CrossoverClaimUsable `
     -DirectAcceptedCellCount $directAcceptedCellCount `
     -BracketEvidenceComplete $bracketEvidenceComplete `
     -SignChangingBracketObserved $signChangingBracketObserved
-$selectorPolicyClaimUsable = [bool](
-    $contentionFormal -and
-    (Test-SelectorPolicyClaimUsable `
+$selectorPolicyClaimUsable = if ($contentionFormal) {
+    [bool](Test-SelectorPolicyClaimUsable `
         -ABDataUsable $aBDataUsable `
         -RadixAcceptedCellCount $radixAcceptedCellCount `
         -DirectAcceptedCellCount $directAcceptedCellCount `
@@ -1892,14 +2067,28 @@ $selectorPolicyClaimUsable = [bool](
         -SelectorDirectionValidatedCount (
             $selectorDirectionValidatedCount) `
         -PolicyCellCount $selectorPolicyCellCount `
-        -PredictionMatchCount $selectorPredictionMatchCount))
+        -PredictionMatchCount $selectorPredictionMatchCount)
+}
+elseif ($nvidiaSurfaceFormal) {
+    [bool](Test-SelectorSurfacePolicyClaimUsable `
+        -ABDataUsable $aBDataUsable `
+        -RadixAcceptedCellCount $radixAcceptedCellCount `
+        -DirectAcceptedCellCount $directAcceptedCellCount `
+        -RequiredRadixAcceptedCells 3 `
+        -RequiredDirectAcceptedCells 2 `
+        -PolicyCellCount $selectorPolicyCellCount `
+        -PredictionMatchCount $selectorPredictionMatchCount)
+}
+else {
+    $false
+}
 $selectorPolicyTailClaimUsable = [bool](
-    $contentionFormal -and
+    $selectorFormal -and
     (Test-SelectorPolicyTailClaimUsable `
         -SelectorPolicyClaimUsable $selectorPolicyClaimUsable `
         -PolicyCellCount $selectorPolicyCellCount `
         -TailValidatedCellCount $selectorTailValidatedCellCount))
-$crossoverClaimUsable = if ($contentionFormal) {
+$crossoverClaimUsable = if ($selectorFormal) {
     $selectorPolicyClaimUsable
 }
 else {
@@ -1941,9 +2130,10 @@ $qualityLines = @(
 )
 if ($formal) {
     $qualityLines += @(
-        'formalGraphicsDeviceVendorId=0x1002'
-        'formalGraphicsDeviceId=0x7551'
-        'formalGraphicsDeviceType=Direct3D12')
+        "formalGraphicsDeviceVendorId=0x$(([int]$expectedFormalDevice.vendorId).ToString('X4'))"
+        "formalGraphicsDeviceId=0x$(([int]$expectedFormalDevice.deviceId).ToString('X4'))"
+        "formalGraphicsDeviceType=$($expectedFormalDevice.deviceType)"
+        "formalGraphicsDeviceName=$($expectedFormalDevice.deviceName)")
 }
 if ($contentionFormal) {
     $qualityLines += @(
@@ -1973,6 +2163,28 @@ if ($contentionFormal) {
         'selectorTailMinimumWorstPairP99ImprovementPercent=-10'
         'selectorTailRequiredValidatedCellCount=5'
         'crossoverBracketReason=contention-formal-holdout')
+}
+elseif ($nvidiaSurfaceFormal) {
+    $qualityLines += @(
+        'selectorPolicyClaimKind=classification-replay-not-recordadaptive-timing'
+        'selectorRequiredInnerProfilerMarkersEnabled=0'
+        'selectorPolicySupportDomain=frozen-five-cell-rtx4090-holdout-only'
+        'selectorBroaderThresholdValidated=0'
+        'selectorProductionReady=0'
+        'crossoverRequiresBothRadixToDirectBrackets=0'
+        'selectorPolicy=radix-if-calibrated-cell-else-direct'
+        'selectorPolicyPredicate=element-count-bin-count-distribution-singlebin-key-mode'
+        'selectorRadixCandidateCell1=N1048576,C16,singlebin,any-valid-key'
+        'selectorRadixCandidateCell2=N1048576,C16,hotset4'
+        'selectorRadixCandidateCell3=N1048576,C16,uniform'
+        'selectorRequiredRadixAcceptedCells=3'
+        'selectorRequiredDirectAcceptedCells=2'
+        'selectorRequiredPredictionMatchCount=5'
+        'selectorTailExpectedPairCount=8'
+        'selectorTailMinimumWinningP99Pairs=7'
+        'selectorTailMinimumWorstPairP99ImprovementPercent=-10'
+        'selectorTailRequiredValidatedCellCount=5'
+        'crossoverBracketReason=not-applicable-exact-surface-holdout')
 }
 else {
     $qualityLines += @(
