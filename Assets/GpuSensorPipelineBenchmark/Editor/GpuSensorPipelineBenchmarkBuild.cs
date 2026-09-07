@@ -78,7 +78,8 @@ public static class GpuSensorPipelineBenchmarkBuild
                 scenes = new[] { TemporaryScenePath },
                 locationPathName = playerPath,
                 target = BuildTarget.StandaloneWindows64,
-                options = BuildOptions.Development
+                options = Array.IndexOf(args, "-summit-release-microbenchmark") >= 0
+                    ? BuildOptions.None : BuildOptions.Development
             };
             BuildReport report = BuildPipeline.BuildPlayer(options);
             string reportPath = Path.Combine(
