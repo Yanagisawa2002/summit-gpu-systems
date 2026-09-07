@@ -67,6 +67,8 @@ namespace Summit.PublicIntegration
         public string engineScope="All process Update intervals retained, plus complete per-arm windows and predeclared warmup exclusion for steady comparisons; not OS displayed cadence";
         public double firstRenderedEngineMilliseconds=-1;public ulong engineCpuTimerFrequency;public long qpcFrequency,stopwatchFrequency;
         public bool allocationCounterAvailable;public int allocationProbeBytes=1048576;
+        public string runtimeClrVersion,gcMode;public int gcMaxGeneration;public bool incrementalGc;
+        public ulong incrementalGcTimeSliceNanoseconds;
         public long allocationProbeCounterDelta,allocationProbeMonoHeapDelta;
         public string allocationCounterScope="GetAllocatedBytesForCurrentThread calibrated against a retained 1 MiB managed array; unavailable values are -1";
         public IntegrationConfig config;public List<IntegrationArm> runs=new List<IntegrationArm>();
@@ -104,6 +106,10 @@ namespace Summit.PublicIntegration
                 engineCpuTimerFrequency=FrameTimingManager.GetCpuTimerFrequency()};
             if(!QueryPerformanceFrequency(out result.qpcFrequency))throw new Exception("QPC frequency unavailable");
             result.stopwatchFrequency=Stopwatch.Frequency;
+            result.runtimeClrVersion=Environment.Version.ToString();result.gcMaxGeneration=GC.MaxGeneration;
+            result.gcMode=UnityEngine.Scripting.GarbageCollector.GCMode.ToString();
+            result.incrementalGc=UnityEngine.Scripting.GarbageCollector.isIncremental;
+            result.incrementalGcTimeSliceNanoseconds=UnityEngine.Scripting.GarbageCollector.incrementalTimeSliceNanoseconds;
             long allocationBefore=GC.GetAllocatedBytesForCurrentThread(),monoBefore=Profiler.GetMonoUsedSizeLong();
             var allocationProbe=new byte[result.allocationProbeBytes];
             for(int i=0;i<allocationProbe.Length;i+=4096)allocationProbe[i]=1;
