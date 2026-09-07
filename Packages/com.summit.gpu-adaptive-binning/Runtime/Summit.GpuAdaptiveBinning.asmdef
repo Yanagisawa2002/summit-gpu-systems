@@ -3,7 +3,8 @@
   "rootNamespace": "Summit.GpuAdaptiveBinning",
   "references": [
     "Summit.GpuDirectBinning",
-    "Summit.GpuPrimitives"
+    "Summit.GpuPrimitives",
+    "Summit.GpuAutotuning"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

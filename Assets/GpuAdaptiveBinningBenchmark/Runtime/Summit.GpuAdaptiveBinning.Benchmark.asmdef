@@ -5,7 +5,8 @@
     "Summit.GpuAdaptiveBinning",
     "Summit.GpuDirectBinning",
     "Summit.GpuPrimitives",
-    "Summit.GpuTimestamps"
+    "Summit.GpuTimestamps",
+    "Summit.GpuAutotuning"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

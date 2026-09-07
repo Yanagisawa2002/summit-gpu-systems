@@ -329,7 +329,8 @@ namespace Summit.GpuAdaptiveBinning
     }
 
     /// <summary>
-    /// Pure, allocation-free, fail-closed backend selection.
+    /// Legacy v2 classification replay only. Runtime RecordAdaptive requires a v3 matrix
+    /// with independent environment identity; the legacy runtime overload falls back to Direct.
     /// </summary>
     public static class GpuAdaptiveBinningSelector
     {

@@ -434,7 +434,8 @@ namespace Summit.GpuAdaptiveBinning.Tests
                 uint[] countData = ReadBuffer(counts, binCount);
                 uint[] offsetData = ReadBuffer(offsets, binCount + 1);
                 uint[] valueData = ReadBuffer(output, elementCount);
-                Assert.That(selected, Is.EqualTo(expectedBackend));
+                Assert.That(selected, Is.EqualTo(GpuAdaptiveBinningBackend.Direct),
+                    "Legacy v2 calibration lacks an independent environment identity.");
                 Assert.That(countData, Is.EqualTo(expected.Counts));
                 Assert.That(offsetData, Is.EqualTo(expected.Offsets));
                 Assert.That(
@@ -452,6 +453,55 @@ namespace Summit.GpuAdaptiveBinning.Tests
                         diagnostics,
                         GpuDirectSpatialBinner.DiagnosticWordCount),
                     Is.EqualTo(new uint[2]));
+            }
+        }
+
+        [Test]
+        public void MatrixTransitionsAndUntrustedFallbackMatchIndependentCsrOracle()
+        {
+            const int n = 513, c = 17;
+            var features = GpuAdaptiveBinningMatrixTests.Features(n); features.binCount = c;
+            var document = GpuAdaptiveBinningMatrixTests.Document();
+            document.rows = new[] { new GpuAdaptiveBinningMatrixRow { features = features,
+                backend = GpuAdaptiveBinningBackend.Radix, primitiveCandidateId = "Portable",
+                validationPassed = true, evidenceId = "independent-test-csr", calibrationSamples = 3 } };
+            var selector = new GpuAdaptiveBinningStableSelector(new GpuAdaptiveBinningMatrix(document),
+                GpuAdaptiveBinningMatrixTests.Device(), GpuAdaptiveBinningMatrixTests.Environment());
+            var keyData = Enumerable.Repeat(7u, n).ToArray();
+            var valueData = GpuAdaptiveBinningTestOracle.CreateValues(n);
+            using (var binner = new GpuAdaptiveSpatialBinner(n, c, false))
+            using (var keyBuffer = CreateBuffer(keyData))
+            using (var valueBuffer = CreateBuffer(valueData))
+            using (var counts = CreateBuffer(c))
+            using (var offsets = CreateBuffer(c + 1))
+            using (var output = CreateBuffer(n))
+            using (var diagnostics = CreateBuffer(2))
+            using (var commands = new CommandBuffer())
+            {
+                for (int frame = 0; frame < 8; frame++)
+                {
+                    var hint = features;
+                    if (frame == 3) hint.workloadId = "unknown-workload";
+                    var domain = frame == 7 ? GpuAdaptiveBinningKeyDomain.Untrusted : GpuAdaptiveBinningKeyDomain.GuaranteedInRange;
+                    if (frame == 7) keyData[0] = uint.MaxValue;
+                    keyBuffer.SetData(keyData); commands.Clear();
+                    var decision = binner.RecordAdaptive(commands, keyBuffer, valueBuffer, counts, offsets, output, diagnostics,
+                        n, c, domain, selector, in hint, GpuPrimitiveBackend.Portable);
+                    Execute(commands);
+                    var expected = GpuAdaptiveBinningTestOracle.Build(keyData, valueData, c);
+                    var actualCounts = ReadBuffer(counts, c); var actualOffsets = ReadBuffer(offsets, c + 1);
+                    Assert.That(actualCounts, Is.EqualTo(expected.Counts), "frame " + frame);
+                    Assert.That(actualOffsets, Is.EqualTo(expected.Offsets), "frame " + frame);
+                    Assert.That(GpuAdaptiveBinningTestOracle.Canonicalize(ReadBuffer(output, n), actualCounts, actualOffsets),
+                        Is.EqualTo(GpuAdaptiveBinningTestOracle.Canonicalize(expected.Values, expected.Counts, expected.Offsets)));
+                    Assert.That(decision.Backend, Is.EqualTo(frame == 2 || frame == 6 ? GpuAdaptiveBinningBackend.Radix : GpuAdaptiveBinningBackend.Direct));
+                    if (frame == 3) Assert.That(decision.Reason, Is.EqualTo(GpuAdaptiveBinningSelectionReason.UnknownCell));
+                    if (frame == 7)
+                    {
+                        Assert.That(decision.Reason, Is.EqualTo(GpuAdaptiveBinningSelectionReason.UntrustedKeys));
+                        Assert.That(ReadBuffer(diagnostics, 2), Is.EqualTo(new uint[] { 1, 1 }));
+                    }
+                }
             }
         }
 
