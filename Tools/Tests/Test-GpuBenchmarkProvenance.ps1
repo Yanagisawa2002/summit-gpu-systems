@@ -5,7 +5,6 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $toolsRoot = Split-Path -Parent $PSScriptRoot
-$projectRoot = Split-Path -Parent $toolsRoot
 Import-Module (Join-Path $toolsRoot 'GpuBenchmarkProvenance.psm1') -Force
 
 $script:assertionCount = 0
@@ -80,10 +79,30 @@ try {
             -Path (Split-Path -Parent $destination) `
             -Force |
             Out-Null
-        Copy-Item `
-            -LiteralPath (Join-Path $projectRoot ($relativePath.Replace('/', '\'))) `
-            -Destination $destination
     }
+
+    # The standalone host deliberately excludes the historical third-party
+    # assets. Exercise exact-blob restoration with synthetic fixtures instead
+    # of requiring those assets to be copied back into the repository.
+    $fishPath = Join-Path $testRoot ($fishRelative.Replace('/', '\'))
+    $urpPath = Join-Path $testRoot ($urpRelative.Replace('/', '\'))
+    $knownLine = "      - rid: 428988942347927577`n"
+    $fixtureUrp = "FixtureSettings:`n    references:`n" + $knownLine
+    Write-Utf8NoBom -Path $fishPath -Value "fileFormatVersion: 2`nfixture: true`n"
+    Write-Utf8NoBom -Path $urpPath -Value $fixtureUrp
+    $fixtureFishBlob = (& git hash-object -- $fishPath).Trim()
+    $fixtureUrpBlob = (& git hash-object -- $urpPath).Trim()
+    Write-Utf8NoBom -Path $urpPath -Value $fixtureUrp.Replace($knownLine, '')
+    $fixtureMutatedBlob = (& git hash-object -- $urpPath).Trim()
+    Write-Utf8NoBom -Path $urpPath -Value $fixtureUrp
+    # These overrides affect only this imported module instance. Production
+    # canonical identities remain unchanged in GpuBenchmarkProvenance.psm1.
+    & (Get-Module GpuBenchmarkProvenance) {
+        param($fishBlob, $urpBlob, $mutatedBlob)
+        $script:FishNetMetaCanonicalBlob = $fishBlob
+        $script:UrpSettingsCanonicalBlob = $urpBlob
+        $script:UrpSettingsKnownMutatedBlob = $mutatedBlob
+    } $fixtureFishBlob $fixtureUrpBlob $fixtureMutatedBlob
 
     [void](Invoke-TestGit -Root $testRoot -Arguments @('init', '--quiet'))
     [void](Invoke-TestGit -Root $testRoot -Arguments @(
@@ -132,6 +151,8 @@ try {
     } 'non-exact URP mutation'
     Assert-True ([bool](Get-GpuBenchmarkGitSnapshot `
         -ProjectRoot $testRoot).dirty) 'wrong URP content was not restored'
+    Assert-True ([System.IO.File]::ReadAllText($urpPath).Contains('# unexpected')) `
+        'rejected restoration preserves unexpected content'
     [void](Invoke-TestGit -Root $testRoot -Arguments @(
         'restore', '--worktree', '--', $urpRelative))
 
@@ -208,7 +229,17 @@ try {
     "PASS assertions=$script:assertionCount"
 }
 finally {
+    # Restore the caller's normal module constants even when an assertion fails.
+    Import-Module (Join-Path $toolsRoot 'GpuBenchmarkProvenance.psm1') -Force
     if (Test-Path -LiteralPath $testRoot) {
-        Remove-Item -LiteralPath $testRoot -Recurse -Force
+        $resolvedTestRoot = [System.IO.Path]::GetFullPath($testRoot)
+        $resolvedTempRoot = [System.IO.Path]::GetFullPath(
+            [System.IO.Path]::GetTempPath()).TrimEnd('\') + '\'
+        if (-not $resolvedTestRoot.StartsWith(
+                $resolvedTempRoot, [System.StringComparison]::OrdinalIgnoreCase) -or
+            (Split-Path -Leaf $resolvedTestRoot) -notlike 'summit-gpu-provenance-*') {
+            throw "Refusing to remove an unexpected fixture directory: $resolvedTestRoot"
+        }
+        Remove-Item -LiteralPath $resolvedTestRoot -Recurse -Force
     }
 }
