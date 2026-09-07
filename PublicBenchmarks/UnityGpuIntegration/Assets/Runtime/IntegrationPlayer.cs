@@ -20,7 +20,7 @@ namespace Summit.PublicIntegration
     {
         public string mode="oracle",scenario="sparse-low-change",output,oracle,sourceSha;
         public uint seed=920071;public int frames=384,warmup=64,blocks=1,processReplicate;
-        public string[] arms={"old-full"};public bool screenshot;
+        public string[] arms={"old-full"};public bool screenshot,engineTimingAudit;
     }
     [Serializable] public sealed class NativeTiming
     {
@@ -50,6 +50,13 @@ namespace Summit.PublicIntegration
     [Serializable] public sealed class ProcessFrame
     {
         public int unityFrame;public long qpc;public double engineIntervalMs;public string phase;
+        public double collectorCpuMs;public long collectorAllocatedBytes;public uint returnedTimings;
+    }
+    [Serializable] public struct EngineObservation
+    {
+        public int observationFrame,slot;public long observationQpc;
+        public ulong frameStartTimestamp,cpuTimePresentCalled,cpuTimeFrameComplete;
+        public double cpuFrameMs,mainThreadMs,renderThreadMs,presentWaitMs,gpuFrameMs;
     }
     [Serializable] public sealed class IntegrationResult
     {
@@ -62,6 +69,7 @@ namespace Summit.PublicIntegration
         public IntegrationConfig config;public List<IntegrationArm> runs=new List<IntegrationArm>();
         public List<EngineTiming> engineTimings=new List<EngineTiming>();
         public List<ProcessFrame> processFrames=new List<ProcessFrame>();
+        public List<EngineObservation> engineObservations;
     }
     public sealed class IntegrationPlayer:MonoBehaviour
     {
@@ -92,6 +100,7 @@ namespace Summit.PublicIntegration
                 engineCpuTimerFrequency=FrameTimingManager.GetCpuTimerFrequency()};
             if(!QueryPerformanceFrequency(out result.qpcFrequency))throw new Exception("QPC frequency unavailable");
             result.stopwatchFrequency=Stopwatch.Frequency;
+            if(config.engineTimingAudit)result.engineObservations=new List<EngineObservation>((config.frames*Math.Max(1,config.arms.Length)*config.blocks+256)*16);
             Save();lastProcessFrame=Time.realtimeSinceStartupAsDouble;
         }
         IEnumerator Start()
@@ -109,18 +118,32 @@ namespace Summit.PublicIntegration
         void Update()
         {
             if(result==null)return;
+            long auditBegin=config.engineTimingAudit?Stopwatch.GetTimestamp():0;
+            long auditAllocated=config.engineTimingAudit?GC.GetAllocatedBytesForCurrentThread():0;
             double now=Time.realtimeSinceStartupAsDouble;
-            result.processFrames.Add(new ProcessFrame{unityFrame=Time.frameCount,qpc=Qpc(),engineIntervalMs=(now-lastProcessFrame)*1000,phase=phase});
+            var processFrame=new ProcessFrame{unityFrame=Time.frameCount,qpc=Qpc(),engineIntervalMs=(now-lastProcessFrame)*1000,phase=phase};
+            result.processFrames.Add(processFrame);
             lastProcessFrame=now;
             FrameTimingManager.CaptureFrameTimings();
             uint count=FrameTimingManager.GetLatestTimings((uint)frameTimings.Length,frameTimings);
+            processFrame.returnedTimings=count;
             for(int i=0;i<count;i++)
             {
-                var t=frameTimings[i];if(t.frameStartTimestamp==0||!seenEngineFrames.Add(t.frameStartTimestamp))continue;
+                var t=frameTimings[i];
+                if(config.engineTimingAudit)
+                {
+                    if(result.engineObservations.Count==result.engineObservations.Capacity)throw new Exception("Bounded diagnostic snapshot capacity exceeded");
+                    result.engineObservations.Add(new EngineObservation{observationFrame=Time.frameCount,slot=i,observationQpc=processFrame.qpc,
+                        frameStartTimestamp=t.frameStartTimestamp,cpuTimePresentCalled=t.cpuTimePresentCalled,cpuTimeFrameComplete=t.cpuTimeFrameComplete,
+                        cpuFrameMs=t.cpuFrameTime,mainThreadMs=t.cpuMainThreadFrameTime,renderThreadMs=t.cpuRenderThreadFrameTime,
+                        presentWaitMs=t.cpuMainThreadPresentWaitTime,gpuFrameMs=t.gpuFrameTime});
+                }
+                if(t.frameStartTimestamp==0||!seenEngineFrames.Add(t.frameStartTimestamp))continue;
                 result.engineTimings.Add(new EngineTiming{frameStartTimestamp=t.frameStartTimestamp,cpuTimePresentCalled=t.cpuTimePresentCalled,
                     cpuTimeFrameComplete=t.cpuTimeFrameComplete,cpuFrameMs=t.cpuFrameTime,mainThreadMs=t.cpuMainThreadFrameTime,
                     renderThreadMs=t.cpuRenderThreadFrameTime,presentWaitMs=t.cpuMainThreadPresentWaitTime,gpuFrameMs=t.gpuFrameTime,observedUnityFrame=Time.frameCount});
             }
+            if(config.engineTimingAudit){processFrame.collectorCpuMs=(Stopwatch.GetTimestamp()-auditBegin)*1000.0/Stopwatch.Frequency;processFrame.collectorAllocatedBytes=GC.GetAllocatedBytesForCurrentThread()-auditAllocated;}
         }
         IEnumerator Run()
         {
@@ -128,6 +151,7 @@ namespace Summit.PublicIntegration
             if(config.arms==null||config.arms.Length==0||config.arms.Distinct().Count()!=config.arms.Length||config.arms.Any(a=>!known.Contains(a)))throw new Exception("Invalid nonempty arm array");
             if(config.mode!="oracle"&&config.mode!="validate"&&config.mode!="formal")throw new Exception("Unknown run mode");
             if(config.mode=="formal"&&!result.formalPerformanceEvidence)throw new Exception("Formal evidence requires a non-Development standalone Player");
+            if(config.mode=="formal"&&config.engineTimingAudit)throw new Exception("Raw repeated timing audit is diagnostic only");
             if(SystemInfo.graphicsDeviceType!=GraphicsDeviceType.Direct3D12)throw new Exception("D3D12 required");
             if(!GpuTimestampSession.TryCreate(out timestamps,out var support))throw new Exception("Native timestamp support: "+support.Message);
             material=new Material(Resources.Load<Shader>("IntegrationParticles"));
