@@ -4,7 +4,7 @@ Baseline: public main `20191e5050805adb6b44f2803eaa966bd1571d8e`. Only two exist
 N262144 scene trajectories: hotspot-dynamic (1% changed, 1% of changed crossing,
 CellSerial query) and streaming-switch (5% changed, 20% crossing,
 BatchedPointScanWave query). Exactly 384 frames, 64 warmup, seed 927101 from
-formal replicate 0. Input update and content code are copied byte for byte from
+formal replicate 0. Input update and content code are copied without code changes (with normalized line endings) from
 the baseline into a generated standalone project, without changing the public
 scene or runtime packages. The exact previously built content-0/content-1
 AssetBundle bytes are reused, with hashes; cancellation, loading, registration,
@@ -86,3 +86,20 @@ bytes are -1 (unavailable), never evidence of zero allocation. Timestamp failure
 include concrete status, pending/consumed counts and native terminal state;
 direct device-removal reason is unavailable through this public session API.
 
+
+Analyze the fixed completed diagnostic set and existing public-scene evidence:
+
+```powershell
+python -B Tools/IndexCostDiagnostics/analyze.py --scene-evidence <prior-scene-evidence> --diagnostic <diagnostic-output> --output <fresh-analysis-output>
+python -B Tools/IndexCostDiagnostics/test_generate.py
+```
+
+`-CompletedHotspotOff <prior-success-folder>` exists only to retain the successful
+phase-off case when a later phase-on adapter failed during development. It
+validates and copies that complete record with its original source/PID/history
+identity, and runs only the other three cases. It is not a selected-cell
+performance retry. Source-differences and failures are disclosed in the report.
+
+Generated public source archives carry the repository's complete limited
+benchmark reproduction license. Post-collection license copying and report/
+analysis additions do not imply the measured Player was rebuilt.

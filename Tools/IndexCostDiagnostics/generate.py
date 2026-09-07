@@ -57,6 +57,7 @@ def generate(content, project_path=None):
             manifest['dependencies'][package]='file:'+Path(os.path.relpath(root/'Packages'/package,project/'Packages')).as_posix()
     (project/'Packages/manifest.json').write_text(json.dumps(manifest,indent=2),encoding='utf-8')
     (project/'ProjectSettings/ProjectVersion.txt').write_text(read(source/'ProjectSettings/ProjectVersion.txt'),encoding='utf-8')
+    (project/'LICENSE.md').write_text(read(root/'LICENSE.md'),encoding='utf-8')
     content=Path(content)
     bundles=[]
     for name in ('content-0','content-1'):

@@ -4,6 +4,14 @@ This candidate is opt-in. Existing `GpuSensorPipeline` producer/rebuild APIs and
 query distribution/reduction are unchanged. No R9700 performance default is
 promoted. The initial smoke verifies executable timing and correctness only.
 
+The [September 2026 focused cost audit](FocusedIndexCosts.md) supersedes any
+general performance expectation for this candidate. Do not recommend it for
+the measured N262144 hotspot/CellSerial or streaming/BatchedPointScanWave
+trajectories: representation cost dominates the former, and every measured
+streaming update takes the capacity fallback. The hotspot with the new query
+remains an inconclusive frame result, not a proven loss for every consumer.
+The API is retained for explicit, workload-validated use; defaults are unchanged.
+
 ## External GPU snapshot contract
 
 `GpuSensorIncrementalIndex(capacity, staticSlotCount, churnPermille,

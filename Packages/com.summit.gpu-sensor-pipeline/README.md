@@ -129,3 +129,21 @@ separate index-entry capacity for bounded scratch. `GpuSensorPipeline.RecordQuer
 records a query segment against the existing index without rebuilding it.
 See [query contracts and comparison commands](../../Docs/GPU_SENSOR_QUERY_BACKENDS.md)
 for capacities, queue lifetime, fallbacks, native timing scope and validation.
+
+## Incremental index applicability
+
+The incremental index remains an explicit opt-in; defaults and public APIs are
+unchanged. The September 2026 R9700 cost audit does **not recommend it for the
+measured N262144 hotspot trajectory with CellSerial, or the measured streaming
+trajectory with BatchedPointScanWave**. In the former, reserved-CSR consumer
+cost outweighs maintenance savings. In the latter, every measured update falls
+back to a reserved rebuild and the consumer also scans a more expensive
+representation. Low change percentage alone does not imply an index benefit.
+
+The earlier hotspot experiment with the new query had an inconclusive frame
+result; this is not a claim that every hotspot consumer suffers a stable loss.
+Any other use must validate complete maintenance plus consumer cost, capacity
+fallback frequency and CSR extent, not maintenance time alone. `HolesWord`
+counts removals since rebuild and does not measure all reserved Invalid slots.
+See [the scoped evidence and diagnostic limitations](../../Docs/FocusedIndexCosts.md)
+and [the external snapshot contract](../../Docs/GPU_SENSOR_INCREMENTAL_INDEX.md).
