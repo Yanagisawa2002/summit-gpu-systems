@@ -96,6 +96,7 @@ namespace Summit.GpuSensorPipeline
             Shader.PropertyToID("_ComparisonDigest");
 
         private readonly GpuSensorChunkedRangeQuery chunkedQuery;
+        private readonly GpuSensorBatchedRangeQuery batchedQuery;
         private readonly ComputeShader shader;
         private readonly int produceKernel;
         private readonly int rangeQueryKernel;
@@ -189,7 +190,9 @@ namespace Summit.GpuSensorPipeline
 
             try
             {
-                if (queryBackend != GpuSensorQueryBackend.CellSerial)
+                if (queryBackend == GpuSensorQueryBackend.BatchedPointScanWave)
+                    batchedQuery = new GpuSensorBatchedRangeQuery(elementCapacity, queryIndexEntryCapacity);
+                else if (queryBackend != GpuSensorQueryBackend.CellSerial)
                     chunkedQuery = new GpuSensorChunkedRangeQuery(elementCapacity, queryBackend, queryIndexEntryCapacity);
                 selectedSamples = CreateBuffer(
                     elementCapacity,
@@ -253,6 +256,7 @@ namespace Summit.GpuSensorPipeline
             catch
             {
                 chunkedQuery?.Dispose();
+                batchedQuery?.Dispose();
                 selectedBinner?.Dispose();
                 selectedPrimitives?.Dispose();
                 DisposeBuffer(selectedSamples);
@@ -839,6 +843,7 @@ namespace Summit.GpuSensorPipeline
 
             disposed = true;
             chunkedQuery?.Dispose();
+            batchedQuery?.Dispose();
             binner.Dispose();
             primitives.Dispose();
             Samples.Dispose();
@@ -966,6 +971,8 @@ namespace Summit.GpuSensorPipeline
             ValidateExternalUintBuffer(binnedIds, 1, nameof(binnedIds));
             if (chunkedQuery != null && binnedIds.count > chunkedQuery.IndexEntryCapacity)
                 throw new ArgumentException("External CSR exceeds preallocated query capacity.", nameof(binnedIds));
+            if (batchedQuery != null && binnedIds.count > batchedQuery.IndexEntryCapacity)
+                throw new ArgumentException("External CSR exceeds configured query capacity.", nameof(binnedIds));
             if (samples == QueryDigests || samples == FrameDigest ||
                 binOffsets == QueryDigests || binOffsets == FrameDigest ||
                 binnedIds == QueryDigests || binnedIds == FrameDigest ||
@@ -1011,6 +1018,14 @@ namespace Summit.GpuSensorPipeline
             GraphicsBuffer externalIds = null)
         {
             BeginSample(commands, QuerySample);
+            if (batchedQuery != null)
+            {
+                batchedQuery.Record(commands, externalSamples ?? Samples,
+                    externalOffsets ?? BinOffsets, externalIds ?? BinnedIds, Queries,
+                    QueryDigests, elementCount, queryStart, queryCount, quantizeIntensity);
+                EndSample(commands, QuerySample);
+                return;
+            }
             if (chunkedQuery != null)
             {
                 chunkedQuery.Record(commands, externalSamples ?? Samples,

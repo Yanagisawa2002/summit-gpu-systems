@@ -26,7 +26,7 @@ namespace Summit.GpuSensorPipeline.Tests
             var expectedQuantized = GpuSensorPipelineTestOracle.QueryAll(quantized, count, queries);
             foreach (GpuSensorQueryBackend backend in Enum.GetValues(typeof(GpuSensorQueryBackend)))
             {
-                if (backend == GpuSensorQueryBackend.PointChunksWave && !GpuSensorChunkedRangeQuery.SupportsWaveOperations)
+                if ((backend == GpuSensorQueryBackend.PointChunksWave || backend == GpuSensorQueryBackend.BatchedPointScanWave) && !GpuSensorChunkedRangeQuery.SupportsWaveOperations)
                     continue;
                 using (var pipeline = GpuSensorQueryFixtures.Create(samples, backend))
                 using (var commands = new CommandBuffer())
@@ -56,7 +56,7 @@ namespace Summit.GpuSensorPipeline.Tests
         public void ExternalReservedCsrSkipsTombstonesAndSupportsEmptyInputs(GpuSensorQueryBackend backend)
         {
             RequireGpu();
-            if (backend == GpuSensorQueryBackend.PointChunksWave && !GpuSensorChunkedRangeQuery.SupportsWaveOperations)
+            if ((backend == GpuSensorQueryBackend.PointChunksWave || backend == GpuSensorQueryBackend.BatchedPointScanWave) && !GpuSensorChunkedRangeQuery.SupportsWaveOperations)
                 Assert.Ignore("Wave operations unavailable.");
             const int entries = 4097;
             var samples = new[] { new GpuSensorSample(0, 0, 0, 7), new GpuSensorSample(1, 1, 1, 9) };
@@ -86,6 +86,46 @@ namespace Summit.GpuSensorPipeline.Tests
                 Assert.Throws<ArgumentException>(() => consumer.Record(commands, sb, ob, ib, sb, output, 2, 0, 1));
                 Assert.That(commands.sizeInBytes, Is.Zero, "Rejected inputs must not partially record commands.");
                 using (var undersized = new GpuSensorChunkedRangeQuery(2))
+                    Assert.Throws<ArgumentException>(() => undersized.Record(commands, sb, ob, ib, qb, output, 2, 0, 1));
+                consumer.Dispose();
+                Assert.Throws<ObjectDisposedException>(() => consumer.Record(commands, sb, ob, ib, qb, output, 2, 0, 1));
+            }
+        }
+
+        [TestCase(GpuSensorQueryBackend.BatchedPointScanWave)]
+        public void BatchedReservedCsrSkipsTombstonesAndSupportsEmptyInputs(GpuSensorQueryBackend backend)
+        {
+            RequireGpu();
+            if ((backend == GpuSensorQueryBackend.PointChunksWave || backend == GpuSensorQueryBackend.BatchedPointScanWave) && !GpuSensorChunkedRangeQuery.SupportsWaveOperations)
+                Assert.Ignore("Wave operations unavailable.");
+            const int entries = 4097;
+            var samples = new[] { new GpuSensorSample(0, 0, 0, 7), new GpuSensorSample(1, 1, 1, 9) };
+            var query = new[] { new GpuSensorRangeQuery(0, 0, 0, 1) };
+            var offsets = Enumerable.Repeat((uint)entries, 262145).ToArray(); offsets[0] = 0;
+            var ids = Enumerable.Repeat(uint.MaxValue, entries).ToArray(); ids[0] = 0; ids[4096] = 1;
+            using (var consumer = new GpuSensorBatchedRangeQuery(2, entries))
+            using (var sb = Buffer(samples, 16))
+            using (var ob = Buffer(offsets, 4))
+            using (var ib = Buffer(ids, 4))
+            using (var qb = Buffer(query, 16))
+            using (var output = Buffer(new GpuSensorQueryDigest[1], 16))
+            using (var commands = new CommandBuffer())
+            {
+                consumer.Record(commands, sb, ob, ib, qb, output, 2, 0, 1);
+                Graphics.ExecuteCommandBuffer(commands);
+                var actual = new GpuSensorQueryDigest[1]; output.GetData(actual);
+                Assert.That(actual, Is.EqualTo(GpuSensorPipelineTestOracle.QueryAll(samples, 2, query)));
+                commands.Clear();
+                consumer.Record(commands, sb, ob, ib, qb, output, 0, 0, 1);
+                Graphics.ExecuteCommandBuffer(commands); output.GetData(actual);
+                Assert.That(actual[0], Is.EqualTo(default(GpuSensorQueryDigest)));
+                commands.Clear();
+                consumer.Record(commands, sb, ob, ib, qb, output, 2, 1, 0);
+                Assert.That(commands.sizeInBytes, Is.Zero);
+                Assert.Throws<ArgumentOutOfRangeException>(() => consumer.Record(commands, sb, ob, ib, qb, output, 3, 0, 1));
+                Assert.Throws<ArgumentException>(() => consumer.Record(commands, sb, ob, ib, sb, output, 2, 0, 1));
+                Assert.That(commands.sizeInBytes, Is.Zero, "Rejected inputs must not partially record commands.");
+                using (var undersized = new GpuSensorBatchedRangeQuery(2))
                     Assert.Throws<ArgumentException>(() => undersized.Record(commands, sb, ob, ib, qb, output, 2, 0, 1));
                 consumer.Dispose();
                 Assert.Throws<ObjectDisposedException>(() => consumer.Record(commands, sb, ob, ib, qb, output, 2, 0, 1));

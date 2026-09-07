@@ -4,6 +4,7 @@ using UnityEngine.Rendering;
 
 namespace Summit.GpuSensorPipeline
 {
+    public enum GpuSensorIndexExecutionMode { Original = 0, GpuDriven = 1 }
     [Flags]
     public enum GpuSensorIndexRebuildReason
     {
@@ -33,16 +34,20 @@ namespace Summit.GpuSensorPipeline
         public const int IncrementalCountWord = 12;
         public const int ReusedWord = 13;
         public const int InspectedWord = 14;
+        public const int NonemptyDispatchesWord = 15;
+        public const int RecordedDispatchCount = 13;
         private const int Bins = GpuSensorPipeline.FixedBinCount;
         private readonly ComputeShader shader;
         private readonly GraphicsBuffer previousKeys, nextKeys, positions, reservations;
         private readonly GraphicsBuffer heads, counts, blockSums;
+        private readonly GraphicsBuffer changedIds, dispatchArguments;
         private readonly int begin, detect, decide, clear, count, scan, scanBlocks,
             prepare, clearMembers, rebuild, remove, insert, finish;
         private bool disposed;
 
         public GpuSensorIncrementalIndex(int capacity, int staticSlotCount = 0,
-            int churnPermille = 200, int fragmentationPermille = 250)
+            int churnPermille = 200, int fragmentationPermille = 250,
+            GpuSensorIndexExecutionMode executionMode = GpuSensorIndexExecutionMode.Original)
         {
             // Three membership words per slot must fit a 65535-group dispatch.
             if (capacity < 1 || capacity > 256 * 65535 / 3)
@@ -54,11 +59,17 @@ namespace Summit.GpuSensorPipeline
             if (fragmentationPermille < 0 || fragmentationPermille > 1000)
                 throw new ArgumentOutOfRangeException(nameof(fragmentationPermille));
             Capacity = capacity;
+            if (executionMode != GpuSensorIndexExecutionMode.Original && executionMode != GpuSensorIndexExecutionMode.GpuDriven)
+                throw new ArgumentOutOfRangeException(nameof(executionMode));
+            ExecutionMode = executionMode;
             StaticSlotCount = staticSlotCount;
             ChurnThreshold = (int)((long)capacity * churnPermille / 1000);
             FragmentationThreshold = (int)((long)capacity * fragmentationPermille / 1000);
-            shader = Resources.Load<ComputeShader>("GpuSensorPipeline/GpuSensorIncrementalIndex");
+            shader = Resources.Load<ComputeShader>("GpuSensorPipeline/GpuSensorIncrementalIndex" +
+                (executionMode == GpuSensorIndexExecutionMode.GpuDriven ? "Optimized" : ""));
             if (shader == null) throw new InvalidOperationException("Incremental index shader unavailable.");
+            if (executionMode == GpuSensorIndexExecutionMode.GpuDriven)
+                shader = UnityEngine.Object.Instantiate(shader);
             begin = shader.FindKernel("BeginUpdate");
             detect = shader.FindKernel("DetectChanges");
             decide = shader.FindKernel("DecideRebuild");
@@ -89,11 +100,22 @@ namespace Summit.GpuSensorPipeline
                 Diagnostics.SetData(new uint[DiagnosticWordCount]);
                 BinOffsets.SetData(new uint[Bins + 1]);
                 heads.SetData(new uint[Bins]);
+                if (ExecutionMode == GpuSensorIndexExecutionMode.GpuDriven)
+                {
+                    changedIds = Buffer(capacity);
+                    dispatchArguments = new GraphicsBuffer(GraphicsBuffer.Target.IndirectArguments | GraphicsBuffer.Target.Raw, 30, 4);
+                    // A private shader instance owns immutable index bindings.
+                    // Dynamic snapshot/flags/revisions are still recorded per call.
+                    foreach (int kernel in new[] { begin, detect, decide, clear, count, scan, scanBlocks,
+                        prepare, clearMembers, rebuild, remove, insert, finish })
+                        BindOwnedBuffers(kernel);
+                }
             }
             catch { Dispose(); throw; }
         }
 
         public int Capacity { get; }
+        public GpuSensorIndexExecutionMode ExecutionMode { get; }
         public int StaticSlotCount { get; }
         public int ChurnThreshold { get; }
         public int FragmentationThreshold { get; }
@@ -102,7 +124,8 @@ namespace Summit.GpuSensorPipeline
         public GraphicsBuffer BinnedIds { get; }
         public GraphicsBuffer Diagnostics { get; }
         public long ResidentBytes => (long)Capacity * 44 +
-            (long)(3 * Bins + 1 + Bins / 256 + DiagnosticWordCount) * 4;
+            (long)(3 * Bins + 1 + Bins / 256 + DiagnosticWordCount) * 4 +
+            (ExecutionMode == GpuSensorIndexExecutionMode.GpuDriven ? (long)Capacity * 4 + 120 : 0);
 
         /// <summary>
         /// Full external snapshot: uint4 samples and uint activity (0/1), indexed
@@ -158,6 +181,15 @@ namespace Summit.GpuSensorPipeline
 
         private void Dispatch(CommandBuffer c, int kernel, int groups)
         {
+            if (ExecutionMode == GpuSensorIndexExecutionMode.GpuDriven)
+            {
+                int offset = kernel == clear ? 0 : kernel == count ? 12 : kernel == scan ? 24 :
+                    kernel == scanBlocks ? 36 : kernel == prepare ? 48 : kernel == clearMembers ? 60 :
+                    kernel == rebuild ? 72 : kernel == remove ? 84 : kernel == insert ? 96 : kernel == finish ? 108 : -1;
+                if (offset >= 0) c.DispatchCompute(shader, kernel, dispatchArguments, (uint)offset);
+                else c.DispatchCompute(shader, kernel, groups, 1, 1);
+                return;
+            }
             c.SetComputeBufferParam(shader, kernel, "_Samples", Samples);
             c.SetComputeBufferParam(shader, kernel, "_PreviousKeys", previousKeys);
             c.SetComputeBufferParam(shader, kernel, "_NextKeys", nextKeys);
@@ -170,6 +202,23 @@ namespace Summit.GpuSensorPipeline
             c.SetComputeBufferParam(shader, kernel, "_BlockSums", blockSums);
             c.SetComputeBufferParam(shader, kernel, "_State", Diagnostics);
             c.DispatchCompute(shader, kernel, groups, 1, 1);
+        }
+
+        private void BindOwnedBuffers(int kernel)
+        {
+            shader.SetBuffer(kernel, "_Samples", Samples);
+            shader.SetBuffer(kernel, "_PreviousKeys", previousKeys);
+            shader.SetBuffer(kernel, "_NextKeys", nextKeys);
+            shader.SetBuffer(kernel, "_Positions", positions);
+            shader.SetBuffer(kernel, "_Reservations", reservations);
+            shader.SetBuffer(kernel, "_Offsets", BinOffsets);
+            shader.SetBuffer(kernel, "_Members", BinnedIds);
+            shader.SetBuffer(kernel, "_Heads", heads);
+            shader.SetBuffer(kernel, "_Counts", counts);
+            shader.SetBuffer(kernel, "_BlockSums", blockSums);
+            shader.SetBuffer(kernel, "_State", Diagnostics);
+            shader.SetBuffer(kernel, "_ChangedIds", changedIds);
+            shader.SetBuffer(kernel, "_DispatchArguments", dispatchArguments);
         }
 
         private void ValidateInput(GraphicsBuffer buffer, int stride, string name)
@@ -188,6 +237,12 @@ namespace Summit.GpuSensorPipeline
             positions?.Dispose(); reservations?.Dispose(); BinOffsets?.Dispose();
             BinnedIds?.Dispose(); heads?.Dispose(); counts?.Dispose();
             blockSums?.Dispose(); Diagnostics?.Dispose();
+            changedIds?.Dispose(); dispatchArguments?.Dispose();
+            if (ExecutionMode == GpuSensorIndexExecutionMode.GpuDriven && shader != null)
+            {
+                if (Application.isPlaying) UnityEngine.Object.Destroy(shader);
+                else UnityEngine.Object.DestroyImmediate(shader);
+            }
         }
 
         private static GraphicsBuffer Buffer(int count, int stride = 4) =>

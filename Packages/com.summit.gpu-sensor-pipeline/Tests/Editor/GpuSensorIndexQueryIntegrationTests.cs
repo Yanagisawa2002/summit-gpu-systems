@@ -6,8 +6,13 @@ using UnityEngine.Rendering;
 
 namespace Summit.GpuSensorPipeline.Tests
 {
+    [TestFixture(GpuSensorIndexExecutionMode.Original)]
+    [TestFixture(GpuSensorIndexExecutionMode.GpuDriven)]
     public sealed class GpuSensorIndexQueryIntegrationTests
     {
+        private readonly GpuSensorIndexExecutionMode mode;
+        public GpuSensorIndexQueryIntegrationTests(GpuSensorIndexExecutionMode mode) { this.mode = mode; }
+        [TestCase(GpuSensorQueryBackend.BatchedPointScanWave)]
         [TestCase(GpuSensorQueryBackend.CellSerial)]
         [TestCase(GpuSensorQueryBackend.PointChunks)]
         [TestCase(GpuSensorQueryBackend.PointChunksWave)]
@@ -15,7 +20,7 @@ namespace Summit.GpuSensorPipeline.Tests
         {
             if (!SystemInfo.supportsComputeShaders || SystemInfo.graphicsDeviceType == GraphicsDeviceType.Null)
                 Assert.Ignore("A compute device is required.");
-            if (backend == GpuSensorQueryBackend.PointChunksWave && !GpuSensorChunkedRangeQuery.SupportsWaveOperations)
+            if ((backend == GpuSensorQueryBackend.PointChunksWave || backend == GpuSensorQueryBackend.BatchedPointScanWave) && !GpuSensorChunkedRangeQuery.SupportsWaveOperations)
                 Assert.Ignore("Wave operations unavailable.");
             const int capacity = 513, staticSlots = 384;
             var samples = new GpuSensorSample[capacity];
@@ -32,7 +37,7 @@ namespace Summit.GpuSensorPipeline.Tests
                 new GpuSensorRangeQuery(65535, 65535, 65535, 0),
                 new GpuSensorRangeQuery(1, 2, 3, 0)
             };
-            using (var index = new GpuSensorIncrementalIndex(capacity, staticSlots))
+            using (var index = new GpuSensorIncrementalIndex(capacity, staticSlots, executionMode: mode))
             using (var rebuilt = new GpuSensorFullRebuildIndex(capacity))
             using (var pipeline = new GpuSensorPipeline(capacity, queries.Length,
                 GpuPrimitiveBackend.Portable, false, queryBackend: backend,
