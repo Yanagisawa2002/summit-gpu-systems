@@ -1,0 +1,10 @@
+#pragma kernel StoreHistory
+StructuredBuffer<uint4> _Digests;
+RWStructuredBuffer<uint4> _History;
+uint _Frame, _ActiveCount, _DrawCount, _UpdateCount;
+[numthreads(32,1,1)]
+void StoreHistory(uint3 tid:SV_DispatchThreadID)
+{
+    if(tid.x<9) _History[_Frame*10+tid.x]=_Digests[tid.x];
+    if(tid.x==9) _History[_Frame*10+9]=uint4(_Frame,_ActiveCount,_DrawCount,_UpdateCount);
+}
