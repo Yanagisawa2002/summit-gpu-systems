@@ -5,6 +5,7 @@ namespace Summit.GpuSensorPipeline
     {
         CellSerial = 0,
         PointChunks = 1,
-        PointChunksWave = 2
+        PointChunksWave = 2,
+        BatchedPointScanWave = 3
     }
 }

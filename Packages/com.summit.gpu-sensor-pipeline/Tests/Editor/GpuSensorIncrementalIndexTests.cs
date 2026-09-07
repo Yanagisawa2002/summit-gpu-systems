@@ -6,8 +6,16 @@ using UnityEngine.Rendering;
 
 namespace Summit.GpuSensorPipeline.Tests
 {
+    [TestFixture(GpuSensorIndexExecutionMode.Original)]
+    [TestFixture(GpuSensorIndexExecutionMode.GpuDriven)]
     public sealed class GpuSensorIncrementalIndexTests
     {
+        private readonly GpuSensorIndexExecutionMode mode;
+        public GpuSensorIncrementalIndexTests(GpuSensorIndexExecutionMode mode) { this.mode = mode; }
+        private Fixture CreateFixture(int capacity, int staticCount = 0, bool concentrated = false,
+            int churn = 200, int fragmentation = 250) =>
+            new Fixture(capacity, staticCount, concentrated, churn, fragmentation, mode);
+
         [SetUp]
         public void RequireCompute()
         {
@@ -19,7 +27,7 @@ namespace Summit.GpuSensorPipeline.Tests
         public void DeterministicRatesMatchIndependentOracleAndFullDirectRebuild(int changeRate)
         {
             foreach (int crossingRate in GpuSensorIndexUpdateTrace.Rates)
-            using (var f = new Fixture(257))
+            using (var f = CreateFixture(257))
             {
                 f.Check();
                 for (int step = 0; step < 4; step++)
@@ -36,7 +44,7 @@ namespace Summit.GpuSensorPipeline.Tests
         [Test]
         public void MembershipIsByteIdenticalForSameCellPayloadUpdates()
         {
-            using (var f = new Fixture(259))
+            using (var f = CreateFixture(259))
             {
                 f.Check();
                 uint[] offsets = Read<uint>(f.Index.BinOffsets);
@@ -55,7 +63,7 @@ namespace Summit.GpuSensorPipeline.Tests
         [Test]
         public void SparseStableIdsAddRemoveReuseAndEmptySceneRemainCorrect()
         {
-            using (var f = new Fixture(257))
+            using (var f = CreateFixture(257))
             {
                 f.Check();
                 for (int i = 0; i < 256; i++) f.Active[i] = 0;
@@ -74,7 +82,7 @@ namespace Summit.GpuSensorPipeline.Tests
         [Test]
         public void StaticHeavyRevisionAndForcedRefreshRespectSnapshotContract()
         {
-            using (var f = new Fixture(1000, 900))
+            using (var f = CreateFixture(1000, 900))
             {
                 f.Check();
                 for (int step = 0; step < 5; step++)
@@ -94,7 +102,7 @@ namespace Summit.GpuSensorPipeline.Tests
         [Test]
         public void ConcentratedCellsCapacityChurnAndFragmentationTriggerSafeRebuilds()
         {
-            using (var f = new Fixture(100, concentrated: true, churn: 1000, fragmentation: 0))
+            using (var f = CreateFixture(100, concentrated: true, churn: 1000, fragmentation: 0))
             {
                 f.Check();
                 f.Active[0] = 0; f.Check();
@@ -102,7 +110,7 @@ namespace Summit.GpuSensorPipeline.Tests
                 f.Active[0] = 1; f.Samples[0].X = 65535; f.Check();
                 Assert.That(f.State[8] & (uint)GpuSensorIndexRebuildReason.CellCapacity, Is.Not.Zero);
             }
-            using (var f = new Fixture(257, concentrated: true))
+            using (var f = CreateFixture(257, concentrated: true))
             {
                 f.Check();
                 for (int step = 0; step < 6; step++)
@@ -118,7 +126,7 @@ namespace Summit.GpuSensorPipeline.Tests
         [Test]
         public void DistributedCellsCrossScanBlocksAndIncludeBoundaryCoordinates()
         {
-            using (var f = new Fixture(4099))
+            using (var f = CreateFixture(4099))
             {
                 for (uint id = 0; id < f.Samples.Length; id++)
                     f.Samples[id] = new GpuSensorSample(
@@ -136,7 +144,7 @@ namespace Summit.GpuSensorPipeline.Tests
         [Test]
         public void CellReservationExhaustionAndExactThresholdBoundaryAreSafe()
         {
-            using (var f = new Fixture(100, concentrated: true, churn: 1000, fragmentation: 1000))
+            using (var f = CreateFixture(100, concentrated: true, churn: 1000, fragmentation: 1000))
             {
                 for (int i = 50; i < 100; i++) f.Samples[i].X = 1536;
                 f.Check();
@@ -147,7 +155,7 @@ namespace Summit.GpuSensorPipeline.Tests
                     Assert.That((f.State[8] & 16) != 0, Is.EqualTo(i == 26));
                 }
             }
-            using (var f = new Fixture(10, concentrated: true, churn: 200, fragmentation: 1000))
+            using (var f = CreateFixture(10, concentrated: true, churn: 200, fragmentation: 1000))
             {
                 f.Check(); f.Active[0] = 0; f.Active[1] = 0; f.Check();
                 Assert.That(f.State[8], Is.Zero, "Equality does not exceed the 20% threshold.");
@@ -159,7 +167,7 @@ namespace Summit.GpuSensorPipeline.Tests
         [Test]
         public void InvalidGpuSamplesAreExcludedAndCountedWithoutOutOfBoundsAccess()
         {
-            using (var f = new Fixture(17))
+            using (var f = CreateFixture(17))
             {
                 f.Check(); f.Samples[0].X = 65536; f.Active[1] = 2; f.Check();
                 Assert.That(f.State[7], Is.EqualTo(2));
@@ -169,12 +177,34 @@ namespace Summit.GpuSensorPipeline.Tests
         }
 
         [Test]
+        public void TwoIndicesKeepPrivateBindingsAcrossInterleavedRecordingAndReplay()
+        {
+            using (var a = CreateFixture(257))
+            using (var b = CreateFixture(513, concentrated: true))
+            using (var commands = new CommandBuffer())
+            {
+                a.Input.SetData(a.Samples); a.Flags.SetData(a.Active);
+                b.Input.SetData(b.Samples); b.Flags.SetData(b.Active);
+                a.Index.RecordUpdate(commands, a.Input, a.Flags);
+                b.Index.RecordUpdate(commands, b.Input, b.Flags);
+                a.Index.RecordUpdate(commands, a.Input, a.Flags);
+                Graphics.ExecuteCommandBuffer(commands);
+                Assert.That(Read<uint>(a.Index.Diagnostics)[GpuSensorIncrementalIndex.ActiveCountWord], Is.EqualTo(257));
+                Assert.That(Read<uint>(b.Index.Diagnostics)[GpuSensorIncrementalIndex.ActiveCountWord], Is.EqualTo(513));
+                Graphics.ExecuteCommandBuffer(commands);
+                Assert.That(Read<uint>(a.Index.Diagnostics)[GpuSensorIncrementalIndex.IncrementalCountWord], Is.EqualTo(3));
+                Assert.That(Read<uint>(b.Index.Diagnostics)[GpuSensorIncrementalIndex.IncrementalCountWord], Is.EqualTo(1));
+                a.Check(); b.Check();
+            }
+        }
+
+        [Test]
         public void RecordingContractRejectsMalformedBuffersAndSupportsCommandReplay()
         {
             Assert.Throws<ArgumentOutOfRangeException>(() => new GpuSensorIncrementalIndex(0));
             Assert.Throws<ArgumentOutOfRangeException>(() => new GpuSensorIncrementalIndex(2, 3));
             Assert.Throws<ArgumentOutOfRangeException>(() => new GpuSensorIncrementalIndex(2, churnPermille: 1001));
-            using (var f = new Fixture(17))
+            using (var f = CreateFixture(17))
             using (var c = new CommandBuffer())
             {
                 Assert.Throws<ArgumentNullException>(() => f.Index.RecordUpdate(null, f.Input, f.Flags));
@@ -188,6 +218,7 @@ namespace Summit.GpuSensorPipeline.Tests
                 Assert.That(state[11], Is.EqualTo(1)); Assert.That(state[12], Is.EqualTo(1));
                 f.Check();
                 long bytes = (long)17 * 44 + (3L * GpuSensorPipeline.FixedBinCount + 1 + 1024 + 16) * 4;
+                if (mode == GpuSensorIndexExecutionMode.GpuDriven) bytes += 17 * 4 + 120;
                 Assert.That(f.Index.ResidentBytes, Is.EqualTo(bytes));
                 f.Index.Dispose();
                 Assert.DoesNotThrow(f.Index.Dispose);
@@ -216,11 +247,12 @@ namespace Summit.GpuSensorPipeline.Tests
                 new GpuSensorRangeQuery(65535, 65535, 65535, 0),
                 new GpuSensorRangeQuery(40000, 40000, 40000, 2) };
             public Fixture(int capacity, int staticCount = 0, bool concentrated = false,
-                int churn = 200, int fragmentation = 250)
+                int churn = 200, int fragmentation = 250,
+                GpuSensorIndexExecutionMode executionMode = GpuSensorIndexExecutionMode.Original)
             {
                 Samples = new GpuSensorSample[capacity]; Active = new uint[capacity];
                 GpuSensorIndexUpdateTrace.Initialize(Samples, Active, concentrated);
-                Index = new GpuSensorIncrementalIndex(capacity, staticCount, churn, fragmentation);
+                Index = new GpuSensorIncrementalIndex(capacity, staticCount, churn, fragmentation, executionMode);
                 Consumer = new GpuSensorPipeline(capacity, queries.Length, GpuPrimitiveBackend.Portable, false);
                 Reference = new GpuSensorPipeline(capacity, queries.Length, GpuPrimitiveBackend.Portable, false);
                 Consumer.SetQueries(queries); Reference.SetQueries(queries);
