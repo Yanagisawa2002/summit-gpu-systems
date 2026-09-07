@@ -46,6 +46,8 @@ namespace Summit.IndexCostDiagnostics
         public long allocationProbeReportedBytes,allocationProbeHeapDelta;
         public string allocationCounterStatus,nativeTerminalStatus;
         public int consumedNative,pendingNative;
+        public int renderWidth=1280,renderHeight=720,renderDepthBits=24,renderMsaa=1,startupVerifiedScopes;
+        public string renderFormat;public bool cameraHdr=false,cameraMsaa=false;
     }
     public sealed class IndexCostPlayer:MonoBehaviour
     {
@@ -102,7 +104,8 @@ namespace Summit.IndexCostDiagnostics
             cameraView=new GameObject("Diagnostic Camera").AddComponent<Camera>();cameraView.clearFlags=CameraClearFlags.SolidColor;
             cameraView.backgroundColor=new Color(.015f,.025f,.055f);cameraView.nearClipPlane=.03f;cameraView.farClipPlane=250;
             target=new RenderTexture(1280,720,24,RenderTextureFormat.ARGB32);target.Create();
-            cameraView.targetTexture=target;cameraView.enabled=false;
+            cameraView.targetTexture=target;cameraView.enabled=false;cameraView.allowHDR=false;cameraView.allowMSAA=false;
+            report.renderFormat=target.graphicsFormat.ToString();report.renderMsaa=target.antiAliasing;
             var backend=config.scenario=="hotspot-dynamic"?GpuSensorQueryBackend.CellSerial:GpuSensorQueryBackend.BatchedPointScanWave;
             using(var input=new GraphicsBuffer(GraphicsBuffer.Target.Structured,N,16))
             using(var flags=new GraphicsBuffer(GraphicsBuffer.Target.Structured,N,4))
@@ -162,6 +165,12 @@ namespace Summit.IndexCostDiagnostics
                     timer.Restart();cameraView.Render();row.renderSubmitCpuMs=timer.Elapsed.TotalMilliseconds;
                     yield return new WaitForEndOfFrame();if(config.scenario=="streaming-switch")content.MarkRendered(frame);
                     commands.Clear();yield return null;row.engineDiagnosticIntervalMs=(Time.realtimeSinceStartupAsDouble-frameStart)*1000;
+                    if(frame==0)
+                    {
+                        double startup=Time.realtimeSinceStartupAsDouble;
+                        while(pending.Count>0){PollNative();if(Time.realtimeSinceStartupAsDouble-startup>60)throw new Exception("First-frame execution verification failed; pending="+pending.Count);yield return null;}
+                        report.startupVerifiedScopes=report.consumedNative;
+                    }
                 }
                 cameraView.RemoveCommandBuffer(CameraEvent.BeforeForwardOpaque,commands);
                 double drain=Time.realtimeSinceStartupAsDouble;var request=AsyncGPUReadback.Request(history);
