@@ -127,8 +127,9 @@ def summarize(path, matrix_path, output):
         summary['variants'][variant] = dict(samples=len(samples), switches=sum(s['switched'] for s in samples),
             maximumManagedAllocatedBytes=max(s['managedAllocatedBytes'] for s in samples),
             reasons={reason: sum(s['reason'] == reason for s in samples) for reason in sorted({s['reason'] for s in samples})})
-        for metric in ('gpuMs', 'pipelineCpuMs', 'featureCpuMs', 'uploadCpuMs', 'recordCpuMs', 'selectorCpuMs', 'switchStateCpuMs', 'submitCpuMs'):
-            summary['variants'][variant][metric] = dict(median=percentile([s[metric] for s in samples], .5), p99=percentile([s[metric] for s in samples], .99))
+        for metric in ('gpuMs', 'pipelineCpuMs', 'featureCpuMs', 'uploadCpuMs', 'recordCpuMs', 'selectorCpuMs', 'switchStateCpuMs', 'submitCpuMs', 'managedAllocatedBytes'):
+            values = [s[metric] for s in samples]
+            summary['variants'][variant][metric] = dict(mean=sum(values) / len(values), median=percentile(values, .5), p99=percentile(values, .99))
     for sample in by_variant['Adaptive']:
         reference = forced[(sample['selectedBackend'], sample['repeat'], sample['segment'], sample['observation'], key(sample['features']))]
         if not reference:

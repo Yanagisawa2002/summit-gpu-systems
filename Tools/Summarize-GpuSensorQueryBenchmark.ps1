@@ -4,6 +4,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $result = Get-Content -LiteralPath (Join-Path $ReportDirectory 'measurements.json') -Raw | ConvertFrom-Json
 $provenance = Get-Content -LiteralPath (Join-Path $ReportDirectory 'provenance.json') -Raw | ConvertFrom-Json
+if ($result.schemaVersion -ne 2) { throw 'Unsupported query measurement schema; managed allocation evidence is required.' }
 if ($result.status -cne 'complete' -or $provenance.status -cne 'complete') { throw 'Incomplete benchmark or provenance.' }
 if ($result.mode -cne $provenance.mode -or ($result.mode -ceq 'Compare' -and $provenance.dirty)) { throw 'Invalid comparison provenance.' }
 $config = $result.configuration
@@ -22,6 +23,9 @@ foreach ($distribution in $config.distributions) {
             if ($rows.Count -ne 6 * $config.samples * $multiplier) { throw 'Missing candidate/fixture timings.' }
             $seen = @{}
             foreach ($row in $rows) {
+                if ($null -eq $row.recordAllocatedBytes -or $row.recordAllocatedBytes -lt 0 -or
+                    [double]::IsInfinity($row.recordAllocatedBytes) -or [double]::IsNaN($row.recordAllocatedBytes) -or
+                    [Math]::Truncate([double]$row.recordAllocatedBytes) -ne $row.recordAllocatedBytes) { throw 'Invalid managed allocation evidence.' }
                 $key = "$($row.round)/$($row.order)/$($row.sample)"
                 if ($seen.ContainsKey($key)) { throw 'Duplicate timing sample.' }; $seen[$key] = $true
                 if ($row.round -lt 0 -or $row.round -ge 6 -or $row.order -lt 0 -or $row.order -ge 3 -or $row.sample -lt 0 -or $row.sample -ge $config.samples -or
@@ -37,11 +41,17 @@ foreach ($distribution in $config.distributions) {
                 if ($row.queryCount -ne $result.queries.Count -or $row.dispatches -ne $dispatches) { throw 'Mismatched timing scope.' }
             }
             $gpu = @($rows.gpuMs | Sort-Object)
+            $cpu = @($rows.recordCpuMs | Sort-Object)
+            $gc = @($rows.recordAllocatedBytes | Sort-Object)
             $summary += [pscustomobject]@{ distribution=$distribution; elements=$count; backend=$backend;
                 samples=$rows.Count; gpuMedianMs=$gpu[[int][Math]::Floor($gpu.Count / 2)];
+                gpuMeanMs=($gpu | Measure-Object -Average).Average;
                 gpuP99Ms=$gpu[[int][Math]::Ceiling($gpu.Count * 0.99) - 1];
                 gpuP95Ms=$gpu[[int][Math]::Ceiling($gpu.Count * 0.95) - 1];
                 cpuRecordMeanMs=($rows.recordCpuMs | Measure-Object -Average).Average;
+                cpuRecordP99Ms=$cpu[[int][Math]::Ceiling($cpu.Count * 0.99) - 1];
+                recordGcMeanBytes=($gc | Measure-Object -Average).Average;
+                recordGcP99Bytes=$gc[[int][Math]::Ceiling($gc.Count * 0.99) - 1];
                 dispatches=$rows[0].dispatches; scratchBytes=$rows[0].scratchBytes }
         }
     }

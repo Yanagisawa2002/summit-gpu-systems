@@ -14,14 +14,14 @@ for ($round=0; $round -lt 6; $round++) {
             $backend = $orders[$round][$order]
             $rows += [pscustomobject]@{ distribution='synthetic'; elementCount=1;
                 backend=$(if($control){'EmptyControl'}else{$backend}); pairedBackend=$backend;
-                round=$round; order=$order; sample=0; gpuMs=1.0; recordCpuMs=0.01;
+                round=$round; order=$order; sample=0; gpuMs=1.0; recordCpuMs=0.01; recordAllocatedBytes=0;
                 status='Ready'; frequency=1000; beginTicks=10; endTicks=11; token=$rows.Count+1;
                 sourceFrame=1; resultFrame=2; queryCount=1;
                 dispatches=$(if($control){0}elseif($backend -ceq 'CellSerial'){1}else{4}); scratchBytes=0 }
         }
     }
 }
-$original = @{status='complete';mode='Smoke'; configuration=@{distributions=@('synthetic'); elementCounts=@(1); samples=1};
+$original = @{schemaVersion=2;status='complete';mode='Smoke'; configuration=@{distributions=@('synthetic'); elementCounts=@(1); samples=1};
     queries=@(@{CenterX=0;CenterY=0;CenterZ=0;Radius=0}); validatedOutputs=@('synthetic only'); measurements=$rows} | ConvertTo-Json -Depth 8
 $provenance = @{status='complete';mode='Smoke';dirty=$true} | ConvertTo-Json
 function Write-Fixture($result, $proof) {
@@ -30,7 +30,7 @@ function Write-Fixture($result, $proof) {
 }
 Write-Fixture ($original | ConvertFrom-Json) ($provenance | ConvertFrom-Json)
 & $summarizer -ReportDirectory $scratch | Out-Null
-$checks = @('missing','duplicate','ticks','order','dispatch','incomplete','dirty-compare')
+$checks = @('missing','duplicate','ticks','order','dispatch','incomplete','dirty-compare','missing-gc','negative-gc','legacy-schema')
 foreach ($check in $checks) {
     $result = $original | ConvertFrom-Json
     $proof = $provenance | ConvertFrom-Json
@@ -42,10 +42,13 @@ foreach ($check in $checks) {
         'dispatch' { $result.measurements[0].dispatches = 99 }
         'incomplete' { $proof.status = 'working' }
         'dirty-compare' { $result.mode='Compare'; $proof.mode='Compare' }
+        'missing-gc' { $result.measurements[0].PSObject.Properties.Remove('recordAllocatedBytes') }
+        'negative-gc' { $result.measurements[0].recordAllocatedBytes=-1 }
+        'legacy-schema' { $result.schemaVersion=1 }
     }
     Write-Fixture $result $proof
     $rejected = $false
     try { & $summarizer -ReportDirectory $scratch | Out-Null } catch { $rejected=$true }
     if (-not $rejected) { throw "Corrupted benchmark was accepted: $check" }
 }
-Write-Host 'Query summary gates passed: valid fixture plus 7 corruption cases (synthetic, no GPU timing claim).'
+Write-Host 'Query summary gates passed: valid fixture plus 10 corruption cases (synthetic, no GPU timing claim).'

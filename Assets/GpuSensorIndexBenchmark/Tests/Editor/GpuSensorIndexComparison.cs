@@ -28,6 +28,7 @@ namespace Summit.GpuSensorIndex.Benchmark.Tests
             public bool measured, forcedRebuild;
             public double gpuTotalMs, gpuIndexMs, gpuQueryMs, cpuRecordMs, cpuSubmitMs;
             public long indexResidentBytes, commonInputBytes, commonConsumerBytes;
+            public long recordAllocatedBytes, submitAllocatedBytes;
             public uint activeCount, changedCount, rebuildReason, holes, csrExtent, inspectedSlots;
             public uint countDigest, xorDigest, sumDigest0, sumDigest1;
             public NativeSample[] nativeSamples;
@@ -47,10 +48,11 @@ namespace Summit.GpuSensorIndex.Benchmark.Tests
         }
         [Serializable] public sealed class Report
         {
-            public int schemaVersion = 1;
+            public int schemaVersion = 2;
             public string evidenceClass = "editor-comparison-unpromoted";
             public string device, deviceVersion, unityVersion, graphicsApi, utc, sourceCommit;
             public string timingScope = "Native DX12 main-graphics-command-list: dirty/key detection + maintenance + fallback + consumer queries + frame digest. Snapshot uploads and correctness readback excluded.";
+            public string allocationScope = "Current-thread managed bytes: record includes native marker recording, submit covers ExecuteCommandBuffer; excludes snapshots, token acquisition, correctness readback and report construction.";
             public bool formalPerformanceEvidence = false, allDigestsMatch;
             public uint timestampAbi;
             public List<Row> rows = new List<Row>();
@@ -136,6 +138,7 @@ namespace Summit.GpuSensorIndex.Benchmark.Tests
                                         serial, out tokens[i]), Is.EqualTo(GpuTimestampStatus.Ready));
                                 commands.Clear();
                                 var timer = Stopwatch.StartNew();
+                                long recordAllocatedBefore = GC.GetAllocatedBytesForCurrentThread();
                                 timestamps.Scopes[tokens[0].ScopeIndex].RecordBegin(commands);
                                 timestamps.Scopes[tokens[1].ScopeIndex].RecordBegin(commands);
                                 data.RecordIndex(commands, force);
@@ -144,10 +147,14 @@ namespace Summit.GpuSensorIndex.Benchmark.Tests
                                 data.RecordQueries(commands);
                                 timestamps.Scopes[tokens[2].ScopeIndex].RecordEnd(commands);
                                 timestamps.Scopes[tokens[0].ScopeIndex].RecordEnd(commands);
+                                long recordAllocated = GC.GetAllocatedBytesForCurrentThread() - recordAllocatedBefore;
                                 double recordMs = timer.Elapsed.TotalMilliseconds;
                                 foreach (var token in tokens)
                                     Assert.That(timestamps.MarkSubmitted(token), Is.EqualTo(GpuTimestampStatus.Ready));
-                                timer.Restart(); Graphics.ExecuteCommandBuffer(commands);
+                                timer.Restart();
+                                long submitAllocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+                                Graphics.ExecuteCommandBuffer(commands);
+                                long submitAllocated = GC.GetAllocatedBytesForCurrentThread() - submitAllocatedBefore;
                                 double submitMs = timer.Elapsed.TotalMilliseconds;
                                 var elapsed = new double[3];
                                 var native = new NativeSample[3];
@@ -181,6 +188,7 @@ namespace Summit.GpuSensorIndex.Benchmark.Tests
                                     changePercent = scenario.Change, crossingPercent = scenario.Crossing,
                                     gpuTotalMs = elapsed[0], gpuIndexMs = elapsed[1], gpuQueryMs = elapsed[2],
                                     cpuRecordMs = recordMs, cpuSubmitMs = submitMs,
+                                    recordAllocatedBytes = recordAllocated, submitAllocatedBytes = submitAllocated,
                                     indexResidentBytes = data.IndexBytes, commonInputBytes = scenario.Capacity * 20L,
                                     commonConsumerBytes = data.Consumer.ResidentBytes,
                                     activeCount = state[9], changedCount = state[3], rebuildReason = state[8], holes = state[2],

@@ -24,17 +24,18 @@ namespace Summit.GpuSensorQueryBenchmark
         {
             public string distribution, backend, pairedBackend, status;
             public int elementCount, queryCount, round, order, sample, dispatches, sourceFrame, resultFrame;
-            public long scratchBytes;
+            public long scratchBytes, recordAllocatedBytes;
             public ulong token, beginTicks, endTicks, frequency;
             public double gpuMs, recordCpuMs;
         }
         [Serializable] public sealed class Result
         {
-            public int schemaVersion = 1;
+            public int schemaVersion = 2;
             public string status = "working", error;
             public string mode, device, driver, graphicsApi, unityVersion;
             public string scope = "Query only: clear + full GPU work-list construction + indirect argument setup + point consumption/reduction; excludes index, uploads, oracle/readback and frame digest.";
             public string environment = "Windows x64 development Player native DX12 latency microbenchmark; synchronized validation between samples.";
+            public string allocationScope = "Current-thread managed bytes during query command recording; excludes stopwatch construction, native markers, submission, validation and report construction.";
             public Configuration configuration;
             public GpuSensorRangeQuery[] queries;
             public List<Measurement> measurements = new List<Measurement>();
@@ -128,6 +129,7 @@ namespace Summit.GpuSensorQueryBenchmark
                                 var scope = timestamps.GetScope(token);
                                 scope.RecordBegin(commands);
                                 var stopwatch = Stopwatch.StartNew();
+                                long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
                                 if (control == 0)
                                 {
                                     if (candidate == 0) pipeline.RecordQueries(commands, count, 0, result.queries.Length);
@@ -135,6 +137,7 @@ namespace Summit.GpuSensorQueryBenchmark
                                         pipeline.BinnedIds, pipeline.Queries, pipeline.QueryDigests,
                                         count, 0, result.queries.Length);
                                 }
+                                long recordAllocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
                                 stopwatch.Stop();
                                 scope.RecordEnd(commands);
                                 Check(timestamps.MarkSubmitted(token) == GpuTimestampStatus.Ready, "Timestamp submission failed.");
@@ -158,6 +161,7 @@ namespace Summit.GpuSensorQueryBenchmark
                                         backend = control == 1 ? "EmptyControl" : backend.ToString(), pairedBackend = backend.ToString(),
                                         queryCount = result.queries.Length, round = round, order = order, sample = sample,
                                         gpuMs = timing.ElapsedMilliseconds, recordCpuMs = stopwatch.Elapsed.TotalMilliseconds,
+                                        recordAllocatedBytes = recordAllocated,
                                         dispatches = control == 1 ? 0 : candidate == 0 ? 1 : result.queries.Length * 4,
                                         scratchBytes = control == 1 || candidate == 0 ? 0 : consumer.ScratchBytes,
                                         token = token.Value, sourceFrame = timing.SourceFrame, resultFrame = timing.ResultFrame,

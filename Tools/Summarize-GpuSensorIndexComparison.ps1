@@ -1,7 +1,9 @@
 [CmdletBinding()]
 param([Parameter(Mandatory=$true)][string]$ReportPath, [string]$OutputPath = '')
 $ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
 $report = Get-Content -Raw -LiteralPath $ReportPath | ConvertFrom-Json
+if ($report.schemaVersion -ne 2) { throw 'Unsupported index measurement schema; managed allocation evidence is required.' }
 if (!$report.allDigestsMatch -or $report.rows.Count -eq 0 -or $report.timestampAbi -lt 2) {
     throw 'Missing correctness/native timing evidence.'
 }
@@ -22,6 +24,10 @@ function Test-NativeSample($sample) {
 }
 foreach ($control in $report.emptyControls) { Test-NativeSample $control }
 foreach ($row in $report.rows) {
+    foreach ($metric in @('recordAllocatedBytes','submitAllocatedBytes')) {
+        if ($null -eq $row.$metric -or $row.$metric -lt 0 -or [double]::IsNaN($row.$metric) -or
+            [double]::IsInfinity($row.$metric) -or [Math]::Truncate([double]$row.$metric) -ne $row.$metric) { throw "Invalid $metric" }
+    }
     if (@($row.nativeSamples).Count -ne 3) { throw 'Missing total/index/query native samples.' }
     for ($i = 0; $i -lt 3; $i++) {
         Test-NativeSample $row.nativeSamples[$i]
@@ -51,7 +57,7 @@ foreach ($group in $groups) {
         }
     }
     $metrics = @{}
-    foreach ($metric in @('gpuTotalMs','gpuIndexMs','gpuQueryMs','cpuRecordMs','cpuSubmitMs')) {
+    foreach ($metric in @('gpuTotalMs','gpuIndexMs','gpuQueryMs','cpuRecordMs','cpuSubmitMs','recordAllocatedBytes','submitAllocatedBytes')) {
         $av = @($a | ForEach-Object { [double]$_.$metric } | Sort-Object)
         $bv = @($b | ForEach-Object { [double]$_.$metric } | Sort-Object)
         $metrics[$metric] = [ordered]@{
@@ -66,7 +72,8 @@ foreach ($group in $groups) {
         incrementalOverheadBytes=([long]$b[0].indexResidentBytes-[long]$a[0].indexResidentBytes);
         fallbackFrames=@($b | Where-Object rebuildReason -ne 0).Count }
 }
-$output = [ordered]@{ schemaVersion=1; device=$report.device; evidenceClass='editor-comparison-unpromoted';
+$output = [ordered]@{ schemaVersion=2; device=$report.device; evidenceClass='editor-comparison-unpromoted';
+    allocationScope=$report.allocationScope;
     formalPerformanceEvidence=$false; allDigestsMatch=$true;
     emptyControlCount=@($report.emptyControls).Count;
     emptyControlMeanMs=($report.emptyControls.elapsedMs | Measure-Object -Average).Average;
