@@ -47,6 +47,13 @@ namespace Summit.GpuAutotuning
             out GpuAutotuneProfile profile)
         {
             profile = null;
+            return false; // Missing independent compiler/shader/build identity: recalibrate.
+        }
+
+        public static bool TryLoad(string path, GpuDeviceFingerprint currentDevice,
+            GpuCalibrationEnvironment currentEnvironment, out GpuAutotuneProfile profile)
+        {
+            profile = null;
             if (string.IsNullOrWhiteSpace(path) || currentDevice == null ||
                 !File.Exists(path))
             {
@@ -57,9 +64,7 @@ namespace Summit.GpuAutotuning
                 GpuAutotuneProfile loaded =
                     JsonUtility.FromJson<GpuAutotuneProfile>(File.ReadAllText(path));
                 if (loaded == null ||
-                    loaded.schemaVersion != GpuAutotuneProfile.CurrentSchemaVersion ||
-                    loaded.device == null ||
-                    !loaded.device.Equals(currentDevice))
+                    !loaded.IsCompatible(currentDevice, currentEnvironment))
                 {
                     return false;
                 }

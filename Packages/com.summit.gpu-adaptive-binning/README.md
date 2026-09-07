@@ -1,164 +1,88 @@
 # SUMMIT GPU Adaptive Binning
 
-This package provides a backend-neutral uint key/value to CSR binning
-contract and two independently forceable GPU implementations:
+The package provides uint key/value to CSR binning with independently forceable
+Direct count/scan/scatter and Radix low-bit sort/range-extraction implementations.
+`Record` remains unchanged. No unmeasured implementation is a new default.
 
-- `Direct`: count, exclusive scan, and atomic scatter. The existing safe
-  `Record` path accepts untrusted keys, excludes invalid keys, and reports
-  diagnostics. `RecordGuaranteedInRange` uses dedicated count/scatter kernels
-  without per-element validation when the producer contract is explicit.
-- `Radix`: stable low-bit radix sort, sorted-run range extraction, and CSR
-  offset generation. Its fast path requires the caller to guarantee that every
-  key is less than the active bin count.
+## Version 3 runtime calibration
 
-`GpuAdaptiveSpatialBinner` keeps the forced API and also exposes an opt-in
-`RecordAdaptive` path. This is not a universal automatic default: the caller
-must supply a versioned calibration profile, a workload-concentration hint,
-and the numeric identity of the device on which that profile is being used.
-Unknown, invalid, mismatched, or untrusted inputs fail closed to `Direct`.
+`GpuAdaptiveBinningMatrixDocument` stores an explicit R9700 / DX12 matrix with up to
+65,536 exact cells. Each cell includes workload identity, element count, bin count,
+concentration, occupied-bin count, maximum bin occupancy, and the exact key for a
+single-bin input. Cells also bind the actual primitive candidate ID and validation
+provenance. No interpolation or concentration-only threshold is inferred.
 
-## Calibrated selection
+Only frozen schema-v3 documents with a nonempty calibration run, positive revision,
+valid exact device/environment identity and unique cells are usable. Each selected
+row needs correctness validation, evidence ID and at least three calibration
+samples. The comparison freezer imposes stronger sample gates. Unknown, unvalidated,
+invalid, incompatible or untrusted inputs immediately choose Direct.
 
-The schema-9 formal holdout at commit `53058f0` validated a narrow offline
-exact-cell classification replay on one AMD Radeon AI PRO R9700 / DX12
-device. The five forced-backend A/B cells were:
-
-- `N=262144`, `C=16`, every key exactly `9`
-- `N=1048576`, `C=16`, every key exactly `10`
-- `N=1048576`, `C=16`, `hotset4`
-- `N=1048576`, `C=16`, uniform
-- `N=1048576`, `C=65536`, uniform
-
-Across eight counterbalanced pairs per cell, Radix reduced median GPU-kernel
-average time by 30.30% and 47.59% in the two exact single-bin cells. Direct
-reduced it by 66.98%, 83.57%, and 97.68% in the three hotset/uniform cells.
-The policy prediction matched the faster forced backend in all 5/5 exact
-holdout cells. Every winning forced backend also won kernel-region P99 in 8/8
-pairs for its cell. Full protocol, absolute deltas, P99 results, and claim
-boundaries are in
-`Docs/GPU_ADAPTIVE_BINNING_AMD_R9700_FORMAL_2026-07-31.md`.
-
-This is forced-backend A/B plus offline classification replay. It is not
-timing evidence for `RecordAdaptive`, selector overhead, a broader threshold,
-or a production workload. The exact Radix cells require
-`SingleBinGuaranteed`, explicit caller-owned exact-key evidence, WaveOps,
-profiler markers disabled, and the exact R9700 / DX12 identity. Selector
-schema v2 does not interpolate between cells. A midpoint, cross-key
-combination, missing or invalid exact key, another bin count, distribution,
-device, API, primitive backend, or marker state selects `Direct`. That
-fail-closed fallback is a safety policy, not evidence that Direct is optimal
-for every unmeasured input.
-
-The package ships policy mechanics but no built-in universal profile. A
-caller-owned profile matching the validated exact-cell policy can be
-constructed explicitly:
+`GpuAdaptiveBinningMatrix` copies serialized evidence into an immutable runtime
+snapshot. `GpuAdaptiveBinningStableSelector` owns state for **one ordered input
+stream**, and is not thread-safe. Default Radix promotion requires three consecutive
+observations of the same cell. An already active Radix may remain active across
+other validated Radix cells; Direct transitions and all fallback conditions are
+immediate. `Reset()` starts a new stream. Count observations once per input update,
+not once per duplicate command recording. The policy requires no GPU readback.
 
 ```csharp
-var binner = new GpuAdaptiveSpatialBinner(
-    elementCapacity,
-    binCapacity,
-    emitProfilerMarkers: false);
+// Independently capture these values from the running artifact/OS, never the profile.
+var device = GpuDeviceFingerprint.Capture(osReportedDriverVersion);
+var environment = GpuCalibrationEnvironment.Capture(
+    runningCompilerIdentity, runningShaderDigest, runningBuildDigest);
+var matrix = new GpuAdaptiveBinningMatrix(loadedFrozenDocument);
+var selector = new GpuAdaptiveBinningStableSelector(matrix, device, environment);
 
-var cell0 = new GpuAdaptiveBinningCalibrationCell(
-    elementCount: 262144,
-    binCount: 16,
-    concentration:
-        GpuAdaptiveBinningWorkloadConcentration.SingleBinGuaranteed,
-    hasExactSingleBinKey: true,
-    exactSingleBinKey: 9u);
-var cell1 = new GpuAdaptiveBinningCalibrationCell(
-    elementCount: 1048576,
-    binCount: 16,
-    concentration:
-        GpuAdaptiveBinningWorkloadConcentration.SingleBinGuaranteed,
-    hasExactSingleBinKey: true,
-    exactSingleBinKey: 10u);
-
-var profile = new GpuAdaptiveBinningCalibrationProfile(
-    GpuAdaptiveBinningCalibrationProfile.CurrentSchemaVersion,
-    "amd-r9700-dx12-53058f0-exact-cells-v2",
-    profileRevision: 1,
-    deviceBinding: new GpuAdaptiveBinningDeviceBinding(
-        vendorId: 0x1002,
-        deviceId: 0x7551,
-        graphicsApi: GraphicsDeviceType.Direct3D12),
-    requiredPrimitiveBackend: GpuPrimitiveBackend.WaveOps,
-    requiredProfilerMarkersEnabled: false,
-    radixCellCount: 2,
-    radixCell0: cell0,
-    radixCell1: cell1);
-
-var hint = new GpuAdaptiveBinningWorkloadHint(
-    elementCount,
-    binCount,
-    GpuAdaptiveBinningWorkloadConcentration.SingleBinGuaranteed,
-    hasExactSingleBinKey: true,
-    exactSingleBinKey: exactSingleBinKey);
-GpuAdaptiveBinningDeviceIdentity device =
-    GpuAdaptiveBinningDeviceIdentity.CaptureCurrent();
-
-GpuAdaptiveBinningBackend selected = binner.RecordAdaptive(
-    commands,
-    keys,
-    values,
-    binCounts,
-    binOffsets,
-    binnedValues,
-    diagnostics,
-    elementCount,
-    binCount,
-    GpuAdaptiveBinningKeyDomain.GuaranteedInRange,
-    in profile,
-    in hint,
-    in device,
+var decision = binner.RecordAdaptive(commands, keys, values, counts, offsets,
+    binnedValues, diagnostics, elementCount, binCount,
+    GpuAdaptiveBinningKeyDomain.GuaranteedInRange, selector, in features,
     GpuPrimitiveBackend.WaveOps);
+// decision.Backend, Reason, Switched, SelectorCpuTicks, SwitchStateCpuTicks
 ```
 
-`SingleBinGuaranteed` is an upstream contract, not an estimate. The caller
-must also assert the exact single-bin key, and that key must be less than the
-active bin count. `Hotset` does not satisfy the contract, regardless of how
-concentrated the distribution appears. The selector performs no GPU readback
-and does not infer either the distribution or the key.
+The caller must bind features to the **same keys and active dimensions** used by
+the recorded operation. `TryGather` scans CPU-owned keys into caller-owned histogram
+scratch, without allocations. It rejects out-of-range keys. Its CPU time and any
+uploads belong in an end-to-end cost estimate. GPU-only producers must supply
+current validated producer evidence or separately account for feature dispatches,
+readback and latency; stale features or an untrusted producer must use Untrusted.
 
-In schema v2, vendor ID, device ID, and graphics API are all mandatory and
-must match exactly. There are no wildcard bindings: zero device ID or
-`GraphicsDeviceType.Null` makes the profile invalid, and every invalid or
-mismatched profile selects `Direct`. Schema v2 also requires explicit
-`GpuPrimitiveBackend.WaveOps` with profiler markers disabled. `Auto`,
-`Portable`, an invalid backend enum, or a markers-enabled binner selects
-`Direct`; the default `RecordAdaptive` backend is therefore fail-closed.
+Device matching includes vendor/device IDs, API, GPU name, shader level, graphics
+version **and independently supplied driver version**. Unity's graphics-version
+string does not reliably include the driver. The environment binds Unity version,
+compiler/toolchain and flags, shader digest and build digest. Missing identity is
+incompatible. Recreate selectors after device recreation, driver changes or code/
+shader reload; cached identities describe one immutable running session.
 
-The runtime does not inspect the graphics driver version, Unity version, or
-shader hashes. After a driver, Unity, or shader change, rerun the forced A/B,
-rotate the profile ID or revision, and revalidate each exact cell before using
-it again. Repeat the calibration on NVIDIA before making a cross-vendor claim.
+Candidate IDs are extensible strings. The current facade instantiates legacy
+primitive implementations and therefore binds `Portable` / `WaveOps` only. It does
+not execute a new candidate simply because a matrix names it. Future wrapper
+construction must bind the instantiated candidate ID and its capability check;
+unknown IDs currently fail closed. `Auto` cannot match a measured explicit default.
 
-Cache `CaptureCurrent()` outside the frame loop. Selection is a pure,
-allocation-free classification method and `RecordAdaptive` returns the chosen
-backend for telemetry and auditing; that return value is not performance
-evidence. Existing `Record(..., backend, ...)` calls remain backward compatible
-and are still the authoritative forced A/B interface.
+## Migration and evidence
 
-## Output contract
+The previous two-cell schema-v2 structs and pure selector remain available for
+historical **classification replay**. The old `RecordAdaptive(... profile, hint,
+identity ...)` overload remains source-compatible but always uses Direct: that
+schema cannot establish driver/compiler/shader/build compatibility. Recalibrate
+into v3; changing a schema number or copying `sourceCommit` cannot migrate evidence.
 
-- `binCounts[C]`
-- `binOffsets[C + 1]`, including the terminal valid-element count
-- `binnedValues[N]`
-- `diagnostics[2]`
+Historical forced A/B results are retained in
+`Docs/GPU_ADAPTIVE_BINNING_AMD_R9700_FORMAL_2026-07-31.md`. They do not establish
+v3 runtime speedups. See `Docs/GPU_ADAPTIVE_RUNTIME_VNEXT.md` for the new actual
+RecordAdaptive benchmark, freeze/evaluation protocol, limits and executable commands.
 
-Ordering inside a bin is not part of the shared contract. The radix backend is
-stable as an implementation property; the direct backend intentionally leaves
-equal-key ordering unspecified.
+## Output and memory contract
 
-S3 forced-backend A/B uses the shared `GuaranteedInRange` domain: every key is
-strictly less than the active bin count and diagnostics must remain zero.
-`Untrusted` is supported only by the direct implementation and is not part of
-the cross-backend performance claim.
+- `binCounts[C]`, `binOffsets[C+1]` including the terminal valid count.
+- `binnedValues[N]`; ordering within a bin is unspecified by the shared contract.
+- `diagnostics[2]`; Untrusted uses Direct, excludes invalid keys and reports them.
 
-Detailed nested profiler markers default to enabled for RGP/Profiler analysis.
-The formal microbenchmark disables them for both backends and retains identical
-outer A/B markers inside the native timestamp scope.
-
-All `Record` methods are allocation-free and readback-free. Scratch byte
-properties report logical buffer payload only, not driver allocation size or
-measured VRAM residency.
+All recording/selection paths are allocation-free after initialization. The new
+selector records CPU stopwatch ticks for observability. Both backends remain
+resident, so switching allocates no GPU scratch. `UnionScratchBytes` is the sum of
+logical buffer payloads, not driver allocation size or measured VRAM residency.
+Detailed profiler markers default on; the benchmark uses identical native outer
+scopes with detailed markers disabled.

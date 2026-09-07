@@ -167,16 +167,9 @@ namespace Summit.GpuAdaptiveBinning
                 GpuPrimitiveBackend.Auto)
         {
             ThrowIfDisposed();
-            GpuAdaptiveBinningBackend selectedBackend =
-                GpuAdaptiveBinningSelector.SelectBackend(
-                    in calibrationProfile,
-                    in workloadHint,
-                    in deviceIdentity,
-                    elementCount,
-                    binCount,
-                    keyDomain,
-                    primitiveBackend,
-                    EmitsProfilerMarkers);
+            // Schema v2 binds hardware only. It cannot authorize runtime calibration after
+            // driver/compiler/shader changes. Retained for source compatibility and migration.
+            GpuAdaptiveBinningBackend selectedBackend = GpuAdaptiveBinningBackend.Direct;
 
             Record(
                 commands,
@@ -192,6 +185,27 @@ namespace Summit.GpuAdaptiveBinning
                 keyDomain,
                 primitiveBackend);
             return selectedBackend;
+        }
+
+        /// <summary>Times selection and records the actual selected backend for this input stream.</summary>
+        public GpuAdaptiveBinningDecision RecordAdaptive(CommandBuffer commands,
+            GraphicsBuffer keys, GraphicsBuffer values, GraphicsBuffer binCounts,
+            GraphicsBuffer binOffsets, GraphicsBuffer binnedValues, GraphicsBuffer diagnostics,
+            int elementCount, int binCount, GpuAdaptiveBinningKeyDomain keyDomain,
+            GpuAdaptiveBinningStableSelector selector, in GpuAdaptiveBinningFeatures features,
+            GpuPrimitiveBackend primitiveBackend = GpuPrimitiveBackend.Auto)
+        {
+            ThrowIfDisposed();
+            if (selector == null) throw new ArgumentNullException(nameof(selector));
+            // Bind to the implementation actually instantiated by this facade. Unknown primitive
+            // candidates cannot be activated by a stored ID alone.
+            string candidate = primitiveBackend == GpuPrimitiveBackend.WaveOps ? "WaveOps" :
+                primitiveBackend == GpuPrimitiveBackend.Portable ? "Portable" : "Auto";
+            var decision = selector.Select(in features, elementCount, binCount, keyDomain,
+                candidate, EmitsProfilerMarkers);
+            Record(commands, keys, values, binCounts, binOffsets, binnedValues, diagnostics,
+                elementCount, binCount, decision.Backend, keyDomain, primitiveBackend);
+            return decision;
         }
 
         public void Dispose()
