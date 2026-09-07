@@ -1,0 +1,47 @@
+#pragma kernel ClearSeen
+#pragma kernel ValidateMembers
+#pragma kernel ValidateSeen
+#pragma kernel StoreHistory
+StructuredBuffer<uint4> _Samples, _InputSamples, _CompactDigests, _ReservedDigests;
+StructuredBuffer<uint> _Offsets, _Members, _Active, _IndexState, _CompactStats, _ReservedStats;
+RWStructuredBuffer<uint> _Seen, _Stats, _History;
+uint _Capacity, _EntryCapacity, _Frame, _ActiveCount, _UpdateCount;
+[numthreads(256,1,1)]
+void ClearSeen(uint3 tid:SV_DispatchThreadID)
+{
+    if(tid.x<_Capacity) _Seen[tid.x]=0;
+    if(tid.x<8) _Stats[tid.x]=tid.x==7?_Offsets[262144]:0;
+}
+[numthreads(256,1,1)]
+void ValidateMembers(uint3 tid:SV_DispatchThreadID)
+{
+    uint at=tid.x, extent=_Offsets[262144];
+    if(at>=min(extent,_EntryCapacity))return;
+    uint id=_Members[at];
+    if(id==0xffffffffu){InterlockedAdd(_Stats[1],1);return;}
+    InterlockedAdd(_Stats[0],1);
+    if(id>=_Capacity){InterlockedAdd(_Stats[3],1);return;}
+    uint prev;InterlockedAdd(_Seen[id],1,prev);if(prev!=0)InterlockedAdd(_Stats[2],1);
+    uint3 s=_Samples[id].xyz;uint key=(s.x>>10)|((s.y>>10)<<6)|((s.z>>10)<<12);
+    if(at<_Offsets[key]||at>=_Offsets[key+1])InterlockedAdd(_Stats[4],1);
+}
+[numthreads(256,1,1)]
+void ValidateSeen(uint3 tid:SV_DispatchThreadID)
+{
+    uint id=tid.x;if(id>=_Capacity)return;
+    if(_Seen[id]!=(_Active[id]==1?1u:0u))InterlockedAdd(_Stats[5],1);
+    if(any(_Samples[id]!=_InputSamples[id]))InterlockedAdd(_Stats[6],1);
+}
+[numthreads(128,1,1)]
+void StoreHistory(uint3 tid:SV_DispatchThreadID)
+{
+    uint t=tid.x, v=0;
+    if(t<36)v=_CompactDigests[t/4][t%4];
+    else if(t<40)v=uint4(_Frame,_ActiveCount,_Capacity,_UpdateCount)[t-36];
+    else if(t<76)v=_ReservedDigests[(t-40)/4][t%4];
+    else if(t<80)v=uint4(_Frame,_ActiveCount,_Capacity,_UpdateCount)[t-76];
+    else if(t<96)v=_IndexState[t-80];
+    else if(t<104)v=_CompactStats[t-96];
+    else if(t<112)v=_ReservedStats[t-104];
+    if(t<112)_History[_Frame*112+t]=v;
+}
