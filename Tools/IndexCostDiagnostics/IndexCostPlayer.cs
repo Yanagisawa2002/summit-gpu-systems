@@ -42,6 +42,10 @@ namespace Summit.IndexCostDiagnostics
         public Config config;public List<Frame> frames=new List<Frame>();public List<ContentEvent> contentEvents=new List<ContentEvent>();
         public double setupCpuMs,drainWallMs;public long fullResidentBytes,incrementalResidentBytes;
         public int verifiedFrames,verifiedQueryWords,verifiedExactMembershipFrames;
+        public bool allocationCounterValid,deviceRemovalReasonAvailable=false;
+        public long allocationProbeReportedBytes,allocationProbeHeapDelta;
+        public string allocationCounterStatus,nativeTerminalStatus;
+        public int consumedNative,pendingNative;
     }
     public sealed class IndexCostPlayer:MonoBehaviour
     {
@@ -49,6 +53,7 @@ namespace Summit.IndexCostDiagnostics
         readonly List<Pending> pending=new List<Pending>();readonly Dictionary<string,Pending> phases=new Dictionary<string,Pending>();
         Frame row;ulong nextToken=1;Camera cameraView;Material material;ComputeShader counterShader;RenderTexture target;
         int clearKernel,membersKernel,seenKernel,historyKernel;
+        byte[] allocationProbe;
         struct Pending {public GpuTimestampToken token;public Timing timing;}
         void Awake()
         {
@@ -68,7 +73,7 @@ namespace Summit.IndexCostDiagnostics
             {
                 bool next;
                 try{next=routine.MoveNext();}
-                catch(Exception e){report.status="failed";report.error=e.ToString();Save();UnityEngine.Debug.LogException(e);(routine as IDisposable)?.Dispose();Application.Quit(2);yield break;}
+                catch(Exception e){report.status="failed";report.error=e.ToString();report.pendingNative=pending.Count;report.nativeTerminalStatus=timestamps?.TerminalStatus.ToString();Save();UnityEngine.Debug.LogException(e);(routine as IDisposable)?.Dispose();Application.Quit(2);yield break;}
                 if(!next)break;yield return routine.Current;
             }
             (routine as IDisposable)?.Dispose();report.status="complete";report.endedUtc=DateTime.UtcNow.ToString("O");Save();Application.Quit(0);
@@ -77,6 +82,13 @@ namespace Summit.IndexCostDiagnostics
         {
             if(report.development||SystemInfo.graphicsDeviceType!=GraphicsDeviceType.Direct3D12)throw new Exception("Release/DX12 required");
             if(!GpuTimestampSession.TryCreate(out timestamps,out var support))throw new Exception(support.Message);
+            long probeBefore=GC.GetAllocatedBytesForCurrentThread(),heapBefore=GC.GetTotalMemory(false);
+            allocationProbe=new byte[1024*1024];allocationProbe[0]=1;
+            report.allocationProbeReportedBytes=GC.GetAllocatedBytesForCurrentThread()-probeBefore;
+            report.allocationProbeHeapDelta=GC.GetTotalMemory(false)-heapBefore;
+            report.allocationCounterValid=report.allocationProbeReportedBytes>=allocationProbe.Length;
+            report.allocationCounterStatus=report.allocationCounterValid?"known-allocation-probe-passed":"unavailable: known 1MiB allocation not counted; row bytes=-1";
+            GC.KeepAlive(allocationProbe);
             byte[] expected=File.ReadAllBytes(config.oracle);if(expected.Length!=384*160)throw new Exception("Existing matching full oracle required");
             var expectedWords=new uint[expected.Length/4];Buffer.BlockCopy(expected,0,expectedWords,0,expected.Length);
             var timer=Stopwatch.StartNew();
@@ -146,7 +158,7 @@ namespace Summit.IndexCostDiagnostics
                     var draw=Begin(commands,"originalTwoDraws");
                     commands.DrawProcedural(Matrix4x4.identity,material,0,MeshTopology.Points,N,1,props);
                     commands.DrawProcedural(Matrix4x4.identity,material,1,MeshTopology.Triangles,54,1,props);End(commands,draw);End(commands,outer);
-                    row.recordAllocatedBytes=GC.GetAllocatedBytesForCurrentThread()-allocation;row.recordCpuMs=timer.Elapsed.TotalMilliseconds;
+                    row.recordAllocatedBytes=report.allocationCounterValid?GC.GetAllocatedBytesForCurrentThread()-allocation:-1;row.recordCpuMs=timer.Elapsed.TotalMilliseconds;
                     timer.Restart();cameraView.Render();row.renderSubmitCpuMs=timer.Elapsed.TotalMilliseconds;
                     yield return new WaitForEndOfFrame();if(config.scenario=="streaming-switch")content.MarkRendered(frame);
                     commands.Clear();yield return null;row.engineDiagnosticIntervalMs=(Time.realtimeSinceStartupAsDouble-frameStart)*1000;
@@ -192,7 +204,7 @@ namespace Summit.IndexCostDiagnostics
         {
             var timing=new Timing{name=name};row.timing.Add(timing);
             var status=timestamps.Acquire(nextToken++,GpuTimestampSampleFlags.None,Time.frameCount,out var token);
-            if(status!=GpuTimestampStatus.Ready)throw new Exception("Timestamp acquire failed: "+status+"; pending="+pending.Count);
+            if(status!=GpuTimestampStatus.Ready)throw new Exception("Timestamp acquire failed: "+status+"; pending="+pending.Count+"; consumed="+report.consumedNative+"; terminal="+timestamps.IsTerminal+"/"+timestamps.TerminalStatus+"; graphicsApi="+SystemInfo.graphicsDeviceType);
             timestamps.GetScope(token).RecordBegin(c);var item=new Pending{token=token,timing=timing};pending.Add(item);return item;
         }
         void End(CommandBuffer c,Pending item){timestamps.GetScope(item.token).RecordEnd(c);if(timestamps.MarkSubmitted(item.token)!=GpuTimestampStatus.Ready)throw new Exception("Timestamp submit failed");}
@@ -204,7 +216,7 @@ namespace Summit.IndexCostDiagnostics
         void PollNative()
         {
             for(int i=pending.Count-1;i>=0;i--){var p=pending[i];var status=timestamps.TryConsume(p.token,Time.frameCount,out var r);if(status==GpuTimestampStatus.Pending)continue;
-                if(status!=GpuTimestampStatus.Ready)throw new Exception("Native timing: "+status);p.timing.status="Ready";p.timing.token=r.Token.Value;p.timing.beginTicks=r.BeginTicks;p.timing.endTicks=r.EndTicks;p.timing.frequency=r.TimestampFrequency;p.timing.gpuMs=r.ElapsedMilliseconds;p.timing.sourceFrame=r.SourceFrame;p.timing.resultFrame=r.ResultFrame;pending.RemoveAt(i);}
+                if(status!=GpuTimestampStatus.Ready)throw new Exception("Native timing: "+status);p.timing.status="Ready";p.timing.token=r.Token.Value;p.timing.beginTicks=r.BeginTicks;p.timing.endTicks=r.EndTicks;p.timing.frequency=r.TimestampFrequency;p.timing.gpuMs=r.ElapsedMilliseconds;p.timing.sourceFrame=r.SourceFrame;p.timing.resultFrame=r.ResultFrame;pending.RemoveAt(i);report.consumedNative++;}
         }
         static double Ms(long ticks)=>ticks*1000.0/Stopwatch.Frequency;
         void Save()=>File.WriteAllText(Path.Combine(config.output,"result.json"),JsonUtility.ToJson(report,true));

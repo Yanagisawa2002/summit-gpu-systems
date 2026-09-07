@@ -79,3 +79,10 @@ The generator records every original source and generated file hash. The runner
 records source, binaries, device/driver, commands and process epochs. Generated
 projects are ignored locally; all generator and diagnostic source is committed.
 Existing benchmark reproduction license and public-scene ownership are retained.
+
+The allocation counter is qualified with a retained 1MiB allocation before any
+measurement. If the current-thread counter fails that probe, row allocation
+bytes are -1 (unavailable), never evidence of zero allocation. Timestamp failures
+include concrete status, pending/consumed counts and native terminal state;
+direct device-removal reason is unavailable through this public session API.
+
