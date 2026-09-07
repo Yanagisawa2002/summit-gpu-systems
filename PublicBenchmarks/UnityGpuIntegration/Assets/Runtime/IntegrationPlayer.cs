@@ -141,11 +141,10 @@ namespace Summit.PublicIntegration
         {
             phase="setup:"+arm;double setupAt=Time.realtimeSinceStartupAsDouble;
             bool incremental=arm.EndsWith("incremental",StringComparison.Ordinal);
-            if(incremental)throw new Exception("Improved index API must be integrated before this arm is enabled");
             var backend=GpuSensorQueryBackend.CellSerial;
             if(arm.StartsWith("new",StringComparison.Ordinal)&&!Enum.TryParse("BatchedPointScanWave",out backend))throw new Exception("Improved query API has not been integrated");
             var report=new IntegrationArm{arm=arm,block=block,position=position,startedUtc=DateTime.UtcNow.ToString("O"),
-                queryBackend=backend.ToString(),indexBackend="full-direct-waveops",frameCount=config.frames,frames=new IntegrationFrame[config.frames],
+                queryBackend=backend.ToString(),indexBackend=incremental?"incremental-gpu-driven":"full-direct-waveops",frameCount=config.frames,frames=new IntegrationFrame[config.frames],
                 allocatedBefore=Profiler.GetTotalAllocatedMemoryLong()};
             for(int i=0;i<report.frames.Length;i++)report.frames[i]=new IntegrationFrame{frame=i,measured=i>=config.warmup};
             result.runs.Add(report);
@@ -157,14 +156,15 @@ namespace Summit.PublicIntegration
             using(var input=new GraphicsBuffer(GraphicsBuffer.Target.Structured,N,16))
             using(var flags=new GraphicsBuffer(GraphicsBuffer.Target.Structured,N,4))
             using(var history=new GraphicsBuffer(GraphicsBuffer.Target.Structured,config.frames*10,16))
-            using(var index=new GpuSensorFullRebuildIndex(N,GpuPrimitiveBackend.WaveOps))
+            using(var index=incremental?null:new GpuSensorFullRebuildIndex(N,GpuPrimitiveBackend.WaveOps))
+            using(var updated=incremental?new GpuSensorIncrementalIndex(N,0,executionMode:GpuSensorIndexExecutionMode.GpuDriven):null)
             using(var consumer=new Pipeline(N,9,GpuPrimitiveBackend.Portable,false,queryBackend:backend,queryIndexEntryCapacity:N*3))
             using(var commands=new CommandBuffer{name="PublicIntegration/Frame"})
             {
                 consumer.SetQueries(IntegrationFixture.Queries());history.SetData(new GpuSensorQueryDigest[config.frames*10]);
                 input.SetData(data);flags.SetData(active);
                 var properties=new MaterialPropertyBlock();properties.SetBuffer(SamplesId,input);properties.SetBuffer(ActiveId,flags);properties.SetBuffer(DigestsId,consumer.QueryDigests);
-                report.residentBytes=index.ResidentBytes+consumer.ResidentBytes+(long)N*20+(long)config.frames*160;
+                report.residentBytes=(incremental?updated.ResidentBytes:index.ResidentBytes)+consumer.ResidentBytes+(long)N*20+(long)config.frames*160;
                 cameraView.AddCommandBuffer(CameraEvent.BeforeForwardOpaque,commands);
                 report.setupMilliseconds=(Time.realtimeSinceStartupAsDouble-setupAt)*1000;
                 for(int frame=0;frame<config.frames;frame++)
@@ -187,9 +187,12 @@ namespace Summit.PublicIntegration
                     cameraView.transform.LookAt(Vector3.zero);
                     properties.SetTexture("_Palette",content.CurrentTexture);
                     commands.Clear();var whole=Begin(commands,row.sceneGpu);commands.ClearRenderTarget(true,true,cameraView.backgroundColor);
-                    var indexToken=Begin(commands,row.indexGpu);index.RecordUpdate(commands,input,flags);End(commands,indexToken);
+                    var indexToken=Begin(commands,row.indexGpu);
+                    if(incremental)updated.RecordUpdate(commands,input,flags);else index.RecordUpdate(commands,input,flags);
+                    End(commands,indexToken);
                     var queryToken=Begin(commands,row.queryGpu);
-                    consumer.RecordExternalIndexQueries(commands,input,index.BinOffsets,index.BinnedIds,N,9,0);End(commands,queryToken);
+                    consumer.RecordExternalIndexQueries(commands,incremental?updated.Samples:input,
+                        incremental?updated.BinOffsets:index.BinOffsets,incremental?updated.BinnedIds:index.BinnedIds,N,9,0);End(commands,queryToken);
                     commands.SetComputeBufferParam(historyShader,historyKernel,"_Digests",consumer.QueryDigests);
                     commands.SetComputeBufferParam(historyShader,historyKernel,"_History",history);
                     commands.SetComputeIntParam(historyShader,"_Frame",frame);commands.SetComputeIntParam(historyShader,"_ActiveCount",(int)activeCount);
@@ -203,6 +206,11 @@ namespace Summit.PublicIntegration
                     yield return new WaitForEndOfFrame();
                     if(config.scenario==IntegrationFixture.Scenarios[2])content.MarkRendered(frame);
                     if(result.firstRenderedEngineMilliseconds<0)result.firstRenderedEngineMilliseconds=Time.realtimeSinceStartupAsDouble*1000;
+                    if(config.screenshot&&config.mode!="formal"&&frame==config.frames-1)
+                    {
+                        var picture=ScreenCapture.CaptureScreenshotAsTexture();
+                        File.WriteAllBytes(Path.Combine(config.output,config.scenario+".png"),picture.EncodeToPNG());Destroy(picture);
+                    }
                     commands.Clear();yield return null;
                     row.engineCadenceMs=(Time.realtimeSinceStartupAsDouble-frameStart)*1000;
                 }
@@ -219,7 +227,7 @@ namespace Summit.PublicIntegration
                 WriteHistory(Path.Combine(config.output,$"{block}-{position}-{arm}.history.bin"),actual);
                 if(!actual.SequenceEqual(expected))
                 {
-                    int bad=Array.FindIndex(actual,d=>false);for(int i=0;i<actual.Length;i++)if(!actual[i].Equals(expected[i])){bad=i;break;}
+                    int bad=-1;for(int i=0;i<actual.Length;i++)if(!actual[i].Equals(expected[i])){bad=i;break;}
                     throw new Exception("Oracle/history mismatch at word "+bad+" (frame "+bad/10+")");
                 }
                 if(config.mode=="oracle")WriteHistory(config.oracle,expected);

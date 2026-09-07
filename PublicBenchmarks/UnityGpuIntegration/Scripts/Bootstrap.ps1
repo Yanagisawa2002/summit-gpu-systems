@@ -14,7 +14,7 @@ foreach ($package in $packages) {
 $artifacts=Join-Path $project 'Artifacts'
 New-Item -ItemType Directory -Force $artifacts | Out-Null
 @{schemaVersion=1;repository='https://github.com/Yanagisawa2002/summit-gpu-systems';sourceCommit=(& git -C $repo rev-parse HEAD);
-    unity='6000.5.2f1';files=$records;license='Existing repository terms unchanged; external reuse permission is a separate prerequisite';
+    unity='6000.5.2f1';files=$records;license='Limited benchmark reproduction permission; complete root and package license texts retained';
     excluded=@('Integrations','root project Assets');absoluteAuthorDependencies=@()} |
     ConvertTo-Json -Depth 8 | Set-Content (Join-Path $artifacts 'dependency-inventory.json') -Encoding utf8
 Write-Output "Standalone project ready: $project"

@@ -6,6 +6,7 @@
     "com.summit.gpu-timestamps": "file:../../../Packages/com.summit.gpu-timestamps",
     "com.unity.modules.assetbundle": "1.0.0",
     "com.unity.modules.jsonserialize": "1.0.0",
+    "com.unity.modules.imageconversion": "1.0.0",
     "com.unity.modules.screencapture": "1.0.0",
     "com.unity.test-framework": "1.7.0"
   }
