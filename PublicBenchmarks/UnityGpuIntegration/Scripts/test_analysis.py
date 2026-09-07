@@ -1,5 +1,5 @@
 import unittest
-from analyze import summary, paired, align_engine
+from analyze import summary, paired, align_engine, enough_positive, lifecycle_valid
 
 P=dict(blocks=4,cvLimitPercent=5,baselineDriftLimitPercent=15,p95SpeedRatioMinimum=1.01)
 class AnalysisTests(unittest.TestCase):
@@ -25,6 +25,13 @@ class AnalysisTests(unittest.TestCase):
         r=summary([0,10,20,30,40])
         self.assertEqual(r['p50'],20);self.assertEqual(r['p95'],38)
         self.assertEqual(r['over16_67ms'],3)
+    def test_zero_and_missing_coverage(self):
+        self.assertTrue(enough_positive([1]*95+[0]*5,100))
+        self.assertFalse(enough_positive([1]*94+[0]*6,100))
+        self.assertFalse(enough_positive([1]*94,100))
+        self.assertFalse(enough_positive([None]*100,100))
+    def test_fake_io_cannot_pass(self):
+        self.assertFalse(lifecycle_valid([]))
     def test_async_source_alignment_not_observation(self):
         r=dict(qpcFrequency=10,engineCpuTimerFrequency=10,
                processFrames=[dict(qpc=100,unityFrame=1),dict(qpc=200,unityFrame=2),dict(qpc=300,unityFrame=3)],

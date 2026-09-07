@@ -38,6 +38,19 @@ def gmean(values):
 def cv(values):
     return 100*st.stdev(values)/st.mean(values) if len(values)>1 and st.mean(values)>0 else None
 
+def enough_positive(values, expected, threshold=.95):
+    return sum(x is not None and math.isfinite(x) and x>0 for x in values)>=expected*threshold
+
+def lifecycle_valid(events):
+    fixed = {'load-request','logical-cancel-request','register','unregister','unload-request','first-use-render-submitted'}
+    expected = [(16,'load-request',0),(16,'logical-cancel-request',0),(80,'load-request',0),
+                (128,'register',0),(128,'first-use-render-submitted',0),(192,'load-request',1),
+                (224,'unregister',0),(240,'register',1),(240,'first-use-render-submitted',1),
+                (256,'unload-request',0),(320,'unregister',1),(352,'unload-request',1)]
+    observed = [(e['frame'],e['action'],e['bundle']) for e in events if e['action'] in fixed]
+    counts = {action:sum(e['action']==action for e in events) for action in ['disk-load-complete','assets-ready','canceled-discard-unload','unload-complete']}
+    return observed==expected and counts=={'disk-load-complete':3,'assets-ready':2,'canceled-discard-unload':1,'unload-complete':3} and all(e['bytes']>0 for e in events)
+
 def paired(process_blocks, protocol):
     """Each item holds paired block summaries for ONE independent process."""
     complete = len(process_blocks)==5 and all(len(p)==protocol['blocks'] for p in process_blocks)
@@ -98,6 +111,9 @@ def analyze(root, output):
         cfg = result['config']
         engine, alignment = align_engine(result)
         errors = []
+        rep=cfg['processReplicate']
+        if rep not in range(5) or cfg['seed']!=protocol['processSeeds'][rep] or cfg['arms']!=protocol['arms'] or any(cfg[k]!=protocol[k] for k in ['frames','warmup','blocks']):
+            errors.append('Configuration differs from frozen protocol')
         if result['status']!='completed' or not result['formalPerformanceEvidence'] or result['development']:
             errors.append('Incomplete or non-formal/non-Release process')
         if len(result['runs']) != 4*protocol['blocks']:
@@ -114,6 +130,8 @@ def analyze(root, output):
                     history.exists() and sha(history)==oracle_sha==arm['oracleSha256'] and len(frames)==protocol['frames'])
             good = good and all(f['frame']==i and all(f[n]['status']=='Ready' and f[n]['sourceFrame']==f['unityFrame'] and f[n]['milliseconds']>0 for n in NATIVE) for i,f in enumerate(frames))
             good = good and all(f['queryCount']==9 and f['drawVertices']==262144 and f['overlayVertices']==54 and f['drawCalls']==2 and f['historyDispatches']==1 and f['indexRecordedDispatches']==(13 if arm['arm'].endswith('incremental') else 11) and f['queryRecordedDispatches']==(3 if arm['arm'].startswith('new') else 2) for f in frames)
+            good = good and arm['arm']==ARMS[protocol['orders'][(arm['block']+rep)%4][arm['position']]]
+            good = good and (lifecycle_valid(arm['contentEvents']) if cfg['scenario']=='streaming-switch' else not arm['contentEvents'])
             if not good:
                 errors.append(f"Correctness/work/timestamp failure: {arm['block']}/{arm['arm']}")
             arm_audits.append(dict(arm=arm['arm'], block=arm['block'], correct=good, workSha256=identity, oracleSha256=oracle_sha))
@@ -127,7 +145,7 @@ def analyze(root, output):
                     if metric.startswith('engine.'):
                         values = [x for x in values if x>0]
                     info = summary(values)
-                    valid = good and info['count']>=len(selected)*protocol['minimumEngineTimingCoverage'] and info['mean'] and info['p95']
+                    valid = good and enough_positive(values,len(selected),protocol['minimumEngineTimingCoverage']) and info['mean'] and info['p95']
                     rows.append(dict(scene=cfg['scenario'], replicate=cfg['processReplicate'], block=arm['block'], position=arm['position'], arm=arm['arm'], scope=scope, metric=metric, eligible=bool(valid), expectedCount=len(selected), **info))
             for f in frames:
                 if f['engineCadenceMs']>protocol['frameBudgetMs']:
