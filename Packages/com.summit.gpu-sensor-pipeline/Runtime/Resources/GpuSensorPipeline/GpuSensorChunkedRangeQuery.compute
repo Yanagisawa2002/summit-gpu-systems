@@ -1,0 +1,6 @@
+#pragma kernel ClearQuery
+#pragma kernel BuildChunks
+#pragma kernel PrepareDispatch
+#pragma kernel ConsumeChunks
+#pragma target 5.0
+#include "GpuSensorChunkedRangeQuery.hlsl"

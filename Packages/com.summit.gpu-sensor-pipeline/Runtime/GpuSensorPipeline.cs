@@ -95,6 +95,7 @@ namespace Summit.GpuSensorPipeline
         private static readonly int ComparisonDigestId =
             Shader.PropertyToID("_ComparisonDigest");
 
+        private readonly GpuSensorChunkedRangeQuery chunkedQuery;
         private readonly ComputeShader shader;
         private readonly int produceKernel;
         private readonly int rangeQueryKernel;
@@ -116,7 +117,9 @@ namespace Summit.GpuSensorPipeline
             int queryCapacity,
             GpuPrimitiveBackend backend = GpuPrimitiveBackend.WaveOps,
             bool emitProfilerMarkers = true,
-            ComputeShader shader = null)
+            ComputeShader shader = null,
+            GpuSensorQueryBackend queryBackend = GpuSensorQueryBackend.CellSerial,
+            int queryIndexEntryCapacity = 0)
         {
             if (elementCapacity < 1 ||
                 elementCapacity > GpuPrimitivesRuntime.MaxElementCount)
@@ -128,6 +131,14 @@ namespace Summit.GpuSensorPipeline
                 throw new ArgumentOutOfRangeException(nameof(queryCapacity));
             }
             ValidateBackend(backend);
+            if (!Enum.IsDefined(typeof(GpuSensorQueryBackend), queryBackend))
+                throw new ArgumentOutOfRangeException(nameof(queryBackend));
+            if (queryIndexEntryCapacity != 0)
+            {
+                GpuSensorChunkedRangeQuery.CalculateChunkCapacity(queryIndexEntryCapacity);
+                if (queryIndexEntryCapacity < elementCapacity)
+                    throw new ArgumentOutOfRangeException(nameof(queryIndexEntryCapacity));
+            }
             if (backend == GpuPrimitiveBackend.WaveOps &&
                 !GpuPrimitivesRuntime.SupportsWaveOperations)
             {
@@ -178,6 +189,8 @@ namespace Summit.GpuSensorPipeline
 
             try
             {
+                if (queryBackend != GpuSensorQueryBackend.CellSerial)
+                    chunkedQuery = new GpuSensorChunkedRangeQuery(elementCapacity, queryBackend, queryIndexEntryCapacity);
                 selectedSamples = CreateBuffer(
                     elementCapacity,
                     SampleStride,
@@ -239,6 +252,7 @@ namespace Summit.GpuSensorPipeline
             }
             catch
             {
+                chunkedQuery?.Dispose();
                 selectedBinner?.Dispose();
                 selectedPrimitives?.Dispose();
                 DisposeBuffer(selectedSamples);
@@ -259,6 +273,7 @@ namespace Summit.GpuSensorPipeline
             ElementCapacity = elementCapacity;
             QueryCapacity = queryCapacity;
             Backend = backend;
+            QueryBackend = queryBackend;
             this.emitProfilerMarkers = emitProfilerMarkers;
             this.shader = selectedShader;
             produceKernel = selectedProduceKernel;
@@ -293,6 +308,9 @@ namespace Summit.GpuSensorPipeline
         public int ConfiguredQueryCount => configuredQueryCount;
 
         public GpuPrimitiveBackend Backend { get; }
+
+        public GpuSensorQueryBackend QueryBackend { get; }
+        public long QueryScratchBytes => chunkedQuery?.ScratchBytes ?? 0;
 
         public bool EmitsProfilerMarkers => emitProfilerMarkers;
 
@@ -339,7 +357,7 @@ namespace Summit.GpuSensorPipeline
                 DigestStride);
 
         public long ResidentBytes =>
-            checked(OwnedBufferBytes + BinnerScratchBytes);
+            checked(OwnedBufferBytes + BinnerScratchBytes + QueryScratchBytes);
 
         /// <summary>
         /// Logical bytes of keys, identity values, CSR outputs, diagnostics,
@@ -820,6 +838,7 @@ namespace Summit.GpuSensorPipeline
             }
 
             disposed = true;
+            chunkedQuery?.Dispose();
             binner.Dispose();
             primitives.Dispose();
             Samples.Dispose();
@@ -928,6 +947,8 @@ namespace Summit.GpuSensorPipeline
         /// live count. Monotonic offsets must terminate within binnedIds.count.
         /// IDs outside [0, stableIdCapacity) are holes and are skipped. Buffers
         /// must remain alive and unmodified until ordered GPU consumers finish.
+        /// Chunked backends require constructor queryIndexEntryCapacity to cover
+        /// binnedIds.count, including every reserved tombstone slot.
         /// </summary>
         public void RecordExternalIndexQueries(
             CommandBuffer commands, GraphicsBuffer samples,
@@ -943,9 +964,12 @@ namespace Summit.GpuSensorPipeline
             ValidateDigestBuffer(samples, stableIdCapacity, nameof(samples));
             ValidateExternalUintBuffer(binOffsets, FixedBinCount + 1, nameof(binOffsets));
             ValidateExternalUintBuffer(binnedIds, 1, nameof(binnedIds));
+            if (chunkedQuery != null && binnedIds.count > chunkedQuery.IndexEntryCapacity)
+                throw new ArgumentException("External CSR exceeds preallocated query capacity.", nameof(binnedIds));
             if (samples == QueryDigests || samples == FrameDigest ||
                 binOffsets == QueryDigests || binOffsets == FrameDigest ||
-                binnedIds == QueryDigests || binnedIds == FrameDigest)
+                binnedIds == QueryDigests || binnedIds == FrameDigest ||
+                binOffsets == binnedIds || samples == Queries)
                 throw new ArgumentException("Index inputs must not alias query outputs.");
             RecordRangeQuerySegment(commands, stableIdCapacity, 0, queryCount,
                 false, samples, binOffsets, binnedIds);
@@ -960,6 +984,22 @@ namespace Summit.GpuSensorPipeline
                 throw new ArgumentException("External CSR buffer has wrong shape.", name);
         }
 
+        /// <summary>Records queries against the last built index, excluding producer,
+        /// index build and frame reduction. Caller must order index construction
+        /// before this call. Query scratch is reused on the same ordered queue.</summary>
+        public void RecordQueries(CommandBuffer commands, int elementCount,
+            int queryStart, int queryCount, bool quantizeIntensity = false)
+        {
+            ThrowIfDisposed();
+            ValidateCommands(commands);
+            ValidateElementCount(elementCount);
+            if (!queriesInitialized) throw new InvalidOperationException("SetQueries must run first.");
+            if (queryStart < 0 || queryCount < 0 || (long)queryStart + queryCount > configuredQueryCount)
+                throw new ArgumentOutOfRangeException(nameof(queryCount));
+            if (queryCount != 0)
+                RecordRangeQuerySegment(commands, elementCount, queryStart, queryCount, quantizeIntensity);
+        }
+
         private void RecordRangeQuerySegment(
             CommandBuffer commands,
             int elementCount,
@@ -971,6 +1011,14 @@ namespace Summit.GpuSensorPipeline
             GraphicsBuffer externalIds = null)
         {
             BeginSample(commands, QuerySample);
+            if (chunkedQuery != null)
+            {
+                chunkedQuery.Record(commands, externalSamples ?? Samples,
+                    externalOffsets ?? BinOffsets, externalIds ?? BinnedIds, Queries,
+                    QueryDigests, elementCount, queryStart, queryCount, quantizeIntensity);
+                EndSample(commands, QuerySample);
+                return;
+            }
             commands.SetComputeIntParam(shader, ElementCountId, elementCount);
             commands.SetComputeIntParam(
                 shader,
