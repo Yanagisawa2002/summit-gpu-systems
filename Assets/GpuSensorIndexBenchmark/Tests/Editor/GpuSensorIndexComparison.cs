@@ -67,7 +67,7 @@ namespace Summit.GpuSensorIndex.Benchmark.Tests
             public bool Concentrated, Teleport, Transitions, Lifecycle;
         }
 
-        [UnityTest]
+        [UnityTest, Timeout(1800000)]
         public IEnumerator Compare()
         {
             string output = Environment.GetEnvironmentVariable("SUMMIT_INDEX_COMPARISON_OUTPUT");
