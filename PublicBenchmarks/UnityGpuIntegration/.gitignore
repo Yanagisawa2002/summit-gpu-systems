@@ -16,3 +16,5 @@ ProjectSettings/*.asset
 ProjectSettings/SceneTemplateSettings.json
 *.csproj
 *.sln
+__pycache__/
+*.pyc

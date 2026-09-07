@@ -12,6 +12,7 @@ $output=[IO.Path]::GetFullPath($config.output)
 if(Test-Path -LiteralPath $output){throw 'Fresh run output required; retain every previous attempt.'}
 $attestation=Get-Content -LiteralPath (Join-Path $build 'build-attestation.json') -Raw | ConvertFrom-Json
 if($attestation.status -ne 'built' -or $attestation.development){throw 'A completed Release build is required.'}
+if($config.mode -eq 'formal' -and $attestation.sourceDirty){throw 'Formal source must be a clean committed checkout.'}
 if($config.sourceSha -ne $attestation.sourceSha){throw 'Configuration source does not match build attestation.'}
 foreach($entry in $attestation.files){
     $file=Join-Path $build $entry.path
@@ -38,6 +39,8 @@ try {
         if($owned.ExitCode -ne 0){throw "Player exited $($owned.ExitCode)"}
         $result=Get-Content -LiteralPath (Join-Path $output 'result.json') -Raw | ConvertFrom-Json
         if($result.status -ne 'completed'){throw "Player result status: $($result.status)"}
+        $buildReceipt=Get-Content -LiteralPath (Join-Path $build 'release-build.json') -Raw | ConvertFrom-Json
+        if($result.buildGuid -ne $buildReceipt.buildGuid){throw 'Player build identity mismatch'}
         $receipt.status='completed'
     }
 } catch {$receipt.status='failed';$receipt.error=$_.Exception.ToString();throw}
