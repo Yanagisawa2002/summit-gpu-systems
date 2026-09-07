@@ -23,6 +23,8 @@ This repository is a Unity 6 benchmark host and a monorepo of reusable UPM packa
 
 ## Validated results
 
+The focused follow-up [diagnoses index costs](Docs/FocusedIndexCosts.md) and [repairs scene timing collection](PublicBenchmarks/UnityGpuIntegration/RESULTS-focused-costs-2026-09-08.md). Reserved-layout query cost and capacity fallback explain the measured incremental-path limits; the measured hotspot/CellSerial and streaming/BatchedPointScanWave trajectories are not recommended for that path. Query and index choices remain opt-in. Complete engine GPU coverage and stable engine-cadence gains remain unresolved; unsupported allocation counters now report unavailable instead of zero.
+
 The September 8 unified comparison adds a [standalone procedural Unity scene](PublicBenchmarks/UnityGpuIntegration/README.md) covering spatial queries, dynamic index updates, rendering and actual AssetBundle loading. Its [fixed-matrix results](PublicBenchmarks/UnityGpuIntegration/RESULTS-2026-09-08.md) confirm narrow query/explicit-scene GPU improvements, while stable engine-frame cadence remains inconclusive and full-engine GPU coverage is insufficient. The [matching microbenchmark report](Docs/UnifiedMicrobenchmarkResults.md) retains all failed stability gates and the absence of a confirmed complete-GPU incremental-index benefit. Both new runtime paths remain opt-in.
 
 The retained measurements were collected on AMD Radeon AI PRO R9700, Direct3D 12, and Unity `6000.5.2f1`. NVIDIA validation has not been performed and is not claimed.
