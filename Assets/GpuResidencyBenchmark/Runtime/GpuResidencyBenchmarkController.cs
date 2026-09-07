@@ -44,6 +44,7 @@ public sealed class GpuResidencyBenchmarkController : MonoBehaviour
     private int virtualPages = 4096;
     private int physicalSlots = 384;
     private int pointsPerPage = 1024;
+    private bool compareLruPolicies;
     private int seed = 20260804;
     private float timeoutSeconds = 60.0f;
 
@@ -86,6 +87,7 @@ public sealed class GpuResidencyBenchmarkController : MonoBehaviour
 
     private void Configure(string[] args)
     {
+        compareLruPolicies = HasArgument(args, "-gpu-residency-compare-lru");
         reportDirectory = ReadString(
             args, "-gpu-residency-report-dir", string.Empty);
         scenarioId = ReadString(
@@ -101,9 +103,9 @@ public sealed class GpuResidencyBenchmarkController : MonoBehaviour
         cooldownFrames = Mathf.Clamp(ReadInt(
             args, "-gpu-residency-cooldown-frames", cooldownFrames), 0, 120);
         virtualPages = Mathf.Clamp(ReadInt(
-            args, "-gpu-residency-virtual-pages", virtualPages), 4096, 4096);
+            args, "-gpu-residency-virtual-pages", virtualPages), 4096, 65536);
         physicalSlots = Mathf.Clamp(ReadInt(
-            args, "-gpu-residency-physical-slots", physicalSlots), 256, 1024);
+            args, "-gpu-residency-physical-slots", physicalSlots), 256, 32768);
         pointsPerPage = Mathf.Clamp(ReadInt(
             args, "-gpu-residency-points-per-page", pointsPerPage), 64, 16384);
         seed = ReadInt(args, "-gpu-residency-seed", seed);
@@ -176,7 +178,7 @@ public sealed class GpuResidencyBenchmarkController : MonoBehaviour
             virtualPages,
             physicalSlots,
             pointsPerPage,
-            seed);
+            seed, compareLruPolicies);
         if (!GpuResidencyNativeTimestampBackend.TryCreate(
                 out timestamps,
                 out timestampSupport))
@@ -449,10 +451,11 @@ public sealed class GpuResidencyBenchmarkController : MonoBehaviour
             GpuMs = result.GpuMs,
             ObservedMs = result.ObservedMs,
             PlanningMs = p.PlanningMs,
+            PlanningAllocatedBytes = p.PlanningAllocatedBytes,
             StagingMs = p.StagingMs,
             RecordMs = result.RecordMs,
             SubmitMs = result.SubmitMs,
-            RequestedPages = p.Plan.RequestedPages.Length,
+            RequestedPages = p.Plan.RequestedCount,
             HitPages = p.Plan.HitCount,
             MissPages = p.Plan.MissCount,
             Evictions = p.Plan.EvictionCount,
@@ -529,7 +532,7 @@ public sealed class GpuResidencyBenchmarkController : MonoBehaviour
             "sampleIndex,pathFrame,gpuMs,observedMs,planningMs,stagingMs," +
             "recordMs,submitMs,requestedPages,hitPages,missPages,evictions," +
             "pointPayloadBytes,descriptorBytes,deltaBytes,requestBytes," +
-            "totalUploadBytes,measurementReadbackBytes");
+            "totalUploadBytes,measurementReadbackBytes,planningAllocatedBytes");
         foreach (RawSample r in rawSamples)
         {
             b.Append(r.ProcessId).Append(',').Append(Csv(r.ScenarioId))
@@ -552,7 +555,7 @@ public sealed class GpuResidencyBenchmarkController : MonoBehaviour
                 .Append(',').Append(r.DescriptorBytes).Append(',')
                 .Append(r.DeltaBytes).Append(',').Append(r.RequestBytes)
                 .Append(',').Append(r.TotalUploadBytes).Append(',')
-                .Append(r.MeasurementReadbackBytes).AppendLine();
+                .Append(r.MeasurementReadbackBytes).Append(',').Append(r.PlanningAllocatedBytes).AppendLine();
         }
         File.WriteAllText(
             Path.Combine(reportDirectory, "raw-samples.csv"),
@@ -624,8 +627,8 @@ public sealed class GpuResidencyBenchmarkController : MonoBehaviour
                 gpuResidentBytes = adapter.GpuResidentBytes,
                 cpuBackingStoreBytes = adapter.CpuBackingStoreBytes,
                 cpuStagingBytes = adapter.CpuStagingBytes,
-                baselinePolicy = "rebuild and upload all visible pages",
-                optimizedPolicy = "persistent LRU physical slots with delta uploads",
+                baselinePolicy = compareLruPolicies ? "persistent full-scan LRU v2" : "rebuild and upload all visible pages",
+                optimizedPolicy = compareLruPolicies ? "persistent indexed-heap LRU v2 (unpromoted candidate)" : "persistent LRU physical slots with delta uploads",
                 measurementReadbackBytesPerFrame = 0,
                 sparseResourceClaim = false
             }, true));
@@ -801,6 +804,7 @@ public sealed class GpuResidencyBenchmarkController : MonoBehaviour
         public int PathFrame;
         public double GpuMs;
         public double ObservedMs;
+        public long PlanningAllocatedBytes;
         public double PlanningMs;
         public double StagingMs;
         public double RecordMs;

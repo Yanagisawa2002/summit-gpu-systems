@@ -11,3 +11,5 @@ full-visible-set rebuild policy and a persistent LRU policy.
 This is not a Direct3D 12 reserved-resource or sparse-binding implementation.
 The physical cache is a normal `GraphicsBuffer`; the benchmark reports
 `sparseResourceClaim=false`.
+
+See [STREAMING.md](STREAMING.md) for upload budgets, priority aging, prefetch, explicit frame leases, GPU fences, and API migration. The indexed-heap policy is opt-in; the scan policy remains the comparison baseline.

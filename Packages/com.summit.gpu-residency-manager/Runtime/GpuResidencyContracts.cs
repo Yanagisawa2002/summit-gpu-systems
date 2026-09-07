@@ -5,7 +5,8 @@ namespace Summit.GpuResidencyManager
     public enum GpuResidencyPolicy
     {
         RebuildVisibleSet = 0,
-        PersistentLru = 1
+        PersistentLru = 1, // Original full-scan baseline; retained as the unmeasured default comparison.
+        PersistentHeapLru = 2
     }
 
     [StructLayout(LayoutKind.Sequential)]

@@ -11,6 +11,7 @@ namespace Summit.GpuResidencyManager
         public const int UploadStride = 8;
         public const int DeltaStride = 8;
         public const int ThreadGroupSize = 256;
+        public const int MaximumDispatchGroups = 65535;
 
         private const string ResourcePath =
             "GpuResidencyManager/GpuPointPageCache";
@@ -46,6 +47,11 @@ namespace Summit.GpuResidencyManager
         private readonly int scatterKernel;
         private readonly int queryKernel;
         private bool disposed;
+        private GraphicsFence consumerFence;
+        private bool hasConsumerFence;
+        private GpuPageResidencyPlanner recordedPlanner;
+        private long lastRecordedFrame = -1;
+        private static readonly int RequestedSlotsId = Shader.PropertyToID("_RequestedSlots");
 
         public GpuPointPageCache(
             int virtualPageCount,
@@ -59,7 +65,7 @@ namespace Summit.GpuResidencyManager
                 throw new ArgumentOutOfRangeException(
                     nameof(virtualPageCount));
             }
-            if (physicalSlotCount < maximumRequestedPages)
+            if (physicalSlotCount < 1 || physicalSlotCount > virtualPageCount)
             {
                 throw new ArgumentOutOfRangeException(
                     nameof(physicalSlotCount));
@@ -69,7 +75,7 @@ namespace Summit.GpuResidencyManager
                 throw new ArgumentOutOfRangeException(nameof(pointsPerPage));
             }
             if (maximumRequestedPages < 1 ||
-                maximumRequestedPages > physicalSlotCount)
+                maximumRequestedPages > virtualPageCount)
             {
                 throw new ArgumentOutOfRangeException(
                     nameof(maximumRequestedPages));
@@ -88,27 +94,29 @@ namespace Summit.GpuResidencyManager
             GraphicsBuffer selectedUploads = null;
             GraphicsBuffer selectedDeltas = null;
             GraphicsBuffer selectedRequests = null;
+            GraphicsBuffer selectedSlots = null;
             GraphicsBuffer selectedPhysical = null;
             GraphicsBuffer selectedPageTable = null;
             GraphicsBuffer selectedDigests = null;
             try
             {
                 selectedPayload = CreateBuffer(
-                    checked(maximumRequestedPages * pointsPerPage),
+                    checked(Math.Min(maximumRequestedPages, physicalSlotCount) * pointsPerPage),
                     PointStride,
                     "GPU Residency Upload Payload");
                 selectedUploads = CreateBuffer(
-                    maximumRequestedPages,
+                    Math.Min(maximumRequestedPages, physicalSlotCount),
                     UploadStride,
                     "GPU Residency Upload Descriptors");
                 selectedDeltas = CreateBuffer(
-                    checked(maximumRequestedPages * 2),
+                    checked(physicalSlotCount + Math.Min(maximumRequestedPages, physicalSlotCount)),
                     DeltaStride,
                     "GPU Residency Page Table Deltas");
                 selectedRequests = CreateBuffer(
                     maximumRequestedPages,
                     sizeof(uint),
                     "GPU Residency Requested Pages");
+                selectedSlots = CreateBuffer(maximumRequestedPages, sizeof(int), "GPU Residency Request Slot Snapshot");
                 selectedPhysical = CreateBuffer(
                     checked(physicalSlotCount * pointsPerPage),
                     PointStride,
@@ -129,6 +137,7 @@ namespace Summit.GpuResidencyManager
                 selectedUploads?.Dispose();
                 selectedDeltas?.Dispose();
                 selectedRequests?.Dispose();
+                selectedSlots?.Dispose();
                 selectedPhysical?.Dispose();
                 selectedPageTable?.Dispose();
                 selectedDigests?.Dispose();
@@ -148,6 +157,7 @@ namespace Summit.GpuResidencyManager
             UploadDescriptors = selectedUploads;
             PageTableDeltas = selectedDeltas;
             RequestedPages = selectedRequests;
+            RequestedSlots = selectedSlots;
             PhysicalPoints = selectedPhysical;
             PageTable = selectedPageTable;
             PageDigests = selectedDigests;
@@ -157,19 +167,21 @@ namespace Summit.GpuResidencyManager
         public int PhysicalSlotCount { get; }
         public int PointsPerPage { get; }
         public int MaximumRequestedPages { get; }
+        public int MaximumUploadPagesPerFrame => MaximumDispatchGroups * ThreadGroupSize / PointsPerPage;
         public GraphicsBuffer UploadPayload { get; }
         public GraphicsBuffer UploadDescriptors { get; }
         public GraphicsBuffer PageTableDeltas { get; }
         public GraphicsBuffer RequestedPages { get; }
+        public GraphicsBuffer RequestedSlots { get; }
         public GraphicsBuffer PhysicalPoints { get; }
         public GraphicsBuffer PageTable { get; }
         public GraphicsBuffer PageDigests { get; }
 
         public long ResidentBytes => checked(
-            (long)MaximumRequestedPages * PointsPerPage * PointStride +
-            (long)MaximumRequestedPages * UploadStride +
-            (long)MaximumRequestedPages * 2L * DeltaStride +
-            (long)MaximumRequestedPages * sizeof(uint) +
+            (long)Math.Min(MaximumRequestedPages, PhysicalSlotCount) * PointsPerPage * PointStride +
+            (long)Math.Min(MaximumRequestedPages, PhysicalSlotCount) * UploadStride +
+            ((long)PhysicalSlotCount + Math.Min(MaximumRequestedPages, PhysicalSlotCount)) * DeltaStride +
+            (long)MaximumRequestedPages * sizeof(uint) * 2 +
             (long)PhysicalSlotCount * PointsPerPage * PointStride +
             (long)VirtualPageCount * sizeof(uint) +
             (long)MaximumRequestedPages * DigestStride);
@@ -177,6 +189,8 @@ namespace Summit.GpuResidencyManager
         public void RecordReset(CommandBuffer commands)
         {
             ValidateCommands(commands);
+            WaitForConsumers(commands);
+            recordedPlanner = null; lastRecordedFrame = -1;
             commands.SetComputeIntParam(
                 shader,
                 VirtualPageCountId,
@@ -194,13 +208,13 @@ namespace Summit.GpuResidencyManager
                 1);
         }
 
-        public void RecordFrame(
+        public GraphicsFence RecordFrame(
             CommandBuffer commands,
             GpuResidencyFramePlan plan,
             GpuPointPageValue[] uploadPayload)
         {
             ValidateCommands(commands);
-            if (plan == null)
+            if (plan == null || !plan.IsActive)
             {
                 throw new ArgumentNullException(nameof(plan));
             }
@@ -208,6 +222,7 @@ namespace Summit.GpuResidencyManager
             {
                 throw new ArgumentNullException(nameof(uploadPayload));
             }
+            int uploadGroups = UploadDispatchGroupCount(plan.UploadCount, PointsPerPage);
             int payloadCount = checked(plan.UploadCount * PointsPerPage);
             if (uploadPayload.Length < payloadCount)
             {
@@ -216,12 +231,19 @@ namespace Summit.GpuResidencyManager
                     nameof(uploadPayload));
             }
 
-            commands.SetBufferData(
-                RequestedPages,
-                plan.RequestedPages,
-                0,
-                0,
-                plan.RequestedPages.Length);
+            if (!SystemInfo.supportsGraphicsFence) throw new NotSupportedException("Graphics fences are required.");
+            if (plan.RequestedCount > MaximumRequestedPages || plan.UploadCount > UploadDescriptors.count ||
+                plan.DeltaCount > PageTableDeltas.count || plan.Owner.VirtualPageCount != VirtualPageCount ||
+                plan.Owner.PhysicalSlotCount != PhysicalSlotCount)
+                throw new ArgumentException("Plan dimensions do not match this cache.", nameof(plan));
+            if ((recordedPlanner != null && recordedPlanner != plan.Owner) || plan.PreviousFrameId != lastRecordedFrame)
+                throw new InvalidOperationException("Record every accepted plan once in order; reset both cache and planner together.");
+            WaitForConsumers(commands);
+            if (plan.RequestedCount > 0)
+            {
+                commands.SetBufferData(RequestedSlots, plan.RequestedPhysicalSlots, 0, 0, plan.RequestedCount);
+                commands.SetBufferData(RequestedPages, plan.RequestedPages, 0, 0, plan.RequestedCount);
+            }
             if (plan.UploadCount > 0)
             {
                 commands.SetBufferData(
@@ -299,15 +321,17 @@ namespace Summit.GpuResidencyManager
                 commands.DispatchCompute(
                     shader,
                     scatterKernel,
-                    DivideRoundUp(payloadCount, ThreadGroupSize),
+                    uploadGroups,
                     1,
                     1);
             }
 
+            if (plan.RequestedCount == 0) return FinishFrame(commands, plan);
+            commands.SetComputeBufferParam(shader, queryKernel, RequestedSlotsId, RequestedSlots);
             commands.SetComputeIntParam(
                 shader,
                 RequestedPageCountId,
-                plan.RequestedPages.Length);
+                plan.RequestedCount);
             commands.SetComputeIntParam(
                 shader,
                 PointsPerPageId,
@@ -336,10 +360,35 @@ namespace Summit.GpuResidencyManager
                 shader,
                 queryKernel,
                 DivideRoundUp(
-                    plan.RequestedPages.Length,
+                    plan.RequestedCount,
                     ThreadGroupSize),
                 1,
                 1);
+            return FinishFrame(commands, plan);
+        }
+
+        private GraphicsFence FinishFrame(CommandBuffer commands, GpuResidencyFramePlan plan)
+        {
+            var fence = RecordConsumerFence(commands);
+            recordedPlanner = plan.Owner; lastRecordedFrame = plan.FrameId;
+            return fence;
+        }
+
+        /// <summary>Call again after external GPU consumers (including digest copies). Submit buffers once, in record order.</summary>
+        public GraphicsFence RecordConsumerFence(CommandBuffer commands)
+        {
+            ValidateCommands(commands);
+            if (!SystemInfo.supportsGraphicsFence)
+                throw new NotSupportedException("Residency streaming requires graphics fences.");
+            consumerFence = commands.CreateGraphicsFence(GraphicsFenceType.AsyncQueueSynchronisation,
+                SynchronisationStageFlags.AllGPUOperations);
+            hasConsumerFence = true;
+            return consumerFence;
+        }
+
+        private void WaitForConsumers(CommandBuffer commands)
+        {
+            if (hasConsumerFence) commands.WaitOnAsyncGraphicsFence(consumerFence);
         }
 
         public void Dispose()
@@ -353,6 +402,7 @@ namespace Summit.GpuResidencyManager
             UploadDescriptors.Dispose();
             PageTableDeltas.Dispose();
             RequestedPages.Dispose();
+            RequestedSlots.Dispose();
             PhysicalPoints.Dispose();
             PageTable.Dispose();
             PageDigests.Dispose();
@@ -371,6 +421,17 @@ namespace Summit.GpuResidencyManager
             {
                 name = name
             };
+        }
+
+        /// <summary>Validates DX12's per-dimension limit before recording any commands; zero uploads produce zero groups.</summary>
+        public static int UploadDispatchGroupCount(int uploadCount, int pointsPerPage)
+        {
+            if (uploadCount < 0) throw new ArgumentOutOfRangeException(nameof(uploadCount));
+            if (pointsPerPage < 1 || pointsPerPage > 16384) throw new ArgumentOutOfRangeException(nameof(pointsPerPage));
+            long points = (long)uploadCount * pointsPerPage;
+            if (points > (long)MaximumDispatchGroups * ThreadGroupSize)
+                throw new ArgumentOutOfRangeException(nameof(uploadCount), "Upload burst exceeds DX12 dispatch limits; budget against MaximumUploadPagesPerFrame before planning.");
+            return (int)((points + ThreadGroupSize - 1) / ThreadGroupSize);
         }
 
         private static int DivideRoundUp(int value, int divisor)

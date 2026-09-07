@@ -7,6 +7,7 @@ StructuredBuffer<uint4> _UploadPayload;
 StructuredBuffer<uint2> _Uploads;
 StructuredBuffer<uint2> _Deltas;
 StructuredBuffer<uint> _RequestedPages;
+StructuredBuffer<uint> _RequestedSlots;
 RWStructuredBuffer<uint4> _PhysicalPoints;
 RWStructuredBuffer<uint> _PageTable;
 RWStructuredBuffer<uint4> _PageDigests;
@@ -62,7 +63,7 @@ void QueryPageDigests(uint3 dispatchId : SV_DispatchThreadID)
         return;
     }
     uint virtualPage = _RequestedPages[requestIndex];
-    uint physicalSlot = _PageTable[virtualPage];
+    uint physicalSlot = _RequestedSlots[requestIndex];
     if (physicalSlot == 0xffffffffu)
     {
         _PageDigests[requestIndex] = 0xffffffffu;
