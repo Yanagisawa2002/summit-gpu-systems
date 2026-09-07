@@ -4,6 +4,7 @@ param(
  [Parameter(Mandatory)][string]$OutputDirectory,
  [Parameter(Mandatory)][string]$OracleRoot,
  [Parameter(Mandatory)][string]$LockScript,
+ [string]$CompletedHotspotOff='',
  [string]$StatusPath='',
  [string]$UnityPath='C:/Program Files/Unity/Hub/Editor/6000.5.2f1/Editor/Unity.exe'
 )
@@ -43,6 +44,13 @@ try {
   $jobs=@(@{scene='hotspot-dynamic';phases=$false},@{scene='streaming-switch';phases=$true},@{scene='hotspot-dynamic';phases=$true},@{scene='streaming-switch';phases=$false})
   foreach($job in $jobs){
    $name=$job.scene+'-'+$(if($job.phases){'phases-on'}else{'phases-off'});$folder=Join-Path $out $name;New-Item -ItemType Directory -Path $folder -Force|Out-Null
+   if($CompletedHotspotOff -and $name -eq 'hotspot-dynamic-phases-off'){
+    $old=Get-Content (Join-Path $CompletedHotspotOff 'result.json') -Raw | ConvertFrom-Json -Depth 30
+    if($old.status -ne 'complete' -or $old.verifiedFrames -ne 384 -or $old.verifiedExactMembershipFrames -ne 384 -or $old.config.phases -or $old.config.scenario -ne 'hotspot-dynamic' -or $old.config.seed -ne 927101){throw 'Prior completed diagnostic does not match fixed case'}
+    Get-ChildItem -LiteralPath $CompletedHotspotOff -File | ForEach-Object {Copy-Item -LiteralPath $_.FullName -Destination $folder}
+    $receipt.reusedCompleted=@{path=$CompletedHotspotOff;sourceSha=$old.config.sourceSha;pid=$old.pid;resultSha256=(Get-FileHash (Join-Path $folder 'result.json') -Algorithm SHA256).Hash;reason='Retain completed phase-off case; subsequent generator resource-name fix affects phase-on adapter only. No performance resampling.'};Save
+    continue
+   }
    $oracle=Join-Path $OracleRoot ('0-'+$job.scene+'/expected.bin')
    $config=[ordered]@{scenario=$job.scene;phases=$job.phases;seed=927101;frames=384;warmup=64;output=$folder;oracle=$oracle;sourceSha=$sha;oracleSha256=(Get-FileHash $oracle -Algorithm SHA256).Hash}
    $cfg=Join-Path $out ($name+'.config.json');$config|ConvertTo-Json|Set-Content $cfg

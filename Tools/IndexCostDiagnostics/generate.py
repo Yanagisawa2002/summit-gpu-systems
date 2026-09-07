@@ -2,7 +2,7 @@
 Only timestamp hooks and class names change in the profiled index adapters.
 The original PublicBenchmarks tree and production packages are never edited.
 """
-import argparse,hashlib,json,re,shutil
+import argparse,hashlib,json,re,shutil,os
 from pathlib import Path
 
 def sha(p): return hashlib.sha256(p.read_bytes()).hexdigest()
@@ -26,6 +26,7 @@ def generate(content, project_path=None):
     a=incremental.index('    public enum GpuSensorIndexExecutionMode'); b=incremental.index('    /// <summary>',a)
     incremental=incremental[:a]+incremental[b:]
     incremental=incremental.replace('GpuSensorIncrementalIndex','CostProfiledIncrementalIndex')
+    incremental=incremental.replace('"GpuSensorPipeline/CostProfiledIncrementalIndex"','"GpuSensorPipeline/GpuSensorIncrementalIndex"')
     needle='        public const int DiagnosticWordCount = 16;'
     assert needle in incremental
     incremental=incremental.replace(needle,'        public Action<CommandBuffer, string, bool> DiagnosticMarker;\n'+needle)
@@ -53,7 +54,7 @@ def generate(content, project_path=None):
     manifest=json.loads(read(source/'Packages/manifest.json'))
     for package in manifest['dependencies']:
         if package.startswith('com.summit.'):
-            manifest['dependencies'][package]='file:../../../../Packages/'+package
+            manifest['dependencies'][package]='file:'+Path(os.path.relpath(root/'Packages'/package,project/'Packages')).as_posix()
     (project/'Packages/manifest.json').write_text(json.dumps(manifest,indent=2),encoding='utf-8')
     (project/'ProjectSettings/ProjectVersion.txt').write_text(read(source/'ProjectSettings/ProjectVersion.txt'),encoding='utf-8')
     content=Path(content)
