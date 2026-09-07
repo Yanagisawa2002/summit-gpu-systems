@@ -1,8 +1,13 @@
 import unittest
-from analyze import summary, paired, align_engine, enough_positive, lifecycle_valid
+from analyze import summary, paired, align_engine, enough_positive, lifecycle_valid, recorded_allocation_total
 
 P=dict(blocks=4,cvLimitPercent=5,baselineDriftLimitPercent=15,p95SpeedRatioMinimum=1.01)
 class AnalysisTests(unittest.TestCase):
+    def test_unsupported_allocation_counter_is_not_zero(self):
+        self.assertIsNone(recorded_allocation_total({},[{'recordAllocatedBytes':0}]))
+        self.assertIsNone(recorded_allocation_total({'allocationCounterAvailable':False},[{'recordAllocatedBytes':-1}]))
+        self.assertIsNone(recorded_allocation_total({'allocationCounterAvailable':True},[{'recordAllocatedBytes':-1}]))
+        self.assertEqual(recorded_allocation_total({'allocationCounterAvailable':True},[{'recordAllocatedBytes':12},{'recordAllocatedBytes':20}]),32)
     def test_hand_calculated_ratio_and_unit(self):
         pairs=[[(summary([20,20]),summary([10,10])) for _ in range(4)] for _ in range(5)]
         r=paired(pairs,P)

@@ -4,10 +4,11 @@ param(
     [Parameter(Mandatory)][string]$OutputRoot,
     [Parameter(Mandatory)][ValidateSet('oracle','formal')][string]$Mode,
     [string]$OracleRoot,
+    [string]$ProtocolPath=(Join-Path $PSScriptRoot '../protocol.json'),
     [string]$SerializedRunner=(Join-Path $PSScriptRoot 'Invoke-Serialized.ps1')
 )
 $ErrorActionPreference='Stop'
-$protocolPath=Join-Path $PSScriptRoot '../protocol.json'
+$protocolPath=[IO.Path]::GetFullPath($ProtocolPath)
 $protocol=Get-Content $protocolPath -Raw | ConvertFrom-Json
 $build=[IO.Path]::GetFullPath($BuildRoot)
 $source=(Get-Content (Join-Path $build 'build-attestation.json') -Raw | ConvertFrom-Json).sourceSha
