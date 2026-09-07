@@ -25,7 +25,7 @@ for($rep=0;$rep -lt $protocol.processSeeds.Count;$rep++){
         $cfg=[ordered]@{mode=$Mode;scenario=$scene;output=$runOutput;oracle=$oracle;sourceSha=$source;
             seed=$protocol.processSeeds[$rep];frames=$protocol.frames;warmup=$protocol.warmup;
             blocks=$(if($Mode -eq 'oracle'){1}else{$protocol.blocks});processReplicate=$rep;
-            arms=$(if($Mode -eq 'oracle'){@('old-full')}else{@($protocol.arms)});screenshot=$false}
+            arms=@(if($Mode -eq 'oracle'){'old-full'}else{$protocol.arms});screenshot=$false}
         $configPath=Join-Path $output "$id.config.json";$cfg | ConvertTo-Json -Depth 12 | Set-Content $configPath -Encoding utf8
         $entry=[ordered]@{id=$id;status='running';config=$configPath;output=$runOutput}
         $entries.Add($entry)

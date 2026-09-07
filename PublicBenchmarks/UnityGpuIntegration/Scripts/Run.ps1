@@ -8,6 +8,7 @@ param(
 $ErrorActionPreference='Stop'
 $build=[IO.Path]::GetFullPath($BuildRoot)
 $config=Get-Content -LiteralPath $ConfigPath -Raw | ConvertFrom-Json
+if($config.arms -isnot [array] -or $config.arms.Count -lt 1){throw 'Arms must be a nonempty JSON array.'}
 $output=[IO.Path]::GetFullPath($config.output)
 if(Test-Path -LiteralPath $output){throw 'Fresh run output required; retain every previous attempt.'}
 $attestation=Get-Content -LiteralPath (Join-Path $build 'build-attestation.json') -Raw | ConvertFrom-Json
@@ -39,6 +40,7 @@ try {
         if($owned.ExitCode -ne 0){throw "Player exited $($owned.ExitCode)"}
         $result=Get-Content -LiteralPath (Join-Path $output 'result.json') -Raw | ConvertFrom-Json
         if($result.status -ne 'completed'){throw "Player result status: $($result.status)"}
+        if($result.runs.Count -ne $config.blocks*$config.arms.Count -or @($result.runs | Where-Object {!$_.verified}).Count){throw 'Incomplete verified arm matrix'}
         $buildReceipt=Get-Content -LiteralPath (Join-Path $build 'release-build.json') -Raw | ConvertFrom-Json
         if($result.buildGuid -ne $buildReceipt.buildGuid){throw 'Player build identity mismatch'}
         $receipt.status='completed'

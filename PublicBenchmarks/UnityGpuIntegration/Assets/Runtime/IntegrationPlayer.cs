@@ -124,6 +124,9 @@ namespace Summit.PublicIntegration
         }
         IEnumerator Run()
         {
+            string[] known={"old-full","new-full","old-incremental","new-incremental"};
+            if(config.arms==null||config.arms.Length==0||config.arms.Distinct().Count()!=config.arms.Length||config.arms.Any(a=>!known.Contains(a)))throw new Exception("Invalid nonempty arm array");
+            if(config.mode!="oracle"&&config.mode!="validate"&&config.mode!="formal")throw new Exception("Unknown run mode");
             if(config.mode=="formal"&&!result.formalPerformanceEvidence)throw new Exception("Formal evidence requires a non-Development standalone Player");
             if(SystemInfo.graphicsDeviceType!=GraphicsDeviceType.Direct3D12)throw new Exception("D3D12 required");
             if(!GpuTimestampSession.TryCreate(out timestamps,out var support))throw new Exception("Native timestamp support: "+support.Message);
