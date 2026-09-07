@@ -7,14 +7,16 @@ using UnityEngine.Rendering;
 internal sealed class GpuResidencyBenchmarkAdapter : IDisposable
 {
     public const string RebuildCaseId =
-        "gpu-residency/rebuild-visible-set-v1";
+        "gpu-residency/rebuild-visible-set-v2";
     public const string PersistentCaseId =
-        "gpu-residency/persistent-lru-delta-v1";
+        "gpu-residency/persistent-lru-delta-v2";
     public const int GridWidth = 64;
     public const int WindowWidth = 16;
     public const int RequestedPageCount = WindowWidth * WindowWidth;
 
     private readonly uint seed;
+    private readonly bool compareLruPolicies;
+    private readonly int gridWidth;
     private readonly GpuPointPageCache cache;
     private readonly GpuPageResidencyPlanner rebuildPlanner;
     private readonly GpuPageResidencyPlanner persistentPlanner;
@@ -30,13 +32,15 @@ internal sealed class GpuResidencyBenchmarkAdapter : IDisposable
         int virtualPageCount,
         int physicalSlotCount,
         int pointsPerPage,
-        int seed)
+        int seed, bool compareLruPolicies = false)
     {
-        if (virtualPageCount != GridWidth * GridWidth)
+        gridWidth = (int)Math.Sqrt(virtualPageCount);
+        this.compareLruPolicies = compareLruPolicies;
+        if (gridWidth * gridWidth != virtualPageCount || (gridWidth & (gridWidth - 1)) != 0 || gridWidth < WindowWidth)
         {
             throw new ArgumentOutOfRangeException(
                 nameof(virtualPageCount),
-                "The deterministic path requires a 64 x 64 virtual grid.");
+                "The deterministic path requires a power-of-two square virtual grid.");
         }
         if (physicalSlotCount < RequestedPageCount)
         {
@@ -82,12 +86,12 @@ internal sealed class GpuResidencyBenchmarkAdapter : IDisposable
             virtualPageCount,
             physicalSlotCount,
             RequestedPageCount,
-            GpuResidencyPolicy.RebuildVisibleSet);
+            compareLruPolicies ? GpuResidencyPolicy.PersistentLru : GpuResidencyPolicy.RebuildVisibleSet);
         persistentPlanner = new GpuPageResidencyPlanner(
             virtualPageCount,
             physicalSlotCount,
             RequestedPageCount,
-            GpuResidencyPolicy.PersistentLru);
+            compareLruPolicies ? GpuResidencyPolicy.PersistentHeapLru : GpuResidencyPolicy.PersistentLru);
         backingStore = new GpuPointPageValue[
             checked(virtualPageCount * pointsPerPage)];
         uploadStaging = new GpuPointPageValue[
@@ -109,6 +113,7 @@ internal sealed class GpuResidencyBenchmarkAdapter : IDisposable
 
     public string VariantName(GpuResidencyBenchmarkVariant variant)
     {
+        if (compareLruPolicies) return variant == GpuResidencyBenchmarkVariant.RebuildVisibleSet ? "persistent-scan-lru" : "persistent-heap-lru";
         return variant == GpuResidencyBenchmarkVariant.RebuildVisibleSet
             ? "rebuild-visible-set"
             : "persistent-lru-delta";
@@ -116,6 +121,7 @@ internal sealed class GpuResidencyBenchmarkAdapter : IDisposable
 
     public string CaseId(GpuResidencyBenchmarkVariant variant)
     {
+        if (compareLruPolicies) return "gpu-residency/" + VariantName(variant) + "-v2";
         return variant == GpuResidencyBenchmarkVariant.RebuildVisibleSet
             ? RebuildCaseId
             : PersistentCaseId;
@@ -124,6 +130,7 @@ internal sealed class GpuResidencyBenchmarkAdapter : IDisposable
     public void Reset(GpuResidencyBenchmarkVariant variant)
     {
         ThrowIfDisposed();
+        if (lastPlan != null && lastPlan.IsActive) lastPlan.OwnerComplete();
         Planner(variant).Reset();
         lastPlan = null;
         resetCommands.Clear();
@@ -136,12 +143,17 @@ internal sealed class GpuResidencyBenchmarkAdapter : IDisposable
         int pathFrame)
     {
         ThrowIfDisposed();
+        // Previous commands and all their consumers have already been submitted on the same graphics queue.
+        // The cache inserts a fence before subsequent writes, so these leases can be retired for ordered reuse.
         BuildRequests(pathFrame);
+        long allocationStart = GC.GetAllocatedBytesForCurrentThread();
         long planStart = Stopwatch.GetTimestamp();
+        if (lastPlan != null && lastPlan.IsActive) lastPlan.OwnerComplete();
         GpuResidencyFramePlan plan = Planner(variant).PlanFrame(
             requestedPages,
             pathFrame);
         double planningMs = ElapsedMilliseconds(planStart);
+        long planningAllocatedBytes = GC.GetAllocatedBytesForCurrentThread() - allocationStart;
 
         long stagingStart = Stopwatch.GetTimestamp();
         for (int upload = 0; upload < plan.UploadCount; upload++)
@@ -166,7 +178,8 @@ internal sealed class GpuResidencyBenchmarkAdapter : IDisposable
                 GpuPointPageCache.UploadStride),
             checked((long)plan.DeltaCount *
                 GpuPointPageCache.DeltaStride),
-            checked((long)plan.RequestedPages.Length * sizeof(uint)));
+            checked((long)plan.RequestedCount * sizeof(uint) * 2),
+            planningAllocatedBytes);
     }
 
     public double RecordFrame(GpuResidencyFramePreparation preparation)
@@ -188,7 +201,7 @@ internal sealed class GpuResidencyBenchmarkAdapter : IDisposable
             throw new InvalidOperationException(
                 "No residency frame has been recorded.");
         }
-        var actual = new GpuPageDigest[lastPlan.RequestedPages.Length];
+        var actual = new GpuPageDigest[lastPlan.RequestedCount];
         cache.PageDigests.GetData(actual);
         uint hash = 2166136261u;
         for (int index = 0; index < actual.Length; index++)
@@ -248,16 +261,16 @@ internal sealed class GpuResidencyBenchmarkAdapter : IDisposable
     {
         int epoch = pathFrame / 128;
         int local = pathFrame % 128;
-        int baseX = (local + epoch * 23) & (GridWidth - 1);
-        int baseY = (epoch * 17 + local / 8) & (GridWidth - 1);
+        int baseX = (local + epoch * 23) & (gridWidth - 1);
+        int baseY = (epoch * 17 + local / 8) & (gridWidth - 1);
         int index = 0;
         for (int y = 0; y < WindowWidth; y++)
         {
-            int pageY = (baseY + y) & (GridWidth - 1);
+            int pageY = (baseY + y) & (gridWidth - 1);
             for (int x = 0; x < WindowWidth; x++)
             {
-                int pageX = (baseX + x) & (GridWidth - 1);
-                requestedPages[index++] = pageY * GridWidth + pageX;
+                int pageX = (baseX + x) & (gridWidth - 1);
+                requestedPages[index++] = pageY * gridWidth + pageX;
             }
         }
     }
@@ -302,7 +315,7 @@ internal sealed class GpuResidencyBenchmarkAdapter : IDisposable
     }
 }
 
-internal sealed class GpuResidencyFramePreparation
+internal readonly struct GpuResidencyFramePreparation
 {
     public GpuResidencyFramePreparation(
         GpuResidencyFramePlan plan,
@@ -311,7 +324,7 @@ internal sealed class GpuResidencyFramePreparation
         long pointPayloadBytes,
         long descriptorBytes,
         long deltaBytes,
-        long requestBytes)
+        long requestBytes, long planningAllocatedBytes)
     {
         Plan = plan;
         PlanningMs = planningMs;
@@ -320,9 +333,11 @@ internal sealed class GpuResidencyFramePreparation
         DescriptorBytes = descriptorBytes;
         DeltaBytes = deltaBytes;
         RequestBytes = requestBytes;
+        PlanningAllocatedBytes = planningAllocatedBytes;
     }
 
     public GpuResidencyFramePlan Plan { get; }
+    public long PlanningAllocatedBytes { get; }
     public double PlanningMs { get; }
     public double StagingMs { get; }
     public long PointPayloadBytes { get; }

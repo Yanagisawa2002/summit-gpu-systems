@@ -11,10 +11,11 @@ namespace Summit.GpuResidencyManager.Tests
                 16, 6, 4, GpuResidencyPolicy.PersistentLru);
             GpuResidencyFramePlan first = planner.PlanFrame(
                 new[] { 0, 1, 2, 3 }, 0);
+            Assert.That(first.UploadCount, Is.EqualTo(4));
+            first.OwnerComplete();
             GpuResidencyFramePlan second = planner.PlanFrame(
                 new[] { 1, 2, 3, 4 }, 1);
 
-            Assert.That(first.UploadCount, Is.EqualTo(4));
             Assert.That(second.HitCount, Is.EqualTo(3));
             Assert.That(second.UploadCount, Is.EqualTo(1));
             Assert.That(planner.PhysicalSlotForVirtualPage(4), Is.GreaterThanOrEqualTo(0));
@@ -25,7 +26,8 @@ namespace Summit.GpuResidencyManager.Tests
         {
             var planner = new GpuPageResidencyPlanner(
                 16, 4, 4, GpuResidencyPolicy.RebuildVisibleSet);
-            planner.PlanFrame(new[] { 0, 1, 2, 3 }, 0);
+            var first = planner.PlanFrame(new[] { 0, 1, 2, 3 }, 0);
+            first.OwnerComplete();
             GpuResidencyFramePlan second = planner.PlanFrame(
                 new[] { 1, 2, 3, 4 }, 1);
 
@@ -38,7 +40,8 @@ namespace Summit.GpuResidencyManager.Tests
         {
             var planner = new GpuPageResidencyPlanner(
                 32, 4, 4, GpuResidencyPolicy.PersistentLru);
-            planner.PlanFrame(new[] { 0, 1, 2, 3 }, 0);
+            var first = planner.PlanFrame(new[] { 0, 1, 2, 3 }, 0);
+            first.OwnerComplete();
             GpuResidencyFramePlan second = planner.PlanFrame(
                 new[] { 1, 2, 3, 4 }, 1);
 

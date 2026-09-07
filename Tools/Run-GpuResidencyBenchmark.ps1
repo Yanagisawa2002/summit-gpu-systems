@@ -10,11 +10,15 @@ param(
     [int]$DeviceIndex = 0,
     [ValidateRange(5, 120)]
     [int]$PlayerTimeoutMinutes = 60,
+    [switch]$CompareLruPolicies,
+    [ValidateSet(384, 4096, 32768)][int]$PhysicalSlots = 384,
+    [ValidateSet(4096, 16384, 65536)][int]$VirtualPages = 4096,
     [switch]$SkipBuild,
     [switch]$SkipTests
 )
 
 $ErrorActionPreference = 'Stop'
+if ($PhysicalSlots -gt $VirtualPages) { throw 'PhysicalSlots must not exceed VirtualPages.' }
 Set-StrictMode -Version Latest
 
 function Quote-Argument([string]$Value) {
@@ -60,8 +64,8 @@ $common = [ordered]@{
     warmupFrames = 30
     sampleFrames = 240
     cooldownFrames = 5
-    virtualPages = 4096
-    physicalSlots = 384
+    virtualPages = $VirtualPages
+    physicalSlots = $PhysicalSlots
 }
 switch ($MatrixPreset) {
     'smoke' {
@@ -185,6 +189,7 @@ foreach ($scenario in $scenarios) {
         '-gpu-residency-seed', [string]$scenario.seed,
         '-gpu-residency-timeout-seconds', '60',
         '-logFile', (Quote-Argument $playerLog))
+    if ($CompareLruPolicies) { $args += '-gpu-residency-compare-lru' }
     Write-Output "Running $($scenario.id)"
     $process = Start-Process -FilePath $player -ArgumentList $args `
         -WorkingDirectory $root -WindowStyle Hidden -PassThru
@@ -201,7 +206,9 @@ foreach ($scenario in $scenarios) {
     }
 }
 
+if (-not $CompareLruPolicies) {
 & (Join-Path $PSScriptRoot 'Summarize-GpuResidencyBenchmark.ps1') `
     -ReportDirectory $output
 if ($LASTEXITCODE -ne 0) { throw 'Residency summary failed.' }
+} else { & (Join-Path $PSScriptRoot 'Summarize-ResidencyLruComparison.ps1') -ReportDirectory $output }
 Write-Output "Completed GPU residency benchmark: $output"
