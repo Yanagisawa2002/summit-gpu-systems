@@ -67,8 +67,13 @@ logical digest state `[0,63]`. It does not require `SetStableIds`. External CSR
 contents are a trusted producer contract: offsets start at zero, are monotonic,
 have `262145` entries, and terminate at or below `binnedIds.count`. The query
 skips IDs at or above `stableIdCapacity`; pass **Capacity, never active count**.
-Future chunk consumers must allocate for the CSR extent including holes, not
-the live count. The integration query worker owns that backend routing.
+Chunk consumers must allocate for the CSR extent including holes, not the live
+count. To combine this index with `PointChunks` or `PointChunksWave`, construct
+the pipeline with `queryIndexEntryCapacity: 3 * slotCapacity` and the chosen
+`queryBackend`. All three backends route the external buffers through
+`RecordExternalIndexQueries`; insufficient reserved capacity rejects before
+recording commands. The combined integration tests cover sparse stable IDs,
+tombstones, payload updates and rebuild transitions against independent oracles.
 
 ## Membership reuse and rebuilding
 

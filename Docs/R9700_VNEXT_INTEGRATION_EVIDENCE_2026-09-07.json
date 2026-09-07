@@ -1,0 +1,385 @@
+{
+  "schemaVersion": 1,
+  "evidenceClass": "implementation-correctness-and-instrumentation-only",
+  "formalPerformanceAccepted": false,
+  "baseline": "3faad555c6044f966403261d627d8d6ac232d2d9",
+  "testedCodeCommit": "25f230654382b7c1e67c6658e210674fbaf28ac4",
+  "sixPartSmokeCommit": "1d57b8d1abe117e451b7caaab6865eeadf80fe5c",
+  "mergedCommits": [
+    {
+      "id": "index",
+      "commit": "cc102dbcc15d3398055dc8c47ef3adc821ab6d34",
+      "mergeCommit": "9f7f7c04e5c67638619ded46f0646ab71a37d774"
+    },
+    {
+      "id": "residency",
+      "commit": "a9a5b1730cd45d5feff074da60e294088f7dcb87",
+      "mergeCommit": "ececa94c7e6aa2eb255d14b24d7d76af12a0d0dc"
+    },
+    {
+      "id": "primitives",
+      "commit": "250b8da818ca65bab74fb2583508540de776ccb9",
+      "mergeCommit": "41899e13ce68a6aefea41ecb8279564f5ad83430"
+    },
+    {
+      "id": "adaptive",
+      "commit": "49cd5ff2d176ec9993283eff7e43e9af8f0fd513",
+      "mergeCommit": "749d848dde10c67ae2f2cb23b5aa3a03c730184e"
+    },
+    {
+      "id": "scheduler",
+      "commit": "bf903979d98ba5d3ce6eb62b29d25236fa0f75fe",
+      "mergeCommit": "ff1ca22a9bef9c59a34b5a30e8ba2e046bec87fa"
+    },
+    {
+      "id": "query",
+      "commit": "a4c000d7e61cd5dfb16d5bfad39edac0793550d8",
+      "mergeCommit": "adf7dc6591a7c6da6a7b53dd6943c44a17e6e9b6"
+    }
+  ],
+  "rawEvidenceRoot": "C:\\Users\\EdwinLiu\\Downloads\\SUMMIT-gpu-r9700-vnext-integration",
+  "rawEvidenceTracked": false,
+  "sourceStableDuringFinalRerun": true,
+  "sourceShaderIdentity": "4CF4750F6008B1158251B663589FD297CB484B41D23FF9ED7EDCE2A5822BD6E1",
+  "unityProjectVersion": [
+    "m_EditorVersion: 6000.5.2f1",
+    "m_EditorVersionWithRevision: 6000.5.2f1 (eb73d3b415a1)"
+  ],
+  "compilerSha256": "2657D6C076F25DA474DA87CD320CC89F3C2C798DF46B5575F486EB20FFF54DA8",
+  "tests": [
+    {
+      "path": "TestResults/vnext-integrated-cpu-r2/results.xml",
+      "total": 600,
+      "passed": 332,
+      "failed": 0,
+      "skipped": 268
+    },
+    {
+      "path": "TestResults/vnext-final-dx12/results.xml",
+      "total": 600,
+      "passed": 597,
+      "failed": 0,
+      "skipped": 3
+    },
+    {
+      "path": "Reports/vnext-metrics-smoke/index/results.xml",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    }
+  ],
+  "smoke": {
+    "primitives": {
+      "nativeFrameRows": 1380,
+      "validationRows": 44,
+      "candidateSummaryRows": 22
+    },
+    "query": {
+      "schemaVersion": 2,
+      "measuredRows": 288,
+      "workloadRows": 144,
+      "maximumRecordAllocatedBytes": 0,
+      "allocationScope": "Current-thread managed bytes during query command recording; excludes stopwatch construction, native markers, submission, validation and report construction."
+    },
+    "index": {
+      "schemaVersion": 2,
+      "rows": 64,
+      "measuredRows": 48,
+      "controls": 8,
+      "maximumRecordAllocatedBytes": 0,
+      "maximumSubmitAllocatedBytes": 0,
+      "allocationScope": "Current-thread managed bytes: record includes native marker recording, submit covers ExecuteCommandBuffer; excludes snapshots, token acquisition, correctness readback and report construction."
+    },
+    "adaptive": {
+      "samples": 216,
+      "controls": 6,
+      "validations": 48,
+      "persistentGpuScratchBytes": 84552,
+      "measurementReadbackBytes": 0
+    },
+    "residency": {
+      "samples": 256,
+      "validations": 8
+    },
+    "scheduler": {
+      "cases": 20,
+      "nativeSamples": 368,
+      "measuredCases": 10
+    }
+  },
+  "deferred": [
+    "All formal performance stages",
+    "Explicit Wave32/Wave64: current Unity import path lacks validated SM6.6"
+  ],
+  "rawFiles": [
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/adaptive/arguments.json",
+      "sha256": "fefc15b01236a2db22301ce8cc81fdd0eeb5064ef2a25a5becd931d6133a44e0"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/adaptive/build-identity.json",
+      "sha256": "2b8a78aafa5d812b6d046a42d383539d8995010afb97a5326ea66262e84b9e7e"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/adaptive/runtime-report.json",
+      "sha256": "86f6e526d33a7fe54a1f38ca7b35a8b60549468e06c94e248bc9c1dfe2c83de1"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/environment-after.json",
+      "sha256": "28e1bcc21ada475c4e890f71d3bf2c96cbd77cb9f3c20eea1eb494f490dceb90"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/environment-before.json",
+      "sha256": "57f08b346d5548a4dfe8e129ebeda24b50eaee097db0c55ec15e7f622b94f75d"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/primitives/partial-duplicates-13/block-summary.csv",
+      "sha256": "c09516af866f44cbf9338ae203150e73eeb88272461dfcf12d635fc10acf046b"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/primitives/partial-duplicates-13/candidate-capabilities.csv",
+      "sha256": "d79252053253e98a5ef3a5e09a4598fe907b065ac0b6dcd174ee91398d614e2c"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/primitives/partial-duplicates-13/candidate-resources.csv",
+      "sha256": "f86880c9af17a173b5b25812d3b81e5691fdea5f2feadce062442b2d45aa444f"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/primitives/partial-duplicates-13/candidate-summary.csv",
+      "sha256": "10e0ff3e858b79b000c08682f17639cf8d9a720ffc443a692d36328b3f112e51"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/primitives/partial-duplicates-13/config.json",
+      "sha256": "86169bbdcb99d26b1e3fe8d2f788aa4f85a5be01db96825204fce3920224c1c6"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/primitives/partial-duplicates-13/device.json",
+      "sha256": "e17ac9fe50e6dddf928a92cb3929459d761531e1a0b61b128886886146a54bac"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/primitives/partial-duplicates-13/operation-summary.csv",
+      "sha256": "65d912f56fe61c94dd03496eef51ef763a29f422f75c7d64309049445bec0bc9"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/primitives/partial-duplicates-13/paired-deltas.csv",
+      "sha256": "729bff69616913a0e7563d682f9f5bff145ccdc429fb7ce296d103fb599495e8"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/primitives/partial-duplicates-13/player-payload-manifest.json",
+      "sha256": "723dab48dad8f63b6737231897c10c0efe1fa95d5924684b1b0ce53c0e508564"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/primitives/partial-duplicates-13/quality-summary.txt",
+      "sha256": "74bba2d6856ffa454ec10f3ed9f075743fcacbdd1f4702e5025b98673cde8816"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/primitives/partial-duplicates-13/raw-frames.csv",
+      "sha256": "87229ed95edd14a15e02ba1f52dcf1abb5ef151ff7b6266165c3ab9d14d295fe"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/primitives/partial-duplicates-13/run-summary.txt",
+      "sha256": "588f3befdf17c3f294ff9939c799335f177156aed2164951af68f6435c7c9ed7"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/primitives/partial-duplicates-13/runner-config.json",
+      "sha256": "7b5953a174ae9963938bf8f7efd246542543358588f217c37d2d081625d92a01"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/primitives/partial-duplicates-13/validation.csv",
+      "sha256": "5b32299f2e8ccc75fdd266a8b0ce73fcd92e6fb3f6ea36c0829a5eaf5e731c58"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/residency/residency-smoke-p256/block-summary.csv",
+      "sha256": "87642ae9c7034bf939b5e033c8744f3549c62c20f814e4ac5f05965ee9960fea"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/residency/residency-smoke-p256/config.json",
+      "sha256": "2d32e5c02ec1522cd1ac3c2fb7570799f3dcfe199f48c4b0b4cb7b7e1800cd64"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/residency/residency-smoke-p256/device.json",
+      "sha256": "aea10c7edc51762aebab4ea58a9fe47f7d6c9dcd80ee039b06a446cd27dadf5c"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/residency/residency-smoke-p256/raw-samples.csv",
+      "sha256": "d64a1d54110a631712584d89acc53c395727d4f4a798c004fe52705f1cc6cabb"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/residency/residency-smoke-p256/run-summary.txt",
+      "sha256": "080d1b792d474648e5bc2e6ebf70457ad4c1bdb1f188c6e076e54304a67d2696"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/residency/residency-smoke-p256/validation.csv",
+      "sha256": "9553ec72a4e2f773b7dc1fe609e73c50a35b642f762aaf4f94d001576e6f44b4"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/scheduler/background-progress-r0-fifo-bounded-measured.json",
+      "sha256": "004bf5327d46cd0077c1d900d20c1e712bd459ed6057b3af88fbfebd5b469ee1"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/scheduler/background-progress-r0-fifo-bounded-validation.json",
+      "sha256": "09d37de356bbe99af5d19f1bfa9f0dafc668e3762a2e2b3f075a3d7c96742b62"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/scheduler/background-progress-r0-runtime-aging-cost-dag-measured.json",
+      "sha256": "52210e3fc5c3da470492cef17d7e65c2425f612d1404166af269de36ec79737c"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/scheduler/background-progress-r0-runtime-aging-cost-dag-validation.json",
+      "sha256": "a2583f11d84486dd9fbedf3651d7a10b9428fc6bdd388c69f4f0e1b84c21e848"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/scheduler/bursts-r0-fifo-bounded-measured.json",
+      "sha256": "554c2668fe185d10709d99a10770f1f843832f894146aca900cbaaadbcf2e22e"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/scheduler/bursts-r0-fifo-bounded-validation.json",
+      "sha256": "b5ec7ff1e3d18acad1736ee2221b337e7d79496459918b57ca63b8ede00249e8"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/scheduler/bursts-r0-runtime-aging-cost-dag-measured.json",
+      "sha256": "ccbcdd7245042a3da980c30789b569ed05f83fac13573d0171ad007200b17aa2"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/scheduler/bursts-r0-runtime-aging-cost-dag-validation.json",
+      "sha256": "fda61f1a47ed673dee2c6036b77ee6cde552621ac6e8af5a4822e63521d5d0bf"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/scheduler/changing-costs-r0-fifo-bounded-measured.json",
+      "sha256": "000e4d288050725b632d8939c2affcf905b6f9e62760fde250d005acbd119870"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/scheduler/changing-costs-r0-fifo-bounded-validation.json",
+      "sha256": "b3408edc900f82310b80809cf64af35f1fbf9f72317afc69157fa1f9bf6cb017"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/scheduler/changing-costs-r0-runtime-aging-cost-dag-measured.json",
+      "sha256": "860478f25853a4622af7b491c5ff14ebec1dc81d11f606f6d10f36293ae110ee"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/scheduler/changing-costs-r0-runtime-aging-cost-dag-validation.json",
+      "sha256": "4567b4d5ca0c14345c60dd113262fa149480a8ddb897225776360cbc9d1127d7"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/scheduler/completed.txt",
+      "sha256": "8a405ddc95d86928dd3b877f5c887c1dfde9eb713c7be5896b7b83d358fd4745"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/scheduler/dependencies-r0-fifo-bounded-measured.json",
+      "sha256": "673e00700ade01365b00cca050af53d813f12ec9d6bcd40e3a007e1fe1396914"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/scheduler/dependencies-r0-fifo-bounded-validation.json",
+      "sha256": "75830545b74d621e312049ab8f024af71111e070718e4545af7cb7457c742168"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/scheduler/dependencies-r0-runtime-aging-cost-dag-measured.json",
+      "sha256": "c24bccc723a588f2585b22eda76f6879b91f048f6f6a705321c3a6a7b7f053de"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/scheduler/dependencies-r0-runtime-aging-cost-dag-validation.json",
+      "sha256": "b4cd61b7ed991743686912d231a0b52aba86007f17a4bd576c11841a60d1d75d"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/scheduler/empty-controls.csv",
+      "sha256": "3616d7b511ca4ff2da358d95b45a441d918666393af91e738fc0d6d24cb7787b"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/scheduler/environment.json",
+      "sha256": "85a8911e14023ceee3c5f957f14b1939c2b770711168c6b05a0c518725c2c06e"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/scheduler/evidence-validation.json",
+      "sha256": "cc9ed3a2198628346a3588d06fa14e0df2dce64090808301e5a9e8127b060c3f"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/scheduler/overload-r0-fifo-bounded-measured.json",
+      "sha256": "337a32f2311f2d4a5a5bcd002bb3940968a164a4868def18733d8a1952d85b98"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/scheduler/overload-r0-fifo-bounded-validation.json",
+      "sha256": "c3111924b48d52ec822102bacdb553ccf91e7b43f93d2b9ad02779e37753e9c4"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/scheduler/overload-r0-runtime-aging-cost-dag-measured.json",
+      "sha256": "a50b35e0b8a4b7982555edb6ed6cb046754695e8573fc7f297562f900ce0f11c"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/scheduler/overload-r0-runtime-aging-cost-dag-validation.json",
+      "sha256": "ceaea695b396e317e5669e25612019524d2b2b83eb3a41bb91ad90dc210103f9"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/scheduler/post-run-manifests.json",
+      "sha256": "8e66818fe2efc2772649a90aa87290fa2aacec868a4b8f7c1a345f45109607ab"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/scheduler/provenance.json",
+      "sha256": "999bf3c466c11bf491bab6978e193c99127e4d94a11f397abc3b4369251395e1"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/scheduler/source-before-build.json",
+      "sha256": "ffc8bd3f9dc215609b82cdebad03f9224f54189bb36fa6a40afe2ec627153cdb"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/scheduler/summary.csv",
+      "sha256": "1edecacf9238d3203f755defd4479dd832f42270198e2afc21028777b58241b3"
+    },
+    {
+      "path": "Reports/vnext-integrated-stages-r2/Smoke/stage.json",
+      "sha256": "c893a0970124f3f361c35617419d51cf902e9f66a9e55ec836eeaf665b8bd16d"
+    },
+    {
+      "path": "Reports/vnext-metrics-smoke/environment-after.json",
+      "sha256": "a49f459b9edb85da4e8f0eaa3b9bb29ada196f83ab4ee5df0207139dd5c774ea"
+    },
+    {
+      "path": "Reports/vnext-metrics-smoke/environment-before.json",
+      "sha256": "2061c2cad34af9777928e7c993741148e8060f520f06322d1e3ab036964e407a"
+    },
+    {
+      "path": "Reports/vnext-metrics-smoke/index/comparison.json",
+      "sha256": "117c39748158835b78ccc71affd82547021551f0339c6174c7afcf5d3e334e82"
+    },
+    {
+      "path": "Reports/vnext-metrics-smoke/index/provenance.json",
+      "sha256": "899d42bc86dfc03210580a8342ea26ac179bc851f22d10039254a39589c4aab5"
+    },
+    {
+      "path": "Reports/vnext-metrics-smoke/index/results.xml",
+      "sha256": "c900db6c87f8b42a758e0886d2c7c5a22d402cb8de41e950248296007b89e2e6"
+    },
+    {
+      "path": "Reports/vnext-metrics-smoke/index/summary.json",
+      "sha256": "994120037dca2c2198b0f9b65adc8a9347429f765482397cf2de502bdbfd28d7"
+    },
+    {
+      "path": "Reports/vnext-metrics-smoke/query/config.json",
+      "sha256": "b84bfe9cc2037f43d4be8471fb0228dcdc441c6b11f5df4e44ca7c7236e1744e"
+    },
+    {
+      "path": "Reports/vnext-metrics-smoke/query/measurements.json",
+      "sha256": "1f7de552ef9bbb2ba67d96b3104e5d423898151e84ca325a1fc26ee2c6a541d7"
+    },
+    {
+      "path": "Reports/vnext-metrics-smoke/query/player-hashes.json",
+      "sha256": "56e9d8fb1f297c07d80c2fe638e3b4625e97932ac2e8b10efd2b0842b24d2c0d"
+    },
+    {
+      "path": "Reports/vnext-metrics-smoke/query/provenance.json",
+      "sha256": "a246936faa723184b94d60eb442879202f867528496e14a290d191a3152e25e9"
+    },
+    {
+      "path": "Reports/vnext-metrics-smoke/query/summary.csv",
+      "sha256": "3b2c1b28fcbb511a8371af0c3468b49694fdb6e18ef2bdfb1f2a50aaf1f55b39"
+    },
+    {
+      "path": "TestResults/vnext-final-dx12/results.xml",
+      "sha256": "e7293cfdaab733d7953cc8cfd191a719b3b7e014083ce5a87e6a9abe90b5f292"
+    },
+    {
+      "path": "TestResults/vnext-integrated-cpu-r2/results.xml",
+      "sha256": "99ed3a1c264274c90b9994a1fc136158cfae817d3554978a41dae8bb5a63f189"
+    }
+  ]
+}
