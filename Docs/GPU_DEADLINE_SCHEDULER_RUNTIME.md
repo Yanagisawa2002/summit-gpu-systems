@@ -136,3 +136,52 @@ These are short jobs, so Player polling/instrumentation can dominate latency.
 Compare CPU-observed P99/misses and GPU timeline/dispatch metrics together, retain
 all AB/BA rounds, and make no production policy promotion from smoke results.
 This extension has not run the post-integration formal R9700 matrix.
+
+## Evidence retention and validation
+
+The comparison requires PowerShell 7. Each invocation requires an empty output
+directory. Each build writes to a new Player directory and records a sorted
+path/size/SHA-256 manifest for **every** payload file, including managed/native
+DLLs, shaders, resources and data files. The build provenance sidecar lives
+outside that payload. Source manifests include tracked and untracked build/tool
+inputs. Both manifests are checked before launch and again after the Player exits;
+`-SkipBuild` rejects changed sources or payloads rather than stamping the current
+checkout onto an old executable.
+
+Formal runs require clean Git state before building, and refuse a Player built
+from dirty user source. Build-generated drift is recorded with before/after hashes
+and exact settings text/diff. Only `ProjectSettings.asset` and
+`SceneTemplateSettings.json` are allowed automatic drift; other changes fail the
+gate. The checked-in timestamp DLL is used by default. `-RebuildNative` is an
+explicit diagnostic option that also records the exact native DLL drift. The
+Unity 6 canonical importer metadata enables that DLL in Editor and Win64 Player.
+
+Windows `Win32_VideoController` provides exact driver versions, dates and PNP
+device identities. The Player GPU name must match one controller unambiguously;
+its record is attached to `environment.json`. Driver records are checked again
+after measurement. `SystemInfo.graphicsDeviceVersion` is retained as graphics API
+context, never substituted for the Windows driver version.
+
+Every job, outer scope and interleaved empty control retains token/user tag,
+source/result frame, scope index, status, flags, device generation, begin/end/
+elapsed ticks, frequency, fence value and raw duration. Unsigned 64-bit values
+are decimal strings to preserve exactness in JSON readers. Empty controls bracket
+each validation and measured case outside its latency/makespan clock; no control
+subtraction is applied. `empty-controls.csv` reports sample count and P50/P95/P99
+per case (two controls, so this is sparse overhead evidence, not a stable tail
+estimate).
+
+`GpuRuntimeSchedulerEvidence.psm1` requires the exact scenario × round × policy ×
+validation/measured matrix and identical offered workload signatures. It rejects
+missing/extra cases, duplicate tokens, invalid statuses/flags/frequencies,
+nonfinite durations, mismatched tick conversion or aggregates, and dispatch
+timestamps outside the outer scope. Summaries retain round and phase, CPU planning
+average/P99, GPU dispatch average/P99, and the prior latency/makespan definitions.
+Planning time/GC scope is specifically one successful standalone `TryPrepare`
+probe per dispatched job; it excludes admission, the executor's subsequent
+selection/submission, native instrumentation, completion polling and serialization.
+No whole-frame allocation claim follows from that counter.
+
+CPU-only evidence regression checks are executable with
+`Tools/Tests/Test-GpuRuntimeSchedulerEvidence.ps1`; they include damaged matrix,
+raw tick, token, status, aggregate, stale-directory and changed-DLL cases.

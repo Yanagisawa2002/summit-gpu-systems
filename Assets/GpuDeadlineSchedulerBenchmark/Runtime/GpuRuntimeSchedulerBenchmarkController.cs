@@ -78,6 +78,9 @@ public sealed class GpuRuntimeSchedulerBenchmarkController : MonoBehaviour
     {
         var batches = GpuRuntimeSchedulerTrace.Build(scenario, batchCount);
         var result = GpuRuntimeSchedulerTrace.CreateResult(scenario, fifo, batches, "cpu-fence-observed-latency-and-native-dx12-gpu-duration");
+        result.round = round; result.phase = validation ? "validation" : "measured";
+        // Interleaved controls surround every validation/measured case, outside its latency/makespan clock.
+        yield return EmptyControl(timestamps, sample => result.emptyBefore = sample);
         var costs = GpuRuntimeSchedulerTrace.CreateCosts();
         var scheduler = new GpuRuntimeScheduler(64, 5000, 1000, 2, costs, fifo);
         var tokens = new GpuTimestampToken[64]; var costTokens = new long[64]; var submittedAtFrame = new int[64];
@@ -115,7 +118,7 @@ public sealed class GpuRuntimeSchedulerBenchmarkController : MonoBehaviour
                     if (row.completeUs < 0 || Time.frameCount < submittedAtFrame[slot] + 2) continue;
                     var status = timestamps.TryConsume(tokens[slot], Time.frameCount, out var sample);
                     if (status == GpuTimestampStatus.Pending) continue;
-                    Require(status); row.gpuDurationUs = sample.ElapsedMilliseconds * 1000;
+                    Require(status); row.nativeSample = Capture(sample, status); row.gpuDurationUs = sample.ElapsedMilliseconds * 1000;
                     if (!fifo && costs.TryUpdate(costTokens[slot], now, row.gpuDurationUs, true)) result.acceptedCostSamples++;
                     if (validation)
                     {
@@ -158,11 +161,47 @@ public sealed class GpuRuntimeSchedulerBenchmarkController : MonoBehaviour
             {
                 var status = timestamps.TryConsume(whole, Time.frameCount, out var sample);
                 if (status == GpuTimestampStatus.Pending) { if (watch.Elapsed.TotalSeconds > 120) throw new TimeoutException(); yield return null; continue; }
-                Require(status); result.gpuTimelineMakespanUs = sample.ElapsedMilliseconds * 1000; break;
+                Require(status); result.outerSample = Capture(sample, status); result.gpuTimelineMakespanUs = sample.ElapsedMilliseconds * 1000; break;
             }
         }
+        yield return EmptyControl(timestamps, sample => result.emptyAfter = sample);
         GpuRuntimeSchedulerTrace.Finish(result, 1000);
         File.WriteAllText(Path.Combine(output, scenario + "-r" + round + "-" + result.variant + (validation ? "-validation" : "-measured") + ".json"), JsonUtility.ToJson(result, true));
+    }
+
+    private static IEnumerator EmptyControl(GpuTimestampSession timestamps, Action<GpuRuntimeSchedulerTrace.NativeSample> completed)
+    {
+        Require(timestamps.Acquire(ulong.MaxValue - 1, GpuTimestampSampleFlags.EmptyScope, Time.frameCount, out var token));
+        Require(timestamps.MarkSubmitted(token));
+        using (var commands = new CommandBuffer { name = "Runtime scheduler interleaved empty timestamp control" })
+        {
+            timestamps.GetScope(token).RecordBegin(commands); timestamps.GetScope(token).RecordEnd(commands);
+            Graphics.ExecuteCommandBuffer(commands);
+        }
+        double deadline = Time.realtimeSinceStartupAsDouble + 10;
+        while (true)
+        {
+            var status = timestamps.TryConsume(token, Time.frameCount, out var sample);
+            if (status == GpuTimestampStatus.Pending)
+            { if (Time.realtimeSinceStartupAsDouble > deadline) throw new TimeoutException("Empty timestamp control timed out."); yield return null; continue; }
+            Require(status); completed(Capture(sample, status)); yield break;
+        }
+    }
+
+    private static GpuRuntimeSchedulerTrace.NativeSample Capture(GpuTimestampResult sample, GpuTimestampStatus status)
+    {
+        return new GpuRuntimeSchedulerTrace.NativeSample {
+            token = sample.Token.Value.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            userTag = sample.Token.UserTag.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            beginTicks = sample.BeginTicks.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            endTicks = sample.EndTicks.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            elapsedTicks = sample.ElapsedTicks.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            frequency = sample.TimestampFrequency.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            fenceValue = sample.FenceValue.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            status = (int)status, sourceFrame = sample.SourceFrame, resultFrame = sample.ResultFrame,
+            scopeIndex = sample.Token.ScopeIndex, flags = (uint)sample.Token.Flags, nativeFlags = sample.NativeFlags,
+            deviceGeneration = sample.DeviceGeneration, durationUs = sample.ElapsedMilliseconds * 1000
+        };
     }
 
     private static void Require(GpuTimestampStatus status)

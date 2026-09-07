@@ -14,19 +14,34 @@ public static class GpuRuntimeSchedulerTrace
         public GpuJobDependency[] Edges;
     }
     [Serializable]
+    public sealed class NativeSample
+    {
+        // Decimal strings preserve unsigned 64-bit integers in JSON consumers with IEEE-double numbers.
+        public string token, userTag, beginTicks, endTicks, elapsedTicks, frequency, fenceValue;
+        public int status, sourceFrame, resultFrame, scopeIndex;
+        public uint flags, nativeFlags, deviceGeneration;
+        public double durationUs;
+    }
+    [Serializable]
     public sealed class Row
     {
         public int jobId, deadlineClass, estimatedCostUs, actualCostUs;
         public long arrivalUs, admittedUs, submitUs, completeUs, planningTicks, planningAllocatedBytes;
         public double gpuDurationUs;
+        public NativeSample nativeSample;
     }
     [Serializable]
     public sealed class Result
     {
         public string scenario, variant, timingDomain;
+        public string phase, planningGcScope = "Successful standalone TryPrepare only; excludes admission, executor, callbacks, polling and serialization.";
+        public int round;
+        public long cpuTimerFrequency = Stopwatch.Frequency;
         public int offered, completed, backpressureAttempts, criticalCount, criticalMisses, backgroundCompleted, starvedBackground, acceptedCostSamples;
         public long makespanUs, maxBackgroundWaitUs, planningTicks, planningAllocatedBytes;
         public double criticalP99Us, criticalMissRate, gpuTimelineMakespanUs;
+        public double planningAverageUs, planningP99Us, gpuDispatchAverageUs, gpuDispatchP99Us;
+        public NativeSample outerSample, emptyBefore, emptyAfter;
         public Row[] rows;
     }
 
@@ -115,9 +130,12 @@ public static class GpuRuntimeSchedulerTrace
     public static void Finish(Result result, long starvationThresholdUs)
     {
         var critical = new double[result.offered]; int criticalCount = 0;
+        var planning = new double[result.offered]; var gpu = new double[result.offered]; int sampleIndex = 0;
         foreach (Row row in result.rows)
         {
             result.planningTicks += row.planningTicks; result.planningAllocatedBytes += row.planningAllocatedBytes;
+            planning[sampleIndex] = row.planningTicks * 1000000.0 / result.cpuTimerFrequency;
+            gpu[sampleIndex++] = row.gpuDurationUs;
             result.makespanUs = Math.Max(result.makespanUs, row.completeUs);
             if (row.deadlineClass == (int)GpuDeadlineClass.Critical && row.completeUs >= 0)
             {
@@ -133,6 +151,14 @@ public static class GpuRuntimeSchedulerTrace
             }
         }
         result.criticalCount = criticalCount;
+        Array.Sort(planning); Array.Sort(gpu);
+        if (sampleIndex > 0)
+        {
+            for (int i = 0; i < sampleIndex; i++) { result.planningAverageUs += planning[i]; result.gpuDispatchAverageUs += gpu[i]; }
+            result.planningAverageUs /= sampleIndex; result.gpuDispatchAverageUs /= sampleIndex;
+            int p99 = (int)Math.Ceiling(sampleIndex * 0.99) - 1;
+            result.planningP99Us = planning[p99]; result.gpuDispatchP99Us = gpu[p99];
+        }
         if (criticalCount > 0)
         {
             Array.Sort(critical, 0, criticalCount); result.criticalP99Us = critical[(int)Math.Ceiling(criticalCount * 0.99) - 1];
