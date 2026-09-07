@@ -103,7 +103,9 @@ def analyze(root, output):
     output.mkdir(parents=True, exist_ok=False)
     cells, rows, failures, outliers, evidence = [], [], [], [], []
     for entry in read(root/'matrix.json'):
-        folder = Path(entry['output'])
+        # Matrix directories are siblings of matrix.json; absolute paths in the
+        # original receipts are provenance, not dependencies when sharing data.
+        folder = root/entry['id']
         if not (folder/'result.json').exists():
             failures.append(dict(id=entry['id'], error='Missing result', process=entry))
             continue
@@ -125,7 +127,11 @@ def analyze(root, output):
             history = folder/f"{arm['block']}-{arm['position']}-{arm['arm']}.history.bin"
             identity = hashlib.sha256(json.dumps([[f[k] for k in ['frame','activeCount','changedSlots','queryCount','drawVertices','overlayVertices','drawCalls','uploadedBytes']] for f in frames]).encode()).hexdigest()
             work_ids.add(identity)
-            oracle_sha = sha(cfg['oracle'])
+            oracle_path = Path(cfg['oracle'])
+            if not oracle_path.exists():
+                parts = cfg['oracle'].replace('\\','/').split('/')
+                oracle_path = root.parent.joinpath(*parts[-3:])
+            oracle_sha = sha(oracle_path)
             good = (arm['verified'] and arm['verifiedDigestWords']==protocol['frames']*10 and
                     history.exists() and sha(history)==oracle_sha==arm['oracleSha256'] and len(frames)==protocol['frames'])
             good = good and all(f['frame']==i and all(f[n]['status']=='Ready' and f[n]['sourceFrame']==f['unityFrame'] and f[n]['milliseconds']>0 for n in NATIVE) for i,f in enumerate(frames))
