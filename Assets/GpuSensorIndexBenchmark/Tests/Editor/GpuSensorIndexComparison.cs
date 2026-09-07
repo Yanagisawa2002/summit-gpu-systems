@@ -54,6 +54,8 @@ namespace Summit.GpuSensorIndex.Benchmark.Tests
             public string timingScope = "Native DX12 main-graphics-command-list: dirty/key detection + maintenance + fallback + consumer queries + frame digest. Snapshot uploads and correctness readback excluded.";
             public string allocationScope = "Current-thread managed bytes: record includes native marker recording, submit covers ExecuteCommandBuffer; excludes snapshots, token acquisition, correctness readback and report construction.";
             public bool formalPerformanceEvidence = false, allDigestsMatch;
+            public string sampleBoundary = "At least one Editor update after every completed sample; outside native and CPU intervals.";
+            public int editorUpdateYields;
             public uint timestampAbi;
             public List<Row> rows = new List<Row>();
             public List<NativeSample> emptyControls = new List<NativeSample>();
@@ -198,6 +200,14 @@ namespace Summit.GpuSensorIndex.Benchmark.Tests
                                     countDigest = digest[0].Count, xorDigest = digest[0].XorHash,
                                     sumDigest0 = digest[0].SumHash0, sumDigest1 = digest[0].SumHash1, nativeSamples = native });
                                 serial++;
+                                // ExecuteCommandBuffer/readback can finish synchronously.
+                                // Always return control to the Editor between samples so
+                                // frame-scoped upload/descriptor resources can retire.
+                                // Release recorded buffer references before disposing Data.
+                                commands.Clear();
+                                UnityEditor.EditorApplication.QueuePlayerLoopUpdate();
+                                yield return null;
+                                report.editorUpdateYields++;
                             }
                             paired[incremental ? 1 : 0] = captures;
                         }

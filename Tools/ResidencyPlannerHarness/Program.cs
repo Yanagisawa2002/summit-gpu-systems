@@ -87,6 +87,9 @@ static class Program
         public int frame { get; set; }
         public double cpuPlanAndRetireMs { get; set; }
         public long managedAllocatedBytes { get; set; }
+        public long planAndTimerAllocatedBytes { get; set; }
+        public long accountingAllocatedBytes { get; set; }
+        public long retireAndTimerAllocatedBytes { get; set; }
         public int uploads { get; set; }
         public int hits { get; set; }
         public int misses { get; set; }
@@ -117,11 +120,13 @@ static class Program
             long gc = GC.GetAllocatedBytesForCurrentThread(); int gen0 = GC.CollectionCount(0); long start = Stopwatch.GetTimestamp();
             var plan = p.PlanFrame(input, frame + prefillFrames, budget);
             double elapsed = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+            long afterPlanAllocated = GC.GetAllocatedBytesForCurrentThread();
             if (frame < 16) { p.CompleteFrame(plan); continue; }
             uploads += plan.UploadCount; hits += plan.HitCount; misses += plan.MissCount; deferred += plan.DeferredDemandCount;
             bytes += (long)plan.UploadCount * 64 * 16 + (long)plan.UploadCount * 8 + (long)plan.DeltaCount * 8 + (long)plan.RequestedCount * 8;
             for (int i = 0; i < plan.RequestedCount; i++) availabilityHash = unchecked((availabilityHash ^ (uint)(plan.RequestedPhysicalSlots[i] + 1)) * 1099511628211UL);
             latency += plan.TotalServiceLatencyFrames; maxLatency = Math.Max(maxLatency, plan.MaximumServiceLatencyFrames);
+            long beforeRetireAllocated = GC.GetAllocatedBytesForCurrentThread();
             long retireStart = Stopwatch.GetTimestamp(); p.CompleteFrame(plan);
             times[frame - 16] = elapsed + Stopwatch.GetElapsedTime(retireStart).TotalMilliseconds;
             long frameAllocated = GC.GetAllocatedBytesForCurrentThread() - gc;
@@ -129,6 +134,9 @@ static class Program
             var sample = samples[frame - 16];
             sample.frame = frame; sample.cpuPlanAndRetireMs = times[frame - 16];
             sample.managedAllocatedBytes = frameAllocated; sample.uploads = plan.UploadCount;
+            sample.planAndTimerAllocatedBytes = afterPlanAllocated - gc;
+            sample.accountingAllocatedBytes = beforeRetireAllocated - afterPlanAllocated;
+            sample.retireAndTimerAllocatedBytes = frameAllocated - (beforeRetireAllocated - gc);
             sample.hits = plan.HitCount; sample.misses = plan.MissCount; sample.deferred = plan.DeferredDemandCount;
         }
         if (allocated != 0)
