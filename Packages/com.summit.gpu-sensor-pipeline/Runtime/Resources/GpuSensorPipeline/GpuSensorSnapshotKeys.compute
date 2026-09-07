@@ -1,0 +1,16 @@
+#pragma kernel PrepareSnapshotKeys
+#pragma target 5.0
+StructuredBuffer<uint4> _Samples;
+StructuredBuffer<uint> _Active;
+RWStructuredBuffer<uint> _Keys, _Ids;
+int _Capacity;
+[numthreads(256,1,1)]
+void PrepareSnapshotKeys(uint3 tid : SV_DispatchThreadID)
+{
+    uint id = tid.x;
+    if (id >= (uint)_Capacity) return;
+    uint4 s = _Samples[id];
+    _Ids[id] = id;
+    _Keys[id] = _Active[id] == 1 && all(s.xyz <= 65535u) ?
+        (s.x >> 10) | ((s.y >> 10) << 6) | ((s.z >> 10) << 12) : 0xffffffffu;
+}

@@ -922,12 +922,53 @@ namespace Summit.GpuSensorPipeline
             EndSample(commands, IndexBuildSample);
         }
 
+        /// <summary>
+        /// Queries externally maintained CSR without rebuilding it. Stable IDs
+        /// index samples; stableIdCapacity is the payload slot bound, NOT the
+        /// live count. Monotonic offsets must terminate within binnedIds.count.
+        /// IDs outside [0, stableIdCapacity) are holes and are skipped. Buffers
+        /// must remain alive and unmodified until ordered GPU consumers finish.
+        /// </summary>
+        public void RecordExternalIndexQueries(
+            CommandBuffer commands, GraphicsBuffer samples,
+            GraphicsBuffer binOffsets, GraphicsBuffer binnedIds,
+            int stableIdCapacity, int queryCount, uint logicalState)
+        {
+            ThrowIfDisposed();
+            ValidateCommands(commands);
+            ValidateElementCount(stableIdCapacity);
+            GpuSensorDeterministicGenerator.ValidateLogicalState(logicalState);
+            if (!queriesInitialized || queryCount < 1 || queryCount > configuredQueryCount)
+                throw new ArgumentOutOfRangeException(nameof(queryCount));
+            ValidateDigestBuffer(samples, stableIdCapacity, nameof(samples));
+            ValidateExternalUintBuffer(binOffsets, FixedBinCount + 1, nameof(binOffsets));
+            ValidateExternalUintBuffer(binnedIds, 1, nameof(binnedIds));
+            if (samples == QueryDigests || samples == FrameDigest ||
+                binOffsets == QueryDigests || binOffsets == FrameDigest ||
+                binnedIds == QueryDigests || binnedIds == FrameDigest)
+                throw new ArgumentException("Index inputs must not alias query outputs.");
+            RecordRangeQuerySegment(commands, stableIdCapacity, 0, queryCount,
+                false, samples, binOffsets, binnedIds);
+            RecordFrameDigest(commands, queryCount, logicalState);
+        }
+
+        private static void ValidateExternalUintBuffer(GraphicsBuffer buffer, int count, string name)
+        {
+            if (buffer == null) throw new ArgumentNullException(name);
+            if ((buffer.target & GraphicsBuffer.Target.Structured) == 0 ||
+                buffer.stride != 4 || buffer.count < count)
+                throw new ArgumentException("External CSR buffer has wrong shape.", name);
+        }
+
         private void RecordRangeQuerySegment(
             CommandBuffer commands,
             int elementCount,
             int queryStart,
             int queryCount,
-            bool quantizeIntensity)
+            bool quantizeIntensity,
+            GraphicsBuffer externalSamples = null,
+            GraphicsBuffer externalOffsets = null,
+            GraphicsBuffer externalIds = null)
         {
             BeginSample(commands, QuerySample);
             commands.SetComputeIntParam(shader, ElementCountId, elementCount);
@@ -941,17 +982,17 @@ namespace Summit.GpuSensorPipeline
                 shader,
                 rangeQueryKernel,
                 SamplesId,
-                Samples);
+                externalSamples ?? Samples);
             commands.SetComputeBufferParam(
                 shader,
                 rangeQueryKernel,
                 BinOffsetsId,
-                BinOffsets);
+                externalOffsets ?? BinOffsets);
             commands.SetComputeBufferParam(
                 shader,
                 rangeQueryKernel,
                 BinnedIdsId,
-                BinnedIds);
+                externalIds ?? BinnedIds);
             commands.SetComputeBufferParam(
                 shader,
                 rangeQueryKernel,

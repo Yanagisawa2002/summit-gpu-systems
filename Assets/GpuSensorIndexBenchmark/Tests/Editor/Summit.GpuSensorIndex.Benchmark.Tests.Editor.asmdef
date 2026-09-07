@@ -1,0 +1,8 @@
+{
+  "name": "Summit.GpuSensorIndex.Benchmark.Tests.Editor",
+  "rootNamespace": "Summit.GpuSensorIndex.Benchmark.Tests",
+  "references": ["Summit.GpuSensorPipeline", "Summit.GpuPrimitives", "Summit.GpuTimestamps"],
+  "includePlatforms": ["Editor"],
+  "autoReferenced": false,
+  "optionalUnityReferences": ["TestAssemblies"]
+}
