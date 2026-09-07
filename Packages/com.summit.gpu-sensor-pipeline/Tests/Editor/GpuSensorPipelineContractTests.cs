@@ -77,12 +77,16 @@ namespace Summit.GpuSensorPipeline.Tests
                     typeof(GpuPrimitiveBackend),
                     typeof(bool),
                     typeof(ComputeShader),
+                    typeof(GpuSensorQueryBackend),
+                    typeof(int),
                 }));
             Assert.That(parameters[0].IsOptional, Is.False);
             Assert.That(parameters[1].IsOptional, Is.False);
             Assert.That(parameters[2].DefaultValue, Is.EqualTo(GpuPrimitiveBackend.WaveOps));
             Assert.That(parameters[3].DefaultValue, Is.True);
             Assert.That(parameters[4].DefaultValue, Is.Null);
+            Assert.That(parameters[5].DefaultValue, Is.EqualTo(GpuSensorQueryBackend.CellSerial));
+            Assert.That(parameters[6].DefaultValue, Is.EqualTo(0));
         }
 
         [Test]

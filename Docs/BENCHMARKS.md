@@ -24,6 +24,7 @@ The root Unity project is intentionally asset-free. Every benchmark builder crea
 | GPU-resident sensor pipeline | `Tools/Run-GpuSensorPipelineBenchmark.ps1` |
 | Quantized SoA and producer-consumer fusion | `Tools/Run-GpuSensorDataPackingBenchmark.ps1` |
 | Shared multi-sensor spatial index | `Tools/Run-GpuMultiSensorSharedIndexBenchmark.ps1` |
+| Optional sensor range-query backends | `Tools/Run-GpuSensorQueryBenchmark.ps1` (shared lock required) |
 | Deadline-aware scheduling | `Tools/Run-GpuDeadlineSchedulerBenchmark.ps1` |
 | Large-data residency | `Tools/Run-GpuResidencyBenchmark.ps1` |
 

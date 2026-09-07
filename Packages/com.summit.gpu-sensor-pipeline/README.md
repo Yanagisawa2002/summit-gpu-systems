@@ -118,3 +118,14 @@ per active element: a 16-byte sample plus a 4-byte key. They are logical payload
 counts, not measured PCIe or VRAM traffic. `ResidentBytes` includes all
 package-owned buffers plus referenced Direct/primitives scratch, but excludes
 driver allocation alignment and shader assets.
+
+## Optional point-chunk queries
+
+The optional `GpuSensorQueryBackend.PointChunks` and `PointChunksWave` candidates
+split dense CSR ranges into 256-point work items for cooperative consumption.
+`CellSerial` remains the default. The standalone `GpuSensorChunkedRangeQuery`
+accepts external CSR buffers, including reserved tombstone slots, and uses a
+separate index-entry capacity for bounded scratch. `GpuSensorPipeline.RecordQueries`
+records a query segment against the existing index without rebuilding it.
+See [query contracts and comparison commands](../../Docs/GPU_SENSOR_QUERY_BACKENDS.md)
+for capacities, queue lifetime, fallbacks, native timing scope and validation.
