@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Frozen workload definitions, not calibrated winners. Same-process counterbalance within each cell.",
+  "backends": "portable,wave-ops,candidates",
+  "operations": "exclusive-scan,stable-compaction,radix-sort-32,reduce-sum",
+  "cells": [
+    { "id": "partial-duplicates-13", "count": 4097, "keyBits": 13, "distribution": "duplicates" },
+    { "id": "uniform-32", "count": 65536, "keyBits": 32, "distribution": "uniform" },
+    { "id": "hot-8", "count": 65537, "keyBits": 8, "distribution": "single-bin" },
+    { "id": "ascending-17", "count": 65536, "keyBits": 17, "distribution": "ascending" },
+    { "id": "descending-32", "count": 65537, "keyBits": 32, "distribution": "descending" },
+    { "id": "large-uniform-32", "count": 1048576, "keyBits": 32, "distribution": "uniform" },
+    { "id": "large-duplicates-8", "count": 1048577, "keyBits": 8, "distribution": "duplicates" }
+  ]
+}

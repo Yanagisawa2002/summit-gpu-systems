@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "kind": "correctness-and-short-smoke-only",
+  "device": "AMD Radeon AI PRO R9700",
+  "api": "Direct3D12",
+  "unity": "6000.5.2f1",
+  "packageTests": {
+    "passed": 164,
+    "skipped": 2,
+    "failed": 0,
+    "total": 166
+  },
+  "capabilities": [
+    {
+      "candidateId": "primitives-v1-portable-t128-e4-r4",
+      "supported": "True",
+      "observedProbeWaveSize": "0",
+      "reason": "portable-no-wave"
+    },
+    {
+      "candidateId": "primitives-v1-portable-t128-e4-r8",
+      "supported": "True",
+      "observedProbeWaveSize": "0",
+      "reason": "portable-no-wave"
+    },
+    {
+      "candidateId": "primitives-v1-wave-t128-e4-r4",
+      "supported": "True",
+      "observedProbeWaveSize": "64",
+      "reason": "runtime-probe-verified"
+    },
+    {
+      "candidateId": "primitives-v1-wave-t256-e2-r4",
+      "supported": "True",
+      "observedProbeWaveSize": "64",
+      "reason": "runtime-probe-verified"
+    },
+    {
+      "candidateId": "primitives-v1-wave32-t128-e4-r4",
+      "supported": "False",
+      "observedProbeWaveSize": "0",
+      "reason": "explicit-waves-disabled-unity-sm66-import-not-validated"
+    },
+    {
+      "candidateId": "primitives-v1-wave64-t128-e4-r4",
+      "supported": "False",
+      "observedProbeWaveSize": "0",
+      "reason": "explicit-waves-disabled-unity-sm66-import-not-validated"
+    }
+  ],
+  "smoke": {
+    "processId": 28000,
+    "sourceSnapshotSha256": "97F5123C0419D78CE638DDD4DC1A50CCD51567AE6EBCA7F306FB277915463CB1",
+    "samplesPerCase": 60,
+    "allOperationHashesMatch": true,
+    "sourceHashesStableAcrossBuild": true,
+    "algorithmCases": 22,
+    "summaryIntegrityTests": "valid evidence accepted; native tick tampering, missing sample, missing GC metric, dirty comparison rejected",
+    "oracleValidations": 44,
+    "workingTreeDirtyDuringSmoke": true,
+    "rounds": 1,
+    "playerPayloadStableThroughRun": true
+  },
+  "explicitWaveCompileEvidence": {
+    "shaderModel": "6.0",
+    "wave32KeywordOnlyObserved": 64,
+    "logSha256": "F929C0904ED07DCD8C85A9BC4C86174BC136737D12BF025834A84E55E2561DA8",
+    "error": "attribute WaveSize only valid for shader model 6.6 and higher.",
+    "wave64KeywordOnly": "unsupported imported Scan kernel"
+  },
+  "limitations": [
+    "Probe width is runtime evidence for the probe kernel, not ISA evidence for all kernels.",
+    "Explicit WaveSize sources are disabled until a validated Unity SM6.6 importer is available.",
+    "No formal matrix run, calibrated winner, or default promotion.",
+    "Source snapshot shown belongs to the short smoke; subsequent harness hash coverage extension was syntax-checked."
+  ]
+}

@@ -200,7 +200,9 @@ public sealed class GpuPrimitiveBenchmarkController : MonoBehaviour
                 seed,
                 dispatchesPerFrame,
                 operationFilter,
-                backendFilter);
+                backendFilter,
+                ReadString(originalArguments, "-gpu-primitive-distribution", "uniform"),
+                ReadInt(originalArguments, "-gpu-primitive-key-bits", 32));
             InitializeNativeTimestampBackend();
             BuildCasesAndCommands();
             BuildNativeTimestampMeasurementCommands();
@@ -310,11 +312,13 @@ public sealed class GpuPrimitiveBenchmarkController : MonoBehaviour
 
                     double enqueueStart;
                     double enqueueEnd;
+                    long enqueueGcStart, enqueueGcBytes;
                     bool nativeSubmitted = false;
                     RenderTimingAnchor();
 
                     using (EnqueueMarker.Auto())
                     {
+                        enqueueGcStart = GC.GetAllocatedBytesForCurrentThread();
                         enqueueStart = Stopwatch.GetTimestamp();
                         if (nativeStatus == GpuTimestampStatus.Ready)
                         {
@@ -338,6 +342,7 @@ public sealed class GpuPrimitiveBenchmarkController : MonoBehaviour
                             Graphics.ExecuteCommandBuffer(commands);
                         }
                         enqueueEnd = Stopwatch.GetTimestamp();
+                        enqueueGcBytes = GC.GetAllocatedBytesForCurrentThread() - enqueueGcStart;
                     }
 
                     FrameTimingManager.CaptureFrameTimings();
@@ -366,6 +371,7 @@ public sealed class GpuPrimitiveBenchmarkController : MonoBehaviour
                         ElapsedSeconds =
                             Time.realtimeSinceStartupAsDouble - benchmarkStart,
                         EnqueueCpuMs = TicksToMilliseconds(enqueueEnd - enqueueStart),
+                        EnqueueGcBytes = enqueueGcBytes,
                         NativeTimestampToken = nativeToken.Value,
                         NativeTimestampUserTag = nativeUserTag,
                         NativeTimestampFlags = (uint)nativeFlags,
@@ -1288,6 +1294,7 @@ public sealed class GpuPrimitiveBenchmarkController : MonoBehaviour
 
     private void WriteConfiguration()
     {
+        adapter.WriteCandidateMetadata(reportDirectory);
         string[] caseIds = new string[allCases.Count];
         string[] markers = new string[allCases.Count];
         for (int i = 0; i < allCases.Count; i++)
@@ -1312,6 +1319,8 @@ public sealed class GpuPrimitiveBenchmarkController : MonoBehaviour
             validationTimeoutSeconds = validationTimeoutSeconds,
             requestedOperations = operationFilter,
             requestedBackends = backendFilter,
+            distribution = ReadString(originalArguments, "-gpu-primitive-distribution", "uniform"),
+            keyBitCount = ReadInt(originalArguments, "-gpu-primitive-key-bits", 32),
             selectedCases = caseIds,
             gpuMarkers = markers,
             adapter = adapter.ImplementationName,
@@ -1429,7 +1438,7 @@ public sealed class GpuPrimitiveBenchmarkController : MonoBehaviour
             writer.WriteLine(
                 "processId,round,blockIndex,orderPosition,order,caseId,operation,variant," +
                 "marker,sampleIndex,sourceUnityFrame,gpuRegionResultUnityFrame," +
-                "gpuFrameDiagnosticReadUnityFrame,elapsedSeconds,enqueueCpuMs," +
+                "gpuFrameDiagnosticReadUnityFrame,elapsedSeconds,enqueueCpuMs,enqueueGcBytes," +
                 "nativeTimestampToken,nativeTimestampUserTag,nativeTimestampFlags," +
                 "nativeTimestampStatus,nativeTimestampBeginTicks,nativeTimestampEndTicks," +
                 "nativeTimestampElapsedTicks,nativeTimestampFrequency," +
@@ -1460,6 +1469,7 @@ public sealed class GpuPrimitiveBenchmarkController : MonoBehaviour
                         CultureInfo.InvariantCulture),
                     Number(row.ElapsedSeconds),
                     Number(row.EnqueueCpuMs),
+                    row.EnqueueGcBytes.ToString(CultureInfo.InvariantCulture),
                     row.NativeTimestampToken.ToString(CultureInfo.InvariantCulture),
                     row.NativeTimestampUserTag.ToString(CultureInfo.InvariantCulture),
                     row.NativeTimestampFlags.ToString(CultureInfo.InvariantCulture),
@@ -2049,6 +2059,7 @@ public sealed class GpuPrimitiveBenchmarkController : MonoBehaviour
         public int GpuFrameDiagnosticReadUnityFrame;
         public double ElapsedSeconds;
         public double EnqueueCpuMs;
+        public long EnqueueGcBytes;
         public ulong NativeTimestampToken;
         public ulong NativeTimestampUserTag;
         public uint NativeTimestampFlags;
@@ -2132,6 +2143,8 @@ public sealed class GpuPrimitiveBenchmarkController : MonoBehaviour
         public float validationTimeoutSeconds;
         public string requestedOperations;
         public string requestedBackends;
+        public string distribution;
+        public int keyBitCount;
         public string[] selectedCases;
         public string[] gpuMarkers;
         public string adapter;

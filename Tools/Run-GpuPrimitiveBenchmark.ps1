@@ -33,6 +33,12 @@ param(
 
     [string]$Backends = 'portable,wave-ops',
 
+    [ValidateSet('uniform', 'duplicates', 'single-bin', 'ascending', 'descending')]
+    [string]$Distribution = 'uniform',
+
+    [ValidateRange(1, 32)]
+    [int]$KeyBitCount = 32,
+
     [ValidateRange(5, 600)]
     [int]$ValidationTimeoutSeconds = 60,
 
@@ -65,6 +71,9 @@ $formalContract = [ordered]@{
     dispatchesPerFrame = 1
     operations = '*'
     backends = 'portable,wave-ops'
+}
+if ($FormalAcceptanceMode -and ($Distribution -ne 'uniform' -or $KeyBitCount -ne 32)) {
+    throw 'The legacy formal acceptance contract requires uniform/32-bit keys. Use the separate R9700 candidate comparison fixture.'
 }
 if ($FormalAcceptanceMode) {
     $formalViolations = [System.Collections.Generic.List[string]]::new()
@@ -380,6 +389,9 @@ $benchmarkHarnessFiles = [System.IO.FileInfo[]]@(
     Get-Item -LiteralPath $PSCommandPath
     Get-Item -LiteralPath $benchmarkSummarizerPath
     Get-Item -LiteralPath $provenanceModulePath
+    Get-Item -LiteralPath (Join-Path $PSScriptRoot 'Run-R9700PrimitiveCandidates.ps1')
+    Get-Item -LiteralPath (Join-Path $PSScriptRoot 'Summarize-R9700PrimitiveCandidates.ps1')
+    Get-Item -LiteralPath (Join-Path $PSScriptRoot 'Fixtures/r9700-primitive-candidates-v1.json')
 )
 $benchmarkHarnessRelativePaths = @(
     $benchmarkHarnessFiles | ForEach-Object {
@@ -399,6 +411,7 @@ if (-not $timestampNativeDllExists -and -not $AllowMissingGpuTiming) {
 $sourceSnapshotFiles = [System.IO.FileInfo[]]@(
     $benchmarkHarnessFiles
     $timestampManagedRuntimeFiles
+    Get-ChildItem -LiteralPath (Join-Path $projectRoot 'Packages/com.summit.gpu-primitives/Runtime') -Recurse -File | Where-Object { $_.Extension -in '.cs', '.compute', '.hlsl' }
     Get-Item -LiteralPath $portableShaderPath
     Get-Item -LiteralPath $waveShaderPath
     Get-Item -LiteralPath $runtimeApiPath
@@ -413,6 +426,7 @@ $sourceSnapshotFiles = [System.IO.FileInfo[]]@(
         Get-Item -LiteralPath $timestampNativeDllPath
     }
 )
+$sourceSnapshotFiles = [System.IO.FileInfo[]]@($sourceSnapshotFiles | Sort-Object -Property FullName -Unique)
 $sourceSnapshotRelativePaths = @(
     $sourceSnapshotFiles | ForEach-Object {
         $_.FullName.Substring($projectRoot.Length).
@@ -513,6 +527,8 @@ $runnerConfiguration = [ordered]@{
     dispatchesPerFrame = $DispatchesPerFrame
     operations = $Operations
     backends = $Backends
+    distribution = $Distribution
+    keyBitCount = $KeyBitCount
     validationTimeoutSeconds = $ValidationTimeoutSeconds
     requireCompleteGpuTimings = (-not $AllowMissingGpuTiming)
     singlePlayerProcess = $true
@@ -694,6 +710,8 @@ $playerArguments = @(
     '-gpu-primitive-dispatches-per-frame', [string]$DispatchesPerFrame,
     '-gpu-primitive-operations', (Quote-ProcessArgument $Operations),
     '-gpu-primitive-backends', (Quote-ProcessArgument $Backends),
+    '-gpu-primitive-distribution', $Distribution,
+    '-gpu-primitive-key-bits', [string]$KeyBitCount,
     '-gpu-primitive-validation-timeout-seconds', [string]$ValidationTimeoutSeconds,
     '-gpu-primitive-require-complete-gpu-timings',
         $(if ($AllowMissingGpuTiming) { '0' } else { '1' }),
