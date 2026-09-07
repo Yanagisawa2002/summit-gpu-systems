@@ -1,0 +1,8 @@
+#pragma kernel DependencyProbe
+StructuredBuffer<uint> _Input;
+RWStructuredBuffer<uint> _Output;
+[numthreads(1, 1, 1)]
+void DependencyProbe(uint3 id : SV_DispatchThreadID)
+{
+    _Output[0] = _Input[0] * 3u + 1u;
+}
