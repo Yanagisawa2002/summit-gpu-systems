@@ -3,7 +3,9 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$ReportDirectory,
 
-    [string]$OutputDirectory
+    [string]$OutputDirectory,
+
+    [switch]$RequireNativeIntegrity
 )
 
 $ErrorActionPreference = 'Stop'
@@ -1105,7 +1107,7 @@ $nativeTimingComplete =
     $nativeRowFailures.Count -eq 0 -and
     $nativeSummaryComplete -and
     $invalidGpuBlocks.Count -eq 0
-if (-not $nativeTimingComplete -and [bool]$config.requireCompleteGpuTimings) {
+if (-not $nativeTimingComplete -and ([bool]$config.requireCompleteGpuTimings -or $RequireNativeIntegrity)) {
     $rowDetails = @($nativeRowFailures | Select-Object -First 5) -join '; '
     throw (
         'Native timestamp completeness gate failed: ' +

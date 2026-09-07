@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using Unity.Collections;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -48,6 +50,10 @@ internal sealed class GpuPrimitiveBenchmarkCoreAdapter : IDisposable
     private readonly int count;
     private readonly int dispatchesPerFrame;
     private readonly GpuPrimitives primitives;
+    private readonly Dictionary<string, GpuPrimitives> candidates = new Dictionary<string, GpuPrimitives>();
+    private readonly List<string> capabilityRows = new List<string>();
+    private readonly int keyBits;
+    private readonly uint reductionExpected;
     private readonly GraphicsBuffer input;
     private readonly GraphicsBuffer values;
     private readonly GraphicsBuffer predicates;
@@ -71,9 +77,15 @@ internal sealed class GpuPrimitiveBenchmarkCoreAdapter : IDisposable
         int seed,
         int repetitionsPerFrame,
         string operationFilter,
-        string backendFilter)
+        string backendFilter,
+        string distribution = "uniform",
+        int keyBitCount = 32)
     {
         count = elementCount;
+        if (keyBitCount < 1 || keyBitCount > 32) throw new ArgumentOutOfRangeException(nameof(keyBitCount));
+        keyBits = keyBitCount;
+        if (!new[] { "uniform", "duplicates", "single-bin", "ascending", "descending" }.Contains(distribution))
+            throw new ArgumentException("Unknown distribution: " + distribution);
         dispatchesPerFrame = repetitionsPerFrame;
 
         uint[] inputData = new uint[count];
@@ -88,7 +100,7 @@ internal sealed class GpuPrimitiveBenchmarkCoreAdapter : IDisposable
         {
             uint index = (uint)i;
             uint hashed = Mix(index ^ (uint)seed);
-            uint key = unchecked(index * 2654435761u + (uint)seed);
+            uint key = CreateKey(i, count, seed, distribution, keyBits);
             uint value = index ^ unchecked((uint)seed * 2246822519u);
             uint predicate = (hashed & 3u) == 0u ? 0u : 1u;
             uint scanValue = hashed & 7u;
@@ -105,15 +117,18 @@ internal sealed class GpuPrimitiveBenchmarkCoreAdapter : IDisposable
             }
         }
         compactExpected = compactValues.ToArray();
+        reductionExpected = prefix;
 
         uint[] radixKeys = new uint[count];
         for (int i = 0; i < count; i++)
         {
-            radixKeys[i] = unchecked((uint)i * 2654435761u + (uint)seed);
+            radixKeys[i] = CreateKey(i, count, seed, distribution, keyBits);
         }
         radixKeysExpected = (uint[])radixKeys.Clone();
         radixValuesExpected = (uint[])valueData.Clone();
-        Array.Sort(radixKeysExpected, radixValuesExpected);
+        int[] stableOrder = Enumerable.Range(0, count).OrderBy(i => radixKeys[i]).ToArray();
+        radixKeysExpected = stableOrder.Select(i => radixKeys[i]).ToArray();
+        radixValuesExpected = stableOrder.Select(i => valueData[i]).ToArray();
 
         input = CreateStructuredBuffer(count, "GpuPrimitiveBenchmark.Input");
         values = CreateStructuredBuffer(count, "GpuPrimitiveBenchmark.Values");
@@ -165,7 +180,7 @@ internal sealed class GpuPrimitiveBenchmarkCoreAdapter : IDisposable
     public long ExternalBufferBytes =>
         ((long)count * 6L + HistogramBinCount + 1L) * sizeof(uint);
 
-    public long PrimitiveScratchBytes => primitives.ScratchBytes;
+    public long PrimitiveScratchBytes => primitives.ScratchBytes + candidates.Values.Sum(p => p.ScratchBytes);
 
     public long ResidentBytes => ExternalBufferBytes + PrimitiveScratchBytes;
 
@@ -229,6 +244,10 @@ internal sealed class GpuPrimitiveBenchmarkCoreAdapter : IDisposable
 
         switch (benchmarkCase.Operation)
         {
+            case "reduce-sum":
+                pending.Requests.Add(AsyncGPUReadback.Request(outputCount));
+                pending.ReadbackBytes = 4;
+                break;
             case "exclusive-scan":
                 pending.Requests.Add(AsyncGPUReadback.Request(output));
                 pending.ReadbackBytes = (long)count * sizeof(uint);
@@ -318,6 +337,7 @@ internal sealed class GpuPrimitiveBenchmarkCoreAdapter : IDisposable
         }
         disposed = true;
         primitives.Dispose();
+        foreach (var p in candidates.Values) p.Dispose();
         input.Dispose();
         values.Dispose();
         predicates.Dispose();
@@ -349,6 +369,7 @@ internal sealed class GpuPrimitiveBenchmarkCoreAdapter : IDisposable
         List<GpuPrimitiveBenchmarkCase> result = new List<GpuPrimitiveBenchmarkCase>();
         foreach (string operation in requestedOperations)
         {
+            if (operation == "reduce-sum") continue;
             if (requestedBackends.Contains("portable"))
             {
                 result.Add(CreateCase(operation, GpuPrimitiveBackend.Portable, "portable"));
@@ -362,6 +383,25 @@ internal sealed class GpuPrimitiveBenchmarkCoreAdapter : IDisposable
                 result.Add(CreateCase(operation, GpuPrimitiveBackend.Auto, "auto"));
             }
         }
+        foreach (var c in GpuPrimitiveCandidates.All)
+        {
+            if (!requestedBackends.Contains("candidates") && !requestedBackends.Contains(c.Id)) continue;
+            bool supported = GpuPrimitiveCandidates.TryProbeWaveSize(c.Id, out int observed, out string reason);
+            capabilityRows.Add($"{c.Id},{supported},{observed},{reason}");
+            if (!supported)
+            {
+                if (requestedBackends.Contains(c.Id)) throw new NotSupportedException(c.Id + ": " + reason);
+                continue;
+            }
+            var instance = new GpuPrimitives(count, candidateId: c.Id);
+            candidates.Add(c.Id, instance);
+            foreach (string op in requestedOperations)
+                if (op == "exclusive-scan" || op == "stable-compaction" || op == "radix-sort-32" || op == "reduce-sum")
+                    result.Add(CreateCase(op, GpuPrimitiveBackend.Auto, c.Id));
+        }
+        foreach (string id in requestedBackends)
+            if (id != "portable" && id != "wave-ops" && id != "auto" && id != "candidates" && !GpuPrimitiveCandidates.All.Any(c => c.Id == id))
+                throw new ArgumentException("Unknown backend/candidate: " + id);
         result.Sort((left, right) => string.CompareOrdinal(left.Id, right.Id));
         return result;
     }
@@ -374,6 +414,9 @@ internal sealed class GpuPrimitiveBenchmarkCoreAdapter : IDisposable
         long logicalBytes;
         switch (operation)
         {
+            case "reduce-sum":
+                logicalBytes = (long)count * 4 + 4;
+                break;
             case "exclusive-scan":
                 logicalBytes = (long)count * sizeof(uint) * 2L;
                 break;
@@ -386,7 +429,8 @@ internal sealed class GpuPrimitiveBenchmarkCoreAdapter : IDisposable
                 logicalBytes = (long)count * sizeof(uint) * 3L + sizeof(uint);
                 break;
             case "radix-sort-32":
-                logicalBytes = (long)count * sizeof(uint) * 4L * 8L;
+                logicalBytes = (long)count * sizeof(uint) * 4L *
+                    (candidates.ContainsKey(variant) ? GpuPrimitiveCandidates.Get(variant).RadixPasses(keyBits) : (keyBits + 3) / 4);
                 break;
             default:
                 throw new ArgumentOutOfRangeException(
@@ -409,8 +453,12 @@ internal sealed class GpuPrimitiveBenchmarkCoreAdapter : IDisposable
 
     private void Record(CommandBuffer commands, GpuPrimitiveBenchmarkCase benchmarkCase)
     {
+        GpuPrimitives primitives = candidates.TryGetValue(benchmarkCase.Variant, out var selected) ? selected : this.primitives;
         switch (benchmarkCase.Operation)
         {
+            case "reduce-sum":
+                primitives.RecordReduceSum(commands, input, outputCount, count);
+                break;
             case "exclusive-scan":
                 primitives.RecordExclusiveScan(
                     commands,
@@ -451,13 +499,14 @@ internal sealed class GpuPrimitiveBenchmarkCoreAdapter : IDisposable
                     benchmarkCase.Backend);
                 break;
             case "radix-sort-32":
-                primitives.RecordRadixSort32(
+                primitives.RecordRadixSortKeyBits(
                     commands,
                     auxiliary,
                     values,
                     output,
                     radixValuesOutput,
                     count,
+                    keyBits,
                     benchmarkCase.Backend);
                 break;
             default:
@@ -472,6 +521,14 @@ internal sealed class GpuPrimitiveBenchmarkCoreAdapter : IDisposable
     {
         switch (completed.BenchmarkCase.Operation)
         {
+            case "reduce-sum":
+            {
+                var actual = completed.Requests[0].GetData<uint>();
+                validation.Passed = actual[0] == reductionExpected;
+                validation.Message = validation.Passed ? "Sum matches independent CPU oracle." : "Reduction mismatch.";
+                validation.ResultHash = actual[0].ToString("X8");
+                break;
+            }
             case "exclusive-scan":
             {
                 NativeArray<uint> actual = completed.Requests[0].GetData<uint>();
@@ -562,6 +619,34 @@ internal sealed class GpuPrimitiveBenchmarkCoreAdapter : IDisposable
         {
             name = name
         };
+    }
+
+    private static uint CreateKey(int i, int n, int seed, string distribution, int bits)
+    {
+        uint mask = bits == 32 ? uint.MaxValue : (1u << bits) - 1;
+        uint key = distribution == "duplicates" ? Mix((uint)i ^ (uint)seed) % 37u :
+            distribution == "single-bin" ? 7u : distribution == "ascending" ? (uint)i :
+            distribution == "descending" ? (uint)(n - i) : unchecked((uint)i * 2654435761u + (uint)seed);
+        return key & mask;
+    }
+    public void WriteCandidateMetadata(string directory)
+    {
+        File.WriteAllLines(Path.Combine(directory, "candidate-capabilities.csv"),
+            new[] { "candidateId,supported,observedProbeWaveSize,reason" }.Concat(capabilityRows));
+        var rows = new List<string> { "caseId,candidateId,threads,elementsPerThread,tileSize,radixBits,keyBits,dispatchCount,instanceScratchBytes,candidateScratchBytes,observedProbeWaveSize" };
+        foreach (var c in cases)
+        {
+            bool candidate = candidates.TryGetValue(c.Variant, out var instance);
+            var descriptor = candidate ? GpuPrimitiveCandidates.Get(c.Variant) : null;
+            int tile = descriptor?.TileSize ?? 256, levels = 0, n = count;
+            do { levels++; n = (n + tile - 1) / tile; } while (n > 1);
+            int scanDispatches = count == 0 ? 0 : 2 * levels - 1;
+            int dispatches = c.Operation == "radix-sort-32" ? (descriptor?.RadixDispatches(count, keyBits) ?? (count == 0 ? 0 : 3 * ((keyBits + 3) / 4))) :
+                c.Operation == "stable-compaction" ? 1 + (count == 0 ? 0 : 2 + scanDispatches) :
+                c.Operation == "exclusive-scan" ? scanDispatches : c.Operation == "reduce-sum" ? descriptor.ReductionDispatches(count) : 1 + (count == 0 ? 0 : 1);
+            rows.Add($"{c.Id},{c.Variant},{descriptor?.Threads ?? 256},{descriptor?.ElementsPerThread ?? 1},{tile},{descriptor?.RadixBits ?? 4},{keyBits},{dispatches},{(instance ?? primitives).ScratchBytes},{instance?.CandidateScratchBytes ?? 0},{instance?.ObservedCandidateWaveSize ?? 0}");
+        }
+        File.WriteAllLines(Path.Combine(directory, "candidate-resources.csv"), rows);
     }
 
     private static HashSet<string> ParseFilter(string filter, IEnumerable<string> defaults)

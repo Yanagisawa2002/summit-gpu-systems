@@ -1,0 +1,16 @@
+#pragma kernel Scan
+#pragma kernel Add
+#pragma kernel Reduce
+#pragma kernel Histogram
+#pragma kernel Scatter
+#pragma kernel Probe
+#pragma target 6.0
+#pragma use_dxc
+#pragma only_renderers d3d11 vulkan
+#pragma multi_compile _ UNITY_DEVICE_SUPPORTS_WAVE_32
+#define REQUESTED_WAVE_SIZE 32
+#define THREADS 128
+#define ELEMENTS 4
+#define DIGIT_BITS 4
+#define USE_WAVE 1
+#include "../../Runtime/Resources/GpuPrimitives/PrimitiveCandidate.hlsl"

@@ -107,6 +107,13 @@ namespace Summit.GpuPrimitives
         private GraphicsBuffer radixGroupHistograms;
         private GraphicsBuffer radixGroupOffsets;
         private readonly bool emitProfilerMarkers;
+        private readonly GpuPrimitiveCandidateRunner candidateRunner;
+        /// <summary>Opt-in identity used by Auto for scan, stable-compaction scan,
+        /// and radix. Null preserves legacy backend resolution. Explicit Portable
+        /// and WaveOps always retain the legacy implementation.</summary>
+        public string CandidateId => candidateRunner?.Candidate.Id;
+        public int ObservedCandidateWaveSize => candidateRunner?.ObservedWaveSize ?? 0;
+        public long CandidateScratchBytes => candidateRunner?.ScratchBytes ?? 0;
         private bool disposed;
         private static int waveSupportCache = -1;
 
@@ -118,7 +125,8 @@ namespace Summit.GpuPrimitives
             int capacity,
             ComputeShader portableShader = null,
             ComputeShader waveShader = null,
-            bool emitProfilerMarkers = true)
+            bool emitProfilerMarkers = true,
+            string candidateId = null)
         {
             if (capacity < 1 || capacity > MaxElementCount)
             {
@@ -184,17 +192,21 @@ namespace Summit.GpuPrimitives
                 radixScatterWaveKernel = -1;
             }
 
-            AllocateScratch(capacity);
+            if (candidateId != null) candidateRunner = new GpuPrimitiveCandidateRunner(candidateId, capacity);
+            try { AllocateScratch(capacity); }
+            catch { candidateRunner?.Dispose(); ReleaseScratch(); throw; }
         }
 
         public int Capacity { get; private set; }
+
+        private long legacyScratchBytes;
 
         /// <summary>
         /// Exact logical payload bytes requested for persistent scratch
         /// GraphicsBuffers. Driver allocation alignment, caller-owned buffers,
         /// and shader assets are not included.
         /// </summary>
-        public long ScratchBytes { get; private set; }
+        public long ScratchBytes => legacyScratchBytes + CandidateScratchBytes;
 
         /// <summary>
         /// Logical payload bytes of persistent GraphicsBuffers owned by this
@@ -271,6 +283,7 @@ namespace Summit.GpuPrimitives
                     $"Capacity cannot exceed {MaxElementCount}.");
             }
 
+            candidateRunner?.Allocate(capacity);
             ReleaseScratch();
             AllocateScratch(capacity);
         }
@@ -299,9 +312,23 @@ namespace Summit.GpuPrimitives
                     input,
                     output,
                     count,
-                    ResolveBackend(backend));
+                    candidateRunner != null ? backend : ResolveBackend(backend));
             }
             EndSample(commands, "Summit.GpuPrimitives/ExclusiveScan");
+        }
+
+        /// <summary>Opt-in candidate uint sum (modulo 2^32). Empty input writes zero.
+        /// Requires a candidate-configured instance; output must be distinct from input.</summary>
+        public void RecordReduceSum(CommandBuffer commands, GraphicsBuffer input, GraphicsBuffer output, int count)
+        {
+            ValidateCommandsAndCount(commands, count);
+            ValidateUintBuffer(input, count, nameof(input));
+            ValidateUintBuffer(output, 1, nameof(output));
+            if (input == output) throw new ArgumentException("Reduction input/output must be distinct.");
+            if (candidateRunner == null) throw new InvalidOperationException("Reduction requires an explicit candidateId.");
+            BeginSample(commands, "Summit.GpuPrimitives/ReduceSum");
+            candidateRunner.Reduce(commands, input, output, count);
+            EndSample(commands, "Summit.GpuPrimitives/ReduceSum");
         }
 
         public void RecordHistogram(
@@ -422,7 +449,7 @@ namespace Summit.GpuPrimitives
                     normalizedPredicates,
                     scannedPredicates,
                     count,
-                    ResolveBackend(backend));
+                    candidateRunner != null ? backend : ResolveBackend(backend));
 
                 commands.SetComputeIntParam(portableShader, CountId, count);
                 commands.SetComputeBufferParam(
@@ -613,6 +640,13 @@ namespace Summit.GpuPrimitives
                     "inputs. The two read-only inputs may alias.");
             }
 
+            if (candidateRunner != null && backend == GpuPrimitiveBackend.Auto)
+            {
+                BeginSample(commands, sampleName);
+                candidateRunner.Sort(commands, keysIn, valuesIn, keysOut, valuesOut, count, keyBitCount);
+                EndSample(commands, sampleName);
+                return;
+            }
             GpuPrimitiveBackend resolved = ResolveBackend(backend);
             int passCount = DivideRoundUp(
                 keyBitCount,
@@ -659,6 +693,7 @@ namespace Summit.GpuPrimitives
                 return;
             }
             disposed = true;
+            candidateRunner?.Dispose();
             ReleaseScratch();
         }
 
@@ -669,6 +704,12 @@ namespace Summit.GpuPrimitives
             int count,
             GpuPrimitiveBackend backend)
         {
+            if (candidateRunner != null && backend == GpuPrimitiveBackend.Auto)
+            {
+                candidateRunner.Scan(commands, input, output, count);
+                return;
+            }
+            backend = ResolveBackend(backend);
             ComputeShader scanShader = backend ==
                 GpuPrimitiveBackend.WaveOps
                 ? RequireWaveShader()
@@ -1052,7 +1093,7 @@ namespace Summit.GpuPrimitives
             radixGroupOffsets = CreateUintBuffer(
                 radixGroupCapacity * RadixBinCount,
                 "GPU Primitives Radix Group Offsets");
-            ScratchBytes = checked(scratchWords * sizeof(uint));
+            legacyScratchBytes = checked(scratchWords * sizeof(uint));
         }
 
         private void ReleaseScratch()
@@ -1068,7 +1109,7 @@ namespace Summit.GpuPrimitives
             DisposeBuffer(ref radixGroupHistograms);
             DisposeBuffer(ref radixGroupOffsets);
             Capacity = 0;
-            ScratchBytes = 0L;
+            legacyScratchBytes = 0L;
         }
 
         private static GraphicsBuffer CreateUintBuffer(
