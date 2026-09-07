@@ -27,6 +27,6 @@ namespace Summit.IndexCostDiagnostics
             File.WriteAllText(Path.Combine(Path.GetDirectoryName(args[at+1]),"build-summary.json"),JsonUtility.ToJson(new Receipt{result=report.summary.result.ToString(),errors=report.summary.totalErrors,warnings=report.summary.totalWarnings,buildGuid=report.summary.guid.ToString(),unity=Application.unityVersion},true));
             if(report.summary.result!=BuildResult.Succeeded)throw new Exception("Release build failed");
         }
-        [Serializable] public class Receipt {public string result,buildGuid,unity;public uint errors,warnings;}
+        [Serializable] public class Receipt {public string result,buildGuid,unity;public int errors,warnings;}
     }
 }
