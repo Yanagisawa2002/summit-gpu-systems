@@ -90,7 +90,7 @@ in every case including static90. State[14] reports actual inspected snapshot
 slots. Non-fallback remove/insert logically inspect 2*N slots in Original and
 2*changed slots in GpuDriven. Fallback scans remain fully included. Candidate
 storage adds 4*N+120 bytes. Full-direct-waveops records 11 index dispatches at
-this fixed bin count (snapshot keys, two clears, count, five-level scan dispatches,
+this fixed bin count (snapshot keys, two clears, count, five hierarchical scan dispatches,
 prepare and scatter), plus two consumer dispatches. Input and consumer storage
 are common and reported separately.
 
