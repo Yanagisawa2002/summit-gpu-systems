@@ -1,0 +1,63 @@
+#pragma kernel ClearBatch
+#pragma kernel ConsumeBatch
+#pragma target 6.0
+#pragma use_dxc
+
+StructuredBuffer<uint4> _Samples;
+StructuredBuffer<uint> _BinOffsets, _BinnedIds;
+StructuredBuffer<uint4> _Queries;
+RWStructuredBuffer<uint4> _QueryDigests;
+int _ElementCount, _EntryCapacity, _QueryStart, _QueryCount, _QuantizeIntensity;
+
+uint Mix(uint v)
+{
+    v ^= v >> 16u; v *= 0x7feb352du;
+    v ^= v >> 15u; v *= 0x846ca68bu;
+    return v ^ (v >> 16u);
+}
+
+[numthreads(256,1,1)]
+void ClearBatch(uint3 tid : SV_DispatchThreadID)
+{
+    if (tid.x < (uint)_QueryCount) _QueryDigests[_QueryStart + tid.x] = 0u;
+}
+
+// Scan each CSR membership once and reuse its sample/hash across the batch.
+// Membership remains authoritative: removed IDs and reserved tombstones are
+// never replaced by a scan over all sample slots. No work-list or readback.
+[numthreads(256,1,1)]
+void ConsumeBatch(uint3 gid : SV_GroupID, uint lane : SV_GroupIndex)
+{
+    uint cursor = (gid.x + gid.y * 65535u) * 256u + lane;
+    uint extent = min(_BinOffsets[262144], (uint)_EntryCapacity);
+    uint id = cursor < extent ? _BinnedIds[cursor] : 0xffffffffu;
+    bool valid = cursor < extent && id < (uint)_ElementCount;
+    uint4 sample = 0u;
+    if (valid) sample = _Samples[id];
+    if (_QuantizeIntensity != 0)
+    {
+        uint q = sample.w / 65537u;
+        sample.w = min(q + ((sample.w - q * 65537u) > 32768u ? 1u : 0u), 65535u);
+    }
+    uint h = Mix(Mix(Mix(Mix(Mix(id ^ 0x85ebca6bu) ^ sample.x) ^ sample.y) ^ sample.z) ^ sample.w);
+    uint h1 = Mix(h ^ id ^ 0x27d4eb2fu);
+    for (uint q = 0u; q < (uint)_QueryCount; q++)
+    {
+        uint qi = (uint)_QueryStart + q;
+        uint4 query = _Queries[qi];
+        uint radius = min(query.w, 65535u);
+        uint3 low = query.xyz - min(query.xyz, radius.xxx);
+        uint3 high = min(query.xyz + radius, 65535u);
+        bool hit = valid && all(sample.xyz >= low) && all(sample.xyz <= high);
+        uint4 value = hit ? uint4(1u, h, h, h1) : 0u;
+        value = uint4(WaveActiveSum(value.x), WaveActiveBitXor(value.y),
+            WaveActiveSum(value.z), WaveActiveSum(value.w));
+        if (WaveIsFirstLane() && value.x != 0u)
+        {
+            InterlockedAdd(_QueryDigests[qi].x, value.x);
+            InterlockedXor(_QueryDigests[qi].y, value.y);
+            InterlockedAdd(_QueryDigests[qi].z, value.z);
+            InterlockedAdd(_QueryDigests[qi].w, value.w);
+        }
+    }
+}

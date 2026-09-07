@@ -54,6 +54,8 @@ namespace Summit.GpuSensorIndex.Benchmark.Tests
             public string timingScope = "Native DX12 main-graphics-command-list: dirty/key detection + maintenance + fallback + consumer queries + frame digest. Snapshot uploads and correctness readback excluded.";
             public string allocationScope = "Current-thread managed bytes: record includes native marker recording, submit covers ExecuteCommandBuffer; excludes snapshots, token acquisition, correctness readback and report construction.";
             public bool formalPerformanceEvidence = false, allDigestsMatch;
+            public string sampleBoundary = "At least one Editor update after every completed sample; outside native and CPU intervals.";
+            public int editorUpdateYields;
             public uint timestampAbi;
             public List<Row> rows = new List<Row>();
             public List<NativeSample> emptyControls = new List<NativeSample>();
@@ -65,7 +67,7 @@ namespace Summit.GpuSensorIndex.Benchmark.Tests
             public bool Concentrated, Teleport, Transitions, Lifecycle;
         }
 
-        [UnityTest]
+        [UnityTest, Timeout(1800000)]
         public IEnumerator Compare()
         {
             string output = Environment.GetEnvironmentVariable("SUMMIT_INDEX_COMPARISON_OUTPUT");
@@ -98,6 +100,7 @@ namespace Summit.GpuSensorIndex.Benchmark.Tests
                 foreach (var scenario in Scenarios(smoke))
                 for (int round = 0; round < rounds; round++)
                 {
+                    UnityEngine.Debug.Log($"Index comparison: scenario={scenario.Name}, round={round}, capacity={scenario.Capacity}");
                     // Raw control overhead is disclosed and never subtracted.
                     Assert.That(timestamps.Acquire((ulong)(serial * 3 + 1), GpuTimestampSampleFlags.EmptyScope,
                         serial, out var control), Is.EqualTo(GpuTimestampStatus.Ready));
@@ -122,6 +125,7 @@ namespace Summit.GpuSensorIndex.Benchmark.Tests
                     for (int orderIndex = 0; orderIndex < 2; orderIndex++)
                     {
                         bool incremental = (round + orderIndex) % 2 == 1;
+                        UnityEngine.Debug.Log($"Index comparison arm: incremental={incremental}");
                         using (var data = new Data(scenario, incremental))
                         {
                             var captures = new GpuSensorQueryDigest[(warmup + samples) * data.Queries.Length];
@@ -196,6 +200,14 @@ namespace Summit.GpuSensorIndex.Benchmark.Tests
                                     countDigest = digest[0].Count, xorDigest = digest[0].XorHash,
                                     sumDigest0 = digest[0].SumHash0, sumDigest1 = digest[0].SumHash1, nativeSamples = native });
                                 serial++;
+                                // ExecuteCommandBuffer/readback can finish synchronously.
+                                // Always return control to the Editor between samples so
+                                // frame-scoped upload/descriptor resources can retire.
+                                // Release recorded buffer references before disposing Data.
+                                commands.Clear();
+                                UnityEditor.EditorApplication.QueuePlayerLoopUpdate();
+                                yield return null;
+                                report.editorUpdateYields++;
                             }
                             paired[incremental ? 1 : 0] = captures;
                         }

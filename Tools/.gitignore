@@ -1,0 +1,3 @@
+# Local Python analysis/test bytecode is not benchmark source.
+__pycache__/
+*.pyc

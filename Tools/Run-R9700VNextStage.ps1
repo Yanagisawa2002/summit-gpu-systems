@@ -70,7 +70,9 @@ try {
             & $ValidationLockScript -Action { & (Join-Path $PSScriptRoot 'Run-GpuSensorIndexComparison.ps1') -Mode matrix -SampleFrames 60 -WarmupFrames 12 -Rounds 4 -OutputDirectory $stageOutput }
         }
         'ResidencyCpu' {
-            & (Join-Path $PSScriptRoot 'Run-ResidencyPlannerComparison.ps1') -Mode comparison -Repetitions 4 -OutputPath (Join-Path $stageOutput 'results.json')
+            & $ValidationLockScript -Action {
+                & (Join-Path $PSScriptRoot 'Run-ResidencyPlannerComparison.ps1') -Mode comparison -Repetitions 4 -OutputPath (Join-Path $stageOutput 'results.json')
+            }
         }
         'ResidencyGpu' {
             & $ValidationLockScript -Action {

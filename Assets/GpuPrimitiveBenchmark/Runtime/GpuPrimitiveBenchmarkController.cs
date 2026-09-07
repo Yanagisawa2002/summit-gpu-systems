@@ -74,6 +74,7 @@ public sealed class GpuPrimitiveBenchmarkController : MonoBehaviour
     private int seed = 20260730;
     private int dispatchesPerFrame = 1;
     private float validationTimeoutSeconds = 60.0f;
+    private int validationConsumeDelayFrames;
     private string operationFilter = "*";
     private string backendFilter = "portable,wave-ops";
     private bool requireCompleteGpuTimings = true;
@@ -144,6 +145,7 @@ public sealed class GpuPrimitiveBenchmarkController : MonoBehaviour
                 validationTimeoutSeconds),
             5.0f,
             600.0f);
+        validationConsumeDelayFrames = Mathf.Clamp(ReadInt(args, "-gpu-primitive-validation-consume-delay-frames", 0), 0, 120);
         operationFilter = ReadString(
             args,
             "-gpu-primitive-operations",
@@ -829,6 +831,9 @@ public sealed class GpuPrimitiveBenchmarkController : MonoBehaviour
         Action<bool> completion)
     {
         adapter.BeginValidation(benchmarkCase, phase);
+        // Regression probe only: completed readbacks must remain owned even if
+        // the validation consumer is delayed beyond Unity's one-frame lifetime.
+        for (int frame = 0; frame < validationConsumeDelayFrames; frame++) yield return null;
         double deadline = Time.realtimeSinceStartupAsDouble + validationTimeoutSeconds;
         while (Time.realtimeSinceStartupAsDouble < deadline)
         {
@@ -1317,6 +1322,7 @@ public sealed class GpuPrimitiveBenchmarkController : MonoBehaviour
             seed = seed,
             dispatchesPerFrame = dispatchesPerFrame,
             validationTimeoutSeconds = validationTimeoutSeconds,
+            validationConsumeDelayFrames = validationConsumeDelayFrames,
             requestedOperations = operationFilter,
             requestedBackends = backendFilter,
             distribution = ReadString(originalArguments, "-gpu-primitive-distribution", "uniform"),
@@ -2141,6 +2147,7 @@ public sealed class GpuPrimitiveBenchmarkController : MonoBehaviour
         public int seed;
         public int dispatchesPerFrame;
         public float validationTimeoutSeconds;
+        public int validationConsumeDelayFrames;
         public string requestedOperations;
         public string requestedBackends;
         public string distribution;

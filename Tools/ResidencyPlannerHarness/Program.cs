@@ -7,6 +7,7 @@ using Summit.GpuResidencyManager;
 
 static class Program
 {
+    static string allocationDiagnosticDirectory;
     static void Check(bool ok, string message) { if (!ok) throw new Exception(message); }
     static void Reject(Action action) { bool rejected = false; try { action(); } catch (ArgumentException) { rejected = true; } catch (InvalidOperationException) { rejected = true; } Check(rejected, "Expected rejection"); }
     static void Verify(GpuPageResidencyPlanner planner, GpuResidencyFramePlan plan, int[] oracle)
@@ -81,6 +82,19 @@ static class Program
         }
         Console.WriteLine("PASS: atomic validation/retry, frame IDs, overflow, empty, duplicate, budgets, pending, fairness, prefetch, teleport, delta oracle, in-flight isolation, scan/heap differential (180 frames).");
     }
+    sealed class FrameSample
+    {
+        public int frame { get; set; }
+        public double cpuPlanAndRetireMs { get; set; }
+        public long managedAllocatedBytes { get; set; }
+        public long planAndTimerAllocatedBytes { get; set; }
+        public long accountingAllocatedBytes { get; set; }
+        public long retireAndTimerAllocatedBytes { get; set; }
+        public int uploads { get; set; }
+        public int hits { get; set; }
+        public int misses { get; set; }
+        public int deferred { get; set; }
+    }
     static object Measure(int slots, string trace, GpuResidencyPolicy policy, int frames)
     {
         int count = trace == "overcapacity" ? slots + slots / 2 : Math.Min(slots, 2048);
@@ -94,6 +108,7 @@ static class Program
             p.PlanFrame(prefill, prefillFrames++).OwnerComplete();
         }
         var input = new GpuPageRequest[count]; var times = new double[frames];
+        var samples = Enumerable.Range(0, frames).Select(_ => new FrameSample()).ToArray();
         long bytes = 0, hits = 0, misses = 0, uploads = 0, deferred = 0, maxLatency = 0; double latency = 0;
         int budget = trace == "budgeted" ? Math.Max(1, count / 8) : Math.Min(slots, count);
         ulong availabilityHash = 1469598103934665603UL;
@@ -105,21 +120,36 @@ static class Program
             long gc = GC.GetAllocatedBytesForCurrentThread(); int gen0 = GC.CollectionCount(0); long start = Stopwatch.GetTimestamp();
             var plan = p.PlanFrame(input, frame + prefillFrames, budget);
             double elapsed = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+            long afterPlanAllocated = GC.GetAllocatedBytesForCurrentThread();
             if (frame < 16) { p.CompleteFrame(plan); continue; }
             uploads += plan.UploadCount; hits += plan.HitCount; misses += plan.MissCount; deferred += plan.DeferredDemandCount;
             bytes += (long)plan.UploadCount * 64 * 16 + (long)plan.UploadCount * 8 + (long)plan.DeltaCount * 8 + (long)plan.RequestedCount * 8;
             for (int i = 0; i < plan.RequestedCount; i++) availabilityHash = unchecked((availabilityHash ^ (uint)(plan.RequestedPhysicalSlots[i] + 1)) * 1099511628211UL);
             latency += plan.TotalServiceLatencyFrames; maxLatency = Math.Max(maxLatency, plan.MaximumServiceLatencyFrames);
+            long beforeRetireAllocated = GC.GetAllocatedBytesForCurrentThread();
             long retireStart = Stopwatch.GetTimestamp(); p.CompleteFrame(plan);
             times[frame - 16] = elapsed + Stopwatch.GetElapsedTime(retireStart).TotalMilliseconds;
-            allocated += GC.GetAllocatedBytesForCurrentThread() - gc; collections += GC.CollectionCount(0) - gen0;
+            long frameAllocated = GC.GetAllocatedBytesForCurrentThread() - gc;
+            allocated += frameAllocated; collections += GC.CollectionCount(0) - gen0;
+            var sample = samples[frame - 16];
+            sample.frame = frame; sample.cpuPlanAndRetireMs = times[frame - 16];
+            sample.managedAllocatedBytes = frameAllocated; sample.uploads = plan.UploadCount;
+            sample.planAndTimerAllocatedBytes = afterPlanAllocated - gc;
+            sample.accountingAllocatedBytes = beforeRetireAllocated - afterPlanAllocated;
+            sample.retireAndTimerAllocatedBytes = frameAllocated - (beforeRetireAllocated - gc);
+            sample.hits = plan.HitCount; sample.misses = plan.MissCount; sample.deferred = plan.DeferredDemandCount;
         }
-        Check(allocated == 0, "Steady-state planner allocated managed memory");
+        if (allocated != 0)
+            File.WriteAllText(Path.Combine(allocationDiagnosticDirectory, $"allocation-failure-{slots}-{trace}-{policy}.json"),
+                JsonSerializer.Serialize(new { slots, trace, policy = policy.ToString(), allocated, samples }, new JsonSerializerOptions { WriteIndented = true }));
+        Check(allocated == 0, $"Steady-state planner allocated {allocated} bytes: slots={slots}, trace={trace}, policy={policy}");
         Array.Sort(times);
-        return new { slots, trace, policy = policy.ToString(), frames, budgetPages = budget, averageCpuPlanAndRetireMs = times.Average(), p99CpuPlanAndRetireMs = times[(int)Math.Ceiling(frames * .99) - 1], managedAllocatedBytes = allocated, gen0Collections = collections, logicalUploadBytes = bytes, uploads, hits, misses, deferredDemand = deferred, averageUploadQueueLatencyFrames = uploads == 0 ? 0 : latency / uploads, maximumUploadQueueLatencyFrames = maxLatency, availabilityHash = availabilityHash.ToString("X16"), gpuTimingMeasured = false, sparseResourceClaim = false };
+        return new { slots, trace, policy = policy.ToString(), frames, samples, budgetPages = budget, p95CpuPlanAndRetireMs = times[(int)Math.Ceiling(frames * .95) - 1], averageCpuPlanAndRetireMs = times.Average(), p99CpuPlanAndRetireMs = times[(int)Math.Ceiling(frames * .99) - 1], managedAllocatedBytes = allocated, gen0Collections = collections, logicalUploadBytes = bytes, uploads, hits, misses, deferredDemand = deferred, averageUploadQueueLatencyFrames = uploads == 0 ? 0 : latency / uploads, maximumUploadQueueLatencyFrames = maxLatency, availabilityHash = availabilityHash.ToString("X16"), gpuTimingMeasured = false, sparseResourceClaim = false };
     }
     static int Main(string[] args)
     {
+        allocationDiagnosticDirectory = args.Length > 1 ? Path.GetDirectoryName(Path.GetFullPath(args[1])) : Path.GetFullPath("Reports");
+        Directory.CreateDirectory(allocationDiagnosticDirectory);
         Correctness();
         if (args.Length == 0) return 0;
         bool smoke = args[0] == "smoke"; int frames = smoke ? 8 : 240;
