@@ -1,6 +1,6 @@
 # SUMMIT GPU Systems
 
-Private, asset-independent GPU performance engineering code extracted from the SUMMIT real-time simulation project.
+Publicly available, asset-independent GPU performance engineering code extracted from the author's personal SUMMIT real-time simulation project.
 
 This repository is a Unity 6 benchmark host and a monorepo of reusable UPM packages. It contains GPU algorithms, DX12 timestamp instrumentation, deterministic A/B harnesses, tests, PowerShell automation, engineering reports, and an isolated snapshot of the NYCGIS/BFP2 integration. City geometry, imagery, textures, scenes, generated players, raw captures, and third-party assets are intentionally excluded.
 
@@ -72,7 +72,7 @@ During local development, add an embedded package with a `file:` dependency. Aft
 }
 ```
 
-Packages with internal dependencies require the corresponding `com.summit.*` dependencies to be added to the consumer manifest as well. Access requires credentials because this repository is private.
+Packages with internal dependencies require the corresponding `com.summit.*` dependencies to be added to the consumer manifest as well. Public repository access does not require credentials. Repository visibility does not grant an open-source license; see [`LICENSE.md`](LICENSE.md) for the current terms.
 
 ## Repository policy
 
