@@ -23,6 +23,7 @@ namespace Summit.PublicIntegration
         readonly string root;
         readonly Action<ContentEvent> record;
         public Texture CurrentTexture {get;private set;}
+        public int ActiveDelta {get;private set;}
         public int Pending { get {int n=0;foreach(var l in loads)if((l.request!=null&&!l.ready)||l.unload!=null)n++;return n;} }
         public IntegrationContent(Action<ContentEvent> record)
         { this.record=record;root=Path.Combine(Application.streamingAssetsPath,"IntegrationContent");CurrentTexture=Texture2D.whiteTexture; }
@@ -64,7 +65,7 @@ namespace Summit.PublicIntegration
         }
         public int Advance(int frame,GpuSensorSample[] samples,uint[] active,uint seed)
         {
-            Poll(frame);int changed=0;
+            Poll(frame);int changed=0;ActiveDelta=0;
             if(frame==16)Request(0,frame,true);
             if(frame==80)Request(0,frame,false);
             if(frame==192)Request(1,frame,false);
@@ -81,13 +82,13 @@ namespace Summit.PublicIntegration
                     if(!s.Equals(IntegrationFixture.ContentSample(l.id,i)))throw new Exception("Content payload mismatch");
                     s.Payload^=seed;samples[begin+i]=s;active[begin+i]=1;
                 }
-                l.registered=true;CurrentTexture=l.texture;changed+=IntegrationFixture.ContentSlots;Mark("register",frame,l);
+                l.registered=true;CurrentTexture=l.texture;changed+=IntegrationFixture.ContentSlots;ActiveDelta+=IntegrationFixture.ContentSlots;Mark("register",frame,l);
             }
             if(frame==224||frame==320)
             {
                 var l=Find(frame==224?0:1);int begin=IntegrationFixture.Capacity-2*IntegrationFixture.ContentSlots+l.id*IntegrationFixture.ContentSlots;
                 for(int i=0;i<IntegrationFixture.ContentSlots;i++)active[begin+i]=0;
-                l.registered=false;CurrentTexture=Texture2D.whiteTexture;changed+=IntegrationFixture.ContentSlots;Mark("unregister",frame,l);
+                l.registered=false;CurrentTexture=Texture2D.whiteTexture;changed+=IntegrationFixture.ContentSlots;ActiveDelta-=IntegrationFixture.ContentSlots;Mark("unregister",frame,l);
             }
             if(frame==256||frame==352)
             {
