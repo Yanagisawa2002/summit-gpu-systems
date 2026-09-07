@@ -34,7 +34,7 @@ namespace Summit.PublicIntegration
         public double engineCadenceMs,recordCpuMs;public int gc0,gc1,gc2;
         public NativeTiming sceneGpu=new NativeTiming(),indexGpu=new NativeTiming(),queryGpu=new NativeTiming();
     }
-    [Serializable] public sealed class EngineTiming
+    [Serializable] public struct EngineTiming
     {
         public ulong frameStartTimestamp,cpuTimePresentCalled,cpuTimeFrameComplete;
         public double cpuFrameMs,mainThreadMs,renderThreadMs,presentWaitMs,gpuFrameMs;
@@ -44,12 +44,12 @@ namespace Summit.PublicIntegration
     {
         public string arm,startedUtc,endedUtc,queryBackend,indexBackend,oracleSha256;
         public int block,position,frameCount,verifiedDigestWords;public long residentBytes,allocatedBefore,allocatedAfter;
-        public double setupMilliseconds,asyncDrainMilliseconds;
+        public double setupMilliseconds,asyncDrainMilliseconds,checkpointMilliseconds;
         public bool verified;public IntegrationFrame[] frames;public List<ContentEvent> contentEvents=new List<ContentEvent>();
     }
-    [Serializable] public sealed class ProcessFrame
+    [Serializable] public struct ProcessFrame
     {
-        public int unityFrame;public long qpc;public double engineIntervalMs;public string phase;
+        public int unityFrame,logicalFrame;public long qpc;public double engineIntervalMs;public string phase;
         public double collectorCpuMs;public long collectorAllocatedBytes;public uint returnedTimings;
     }
     [Serializable] public struct EngineObservation
@@ -66,6 +66,9 @@ namespace Summit.PublicIntegration
         public string nativeScope="Main D3D12 queue: explicit scene clear + index + nine queries + digest history + actual draw; full engine GPU separately from FrameTimingManager";
         public string engineScope="All process Update intervals retained, plus complete per-arm windows and predeclared warmup exclusion for steady comparisons; not OS displayed cadence";
         public double firstRenderedEngineMilliseconds=-1;public ulong engineCpuTimerFrequency;public long qpcFrequency,stopwatchFrequency;
+        public bool allocationCounterAvailable;public int allocationProbeBytes=1048576;
+        public long allocationProbeCounterDelta,allocationProbeMonoHeapDelta;
+        public string allocationCounterScope="GetAllocatedBytesForCurrentThread calibrated against a retained 1 MiB managed array; unavailable values are -1";
         public IntegrationConfig config;public List<IntegrationArm> runs=new List<IntegrationArm>();
         public List<EngineTiming> engineTimings=new List<EngineTiming>();
         public List<ProcessFrame> processFrames=new List<ProcessFrame>();
@@ -76,9 +79,10 @@ namespace Summit.PublicIntegration
         const int N=IntegrationFixture.Capacity;
         IntegrationConfig config;IntegrationResult result;Camera cameraView;Material material;
         GpuTimestampSession timestamps;ComputeShader historyShader;int historyKernel;
-        readonly FrameTiming[] frameTimings=new FrameTiming[16];readonly HashSet<ulong> seenEngineFrames=new HashSet<ulong>();
+        readonly FrameTiming[] frameTimings=new FrameTiming[16];HashSet<ulong> seenEngineFrames;
         readonly List<PendingTiming> pending=new List<PendingTiming>(2048);
-        double lastProcessFrame;string phase="startup";ulong nextTag=1;
+        readonly WaitForEndOfFrame endOfFrame=new WaitForEndOfFrame();
+        double lastProcessFrame;string phase="startup";ulong nextTag=1;int logicalFrame=-1;
         struct PendingTiming {public GpuTimestampToken token;public NativeTiming result;}
         [DllImport("kernel32.dll")] static extern bool QueryPerformanceCounter(out long ticks);
         [DllImport("kernel32.dll")] static extern bool QueryPerformanceFrequency(out long frequency);
@@ -100,6 +104,16 @@ namespace Summit.PublicIntegration
                 engineCpuTimerFrequency=FrameTimingManager.GetCpuTimerFrequency()};
             if(!QueryPerformanceFrequency(out result.qpcFrequency))throw new Exception("QPC frequency unavailable");
             result.stopwatchFrequency=Stopwatch.Frequency;
+            long allocationBefore=GC.GetAllocatedBytesForCurrentThread(),monoBefore=Profiler.GetMonoUsedSizeLong();
+            var allocationProbe=new byte[result.allocationProbeBytes];
+            for(int i=0;i<allocationProbe.Length;i+=4096)allocationProbe[i]=1;
+            result.allocationProbeCounterDelta=GC.GetAllocatedBytesForCurrentThread()-allocationBefore;
+            result.allocationProbeMonoHeapDelta=Profiler.GetMonoUsedSizeLong()-monoBefore;
+            result.allocationCounterAvailable=result.allocationProbeCounterDelta>=result.allocationProbeBytes;
+            GC.KeepAlive(allocationProbe);
+            int plannedFrames=config.frames*Math.Max(1,config.arms.Length)*config.blocks+2048;
+            result.processFrames.Capacity=plannedFrames;result.engineTimings.Capacity=plannedFrames;
+            seenEngineFrames=new HashSet<ulong>(plannedFrames);
             if(config.engineTimingAudit)result.engineObservations=new List<EngineObservation>((config.frames*Math.Max(1,config.arms.Length)*config.blocks+256)*16);
             Save();lastProcessFrame=Time.realtimeSinceStartupAsDouble;
         }
@@ -119,9 +133,9 @@ namespace Summit.PublicIntegration
         {
             if(result==null)return;
             long auditBegin=config.engineTimingAudit?Stopwatch.GetTimestamp():0;
-            long auditAllocated=config.engineTimingAudit?GC.GetAllocatedBytesForCurrentThread():0;
+            long auditAllocated=config.engineTimingAudit&&result.allocationCounterAvailable?GC.GetAllocatedBytesForCurrentThread():0;
             double now=Time.realtimeSinceStartupAsDouble;
-            var processFrame=new ProcessFrame{unityFrame=Time.frameCount,qpc=Qpc(),engineIntervalMs=(now-lastProcessFrame)*1000,phase=phase};
+            var processFrame=new ProcessFrame{unityFrame=Time.frameCount,logicalFrame=logicalFrame,qpc=Qpc(),engineIntervalMs=(now-lastProcessFrame)*1000,phase=phase,collectorAllocatedBytes=-1};
             result.processFrames.Add(processFrame);
             lastProcessFrame=now;
             FrameTimingManager.CaptureFrameTimings();
@@ -143,7 +157,8 @@ namespace Summit.PublicIntegration
                     cpuTimeFrameComplete=t.cpuTimeFrameComplete,cpuFrameMs=t.cpuFrameTime,mainThreadMs=t.cpuMainThreadFrameTime,
                     renderThreadMs=t.cpuRenderThreadFrameTime,presentWaitMs=t.cpuMainThreadPresentWaitTime,gpuFrameMs=t.gpuFrameTime,observedUnityFrame=Time.frameCount});
             }
-            if(config.engineTimingAudit){processFrame.collectorCpuMs=(Stopwatch.GetTimestamp()-auditBegin)*1000.0/Stopwatch.Frequency;processFrame.collectorAllocatedBytes=GC.GetAllocatedBytesForCurrentThread()-auditAllocated;}
+            if(config.engineTimingAudit){processFrame.collectorCpuMs=(Stopwatch.GetTimestamp()-auditBegin)*1000.0/Stopwatch.Frequency;processFrame.collectorAllocatedBytes=result.allocationCounterAvailable?GC.GetAllocatedBytesForCurrentThread()-auditAllocated:-1;}
+            result.processFrames[result.processFrames.Count-1]=processFrame;
         }
         IEnumerator Run()
         {
@@ -204,11 +219,12 @@ namespace Summit.PublicIntegration
                 report.residentBytes=(incremental?updated.ResidentBytes:index.ResidentBytes)+consumer.ResidentBytes+(long)N*20+(long)config.frames*160;
                 cameraView.AddCommandBuffer(CameraEvent.BeforeForwardOpaque,commands);
                 report.setupMilliseconds=(Time.realtimeSinceStartupAsDouble-setupAt)*1000;
+                phase=arm;
                 for(int frame=0;frame<config.frames;frame++)
                 {
-                    phase=arm+":frame-"+frame;var row=report.frames[frame];row.unityFrame=Time.frameCount;row.cpuStartTicks=Stopwatch.GetTimestamp();row.qpcStart=Qpc();
+                    logicalFrame=frame;var row=report.frames[frame];row.unityFrame=Time.frameCount;row.cpuStartTicks=Stopwatch.GetTimestamp();row.qpcStart=Qpc();
                     double frameStart=Time.realtimeSinceStartupAsDouble;PollNative();
-                    long allocation=GC.GetAllocatedBytesForCurrentThread();long recordBegin=Stopwatch.GetTimestamp();
+                    long allocation=result.allocationCounterAvailable?GC.GetAllocatedBytesForCurrentThread():0;long recordBegin=Stopwatch.GetTimestamp();
                     row.changedSlots=IntegrationFixture.Advance(config.scenario,data,active,frame);
                     if(config.scenario==IntegrationFixture.Scenarios[2]){row.changedSlots+=content.Advance(frame,data,active,config.seed);activeCount=(uint)((int)activeCount+content.ActiveDelta);}
                     row.activeCount=(int)activeCount;
@@ -239,9 +255,9 @@ namespace Summit.PublicIntegration
                     commands.DrawProcedural(Matrix4x4.identity,material,0,MeshTopology.Points,N,1,properties);
                     commands.DrawProcedural(Matrix4x4.identity,material,1,MeshTopology.Triangles,54,1,properties);End(commands,whole);
                     row.recordCpuMs=(Stopwatch.GetTimestamp()-recordBegin)*1000.0/Stopwatch.Frequency;
-                    row.recordAllocatedBytes=GC.GetAllocatedBytesForCurrentThread()-allocation;
+                    row.recordAllocatedBytes=result.allocationCounterAvailable?GC.GetAllocatedBytesForCurrentThread()-allocation:-1;
                     row.gc0=GC.CollectionCount(0);row.gc1=GC.CollectionCount(1);row.gc2=GC.CollectionCount(2);
-                    yield return new WaitForEndOfFrame();
+                    yield return endOfFrame;
                     if(config.scenario==IntegrationFixture.Scenarios[2])content.MarkRendered(frame);
                     if(result.firstRenderedEngineMilliseconds<0)result.firstRenderedEngineMilliseconds=Time.realtimeSinceStartupAsDouble*1000;
                     if(config.screenshot&&config.mode!="formal"&&frame==config.frames-1)
@@ -276,7 +292,10 @@ namespace Summit.PublicIntegration
                 while(content.Pending>0){content.Poll(config.frames);if(Time.realtimeSinceStartupAsDouble-drain>60)throw new Exception("Content drain timeout");yield return null;}
                 report.allocatedAfter=Profiler.GetTotalAllocatedMemoryLong();report.endedUtc=DateTime.UtcNow.ToString("O");
             }
-            phase="arm-report";Save();yield return null;
+            logicalFrame=-1;phase="arm-checkpoint";double checkpointAt=Time.realtimeSinceStartupAsDouble;
+            File.WriteAllText(Path.Combine(config.output,$"checkpoint-{block}-{position}-{arm}.json"),JsonUtility.ToJson(report,true));
+            report.checkpointMilliseconds=(Time.realtimeSinceStartupAsDouble-checkpointAt)*1000;
+            yield return null;
         }
         GpuTimestampToken Begin(CommandBuffer commands,NativeTiming output)
         {

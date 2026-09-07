@@ -166,7 +166,7 @@ def analyze(root, output):
                           firstRenderedEngineMilliseconds=result['firstRenderedEngineMilliseconds'],
                           lifecycle=[dict(arm=a['arm'],block=a['block'],events=a['contentEvents']) for a in result['runs']],
                           memoryAndSetup=[{k:a[k] for k in ['arm','block','residentBytes','allocatedBefore','allocatedAfter','setupMilliseconds','asyncDrainMilliseconds']} for a in result['runs']],
-                          gc=[dict(arm=a['arm'],block=a['block'],recordAllocatedBytes=sum(f['recordAllocatedBytes'] for f in a['frames']),gc0=a['frames'][-1]['gc0']-a['frames'][0]['gc0'],gc1=a['frames'][-1]['gc1']-a['frames'][0]['gc1'],gc2=a['frames'][-1]['gc2']-a['frames'][0]['gc2']) for a in result['runs']]))
+                          gc=[dict(arm=a['arm'],block=a['block'],allocationCounterAvailable=result.get('allocationCounterAvailable',False),recordAllocatedBytes=sum(f['recordAllocatedBytes'] for f in a['frames']) if result.get('allocationCounterAvailable',False) else None,gc0=a['frames'][-1]['gc0']-a['frames'][0]['gc0'],gc1=a['frames'][-1]['gc1']-a['frames'][0]['gc1'],gc2=a['frames'][-1]['gc2']-a['frames'][0]['gc2']) for a in result['runs']]))
         for file in sorted(folder.iterdir()):
             if file.is_file(): evidence.append(dict(path=str(file),bytes=file.stat().st_size,sha256=sha(file)))
     paired_results = []
