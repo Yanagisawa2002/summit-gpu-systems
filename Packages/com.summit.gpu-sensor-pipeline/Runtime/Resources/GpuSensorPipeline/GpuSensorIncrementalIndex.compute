@@ -1,0 +1,197 @@
+#pragma kernel BeginUpdate
+#pragma kernel DetectChanges
+#pragma kernel DecideRebuild
+#pragma kernel ClearCounts
+#pragma kernel CountMembers
+#pragma kernel ScanCells
+#pragma kernel ScanBlocks
+#pragma kernel PrepareCells
+#pragma kernel ClearMembers
+#pragma kernel RebuildMembers
+#pragma kernel RemoveMembers
+#pragma kernel InsertMembers
+#pragma kernel FinishUpdate
+#pragma target 5.0
+
+static const uint Invalid = 0xffffffffu;
+static const uint BinCount = 262144u;
+StructuredBuffer<uint4> _InputSamples;
+StructuredBuffer<uint> _ActiveSlots;
+RWStructuredBuffer<uint4> _Samples;
+RWStructuredBuffer<uint> _PreviousKeys, _NextKeys, _Positions, _Reservations;
+RWStructuredBuffer<uint> _Offsets, _Members, _Heads, _Counts, _BlockSums, _State;
+int _Capacity, _StaticCount, _StaticRevision, _Force, _ChurnThreshold, _FragmentationThreshold;
+groupshared uint scanValues[256];
+groupshared uint rebuildGroup;
+
+[numthreads(1,1,1)]
+void BeginUpdate(uint3 tid : SV_DispatchThreadID)
+{
+    for (uint i = 3; i <= 9; i++) _State[i] = 0;
+    _State[13] = 0; _State[14] = 0;
+}
+
+groupshared uint changeCounters[8];
+[numthreads(256,1,1)]
+void DetectChanges(uint3 tid : SV_DispatchThreadID, uint lane : SV_GroupIndex)
+{
+    if (lane < 8) changeCounters[lane] = 0;
+    GroupMemoryBarrierWithGroupSync();
+    uint id = tid.x;
+    if (id < (uint)_Capacity)
+    {
+        uint oldKey = _State[0] == 0 ? Invalid : _PreviousKeys[id];
+        uint key = oldKey;
+        bool inspect = id >= (uint)_StaticCount || _State[0] == 0 ||
+            _State[1] != (uint)_StaticRevision || _Force != 0;
+        if (inspect)
+        {
+            uint4 sample = _InputSamples[id];
+            uint active = _ActiveSlots[id];
+            bool valid = active == 1 && all(sample.xyz <= 65535u);
+            key = valid ? (sample.x >> 10) | ((sample.y >> 10) << 6) |
+                ((sample.z >> 10) << 12) : Invalid;
+            // Copy positions and payload even when the membership is reused.
+            _Samples[id] = sample;
+            InterlockedAdd(changeCounters[7], 1);
+            if (active > 1 || (active == 1 && !valid)) InterlockedAdd(changeCounters[4], 1);
+        }
+        _PreviousKeys[id] = oldKey;
+        _NextKeys[id] = key;
+        if (key != Invalid) InterlockedAdd(changeCounters[5], 1);
+        if (oldKey == key)
+        {
+            if (key != Invalid) InterlockedAdd(changeCounters[6], 1);
+        }
+        else
+        {
+            InterlockedAdd(changeCounters[0], 1);
+            if (oldKey != Invalid) InterlockedAdd(changeCounters[1], 1);
+            if (key != Invalid)
+            {
+                InterlockedAdd(changeCounters[2], 1);
+                uint reservation;
+                InterlockedAdd(_Heads[key], 1, reservation);
+                _Reservations[id] = reservation;
+                if (reservation >= _Offsets[key + 1]) InterlockedAdd(changeCounters[3], 1);
+            }
+        }
+    }
+    GroupMemoryBarrierWithGroupSync();
+    // Aggregate diagnostics per group rather than globally contending per slot.
+    if (lane < 8 && changeCounters[lane] != 0)
+    {
+        uint word = lane < 5 ? lane + 3 : (lane == 5 ? 9 : lane + 7);
+        InterlockedAdd(_State[word], changeCounters[lane]);
+    }
+}
+[numthreads(1,1,1)]
+void DecideRebuild(uint3 tid : SV_DispatchThreadID)
+{
+    uint reason = _State[0] == 0 ? 1u : 0u;
+    if (_Force != 0) reason |= 2u;
+    if (_State[3] > (uint)_ChurnThreshold) reason |= 4u;
+    if (_State[2] + _State[4] > (uint)_FragmentationThreshold) reason |= 8u;
+    if (_State[6] != 0) reason |= 16u;
+    _State[8] = reason;
+}
+
+[numthreads(256,1,1)]
+void ClearCounts(uint3 tid : SV_DispatchThreadID)
+{
+    if (_State[8] != 0) _Counts[tid.x] = 0;
+}
+[numthreads(256,1,1)]
+void CountMembers(uint3 tid : SV_DispatchThreadID)
+{
+    if (_State[8] == 0 || tid.x >= (uint)_Capacity) return;
+    uint key = _NextKeys[tid.x];
+    if (key != Invalid) InterlockedAdd(_Counts[key], 1);
+}
+
+// Rebuild-only portable scan. Each occupied cell reserves count + ceil(count/2)
+// + 1 words, bounded by 3*activeCount. Empty cells reserve zero; first insertion
+// into an empty cell safely triggers a rebuild before any membership writes.
+[numthreads(256,1,1)]
+void ScanCells(uint3 tid : SV_DispatchThreadID, uint lane : SV_GroupIndex,
+    uint3 group : SV_GroupID)
+{
+    if (lane == 0) rebuildGroup = _State[8];
+    GroupMemoryBarrierWithGroupSync();
+    if (rebuildGroup == 0) return;
+    uint count = _Counts[tid.x];
+    uint value = count == 0 ? 0 : count + (count + 1) / 2 + 1;
+    scanValues[lane] = value;
+    GroupMemoryBarrierWithGroupSync();
+    for (uint offset = 1; offset < 256; offset <<= 1)
+    {
+        uint add = lane >= offset ? scanValues[lane - offset] : 0;
+        GroupMemoryBarrierWithGroupSync();
+        scanValues[lane] += add;
+        GroupMemoryBarrierWithGroupSync();
+    }
+    _Offsets[tid.x] = scanValues[lane] - value;
+    if (lane == 255) _BlockSums[group.x] = scanValues[255];
+}
+[numthreads(1,1,1)]
+void ScanBlocks(uint3 tid : SV_DispatchThreadID)
+{
+    if (_State[8] == 0) return;
+    uint sum = 0;
+    for (uint i = 0; i < BinCount / 256; i++)
+    {
+        uint value = _BlockSums[i]; _BlockSums[i] = sum; sum += value;
+    }
+    _Offsets[BinCount] = sum;
+    _State[10] = sum;
+}
+[numthreads(256,1,1)]
+void PrepareCells(uint3 tid : SV_DispatchThreadID)
+{
+    if (_State[8] == 0) return;
+    uint start = _Offsets[tid.x] + _BlockSums[tid.x / 256];
+    _Offsets[tid.x] = start; _Heads[tid.x] = start;
+}
+[numthreads(256,1,1)]
+void ClearMembers(uint3 tid : SV_DispatchThreadID)
+{
+    if (_State[8] != 0 && tid.x < _State[10]) _Members[tid.x] = Invalid;
+}
+[numthreads(256,1,1)]
+void RebuildMembers(uint3 tid : SV_DispatchThreadID)
+{
+    uint id = tid.x;
+    if (_State[8] == 0 || id >= (uint)_Capacity) return;
+    uint key = _NextKeys[id];
+    _PreviousKeys[id] = key;
+    if (key == Invalid) { _Positions[id] = Invalid; return; }
+    uint pos; InterlockedAdd(_Heads[key], 1, pos);
+    _Members[pos] = id; _Positions[id] = pos;
+}
+[numthreads(256,1,1)]
+void RemoveMembers(uint3 tid : SV_DispatchThreadID)
+{
+    uint id = tid.x;
+    if (_State[8] != 0 || id >= (uint)_Capacity) return;
+    uint oldKey = _PreviousKeys[id];
+    if (oldKey != _NextKeys[id] && oldKey != Invalid)
+        _Members[_Positions[id]] = Invalid;
+}
+[numthreads(256,1,1)]
+void InsertMembers(uint3 tid : SV_DispatchThreadID)
+{
+    uint id = tid.x;
+    if (_State[8] != 0 || id >= (uint)_Capacity) return;
+    uint key = _NextKeys[id];
+    if (key == _PreviousKeys[id]) return;
+    _PreviousKeys[id] = key;
+    _Positions[id] = key == Invalid ? Invalid : _Reservations[id];
+    if (key != Invalid) _Members[_Reservations[id]] = id;
+}
+[numthreads(1,1,1)]
+void FinishUpdate(uint3 tid : SV_DispatchThreadID)
+{
+    _State[0] = 1; _State[1] = (uint)_StaticRevision;
+    if (_State[8] != 0) { _State[2] = 0; _State[11]++; }
+    else { _State[2] += _State[4]; _State[12]++; }
+}
