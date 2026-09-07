@@ -135,6 +135,15 @@ namespace Summit.GpuPrimitives
                     $"Capacity must be in [1, {MaxElementCount}].");
             }
 
+            // Reject unsupported opt-in identities before touching legacy shader
+            // kernels or allocating resources, including on Unity's Null Device.
+            if (candidateId != null)
+            {
+                GpuPrimitiveCandidates.Get(candidateId);
+                if (!GpuPrimitiveCandidates.IsSupported(candidateId, out string reason))
+                    throw new NotSupportedException(candidateId + ": " + reason);
+            }
+
             this.portableShader = portableShader != null
                 ? portableShader
                 : Resources.Load<ComputeShader>(PortableResourcePath);

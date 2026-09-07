@@ -41,7 +41,8 @@ namespace Summit.GpuPrimitives.Tests
         [Test]
         public void CandidatePreservesArgumentAndBackendContracts()
         {
-            if (!SystemInfo.supportsComputeShaders) Assert.Ignore("GPU compute device required.");
+            if (!SystemInfo.supportsComputeShaders || SystemInfo.graphicsDeviceType == GraphicsDeviceType.Null)
+                Assert.Ignore("GPU compute device required.");
             using (var p = new GpuPrimitives(1, candidateId: Ids[0]))
             using (var a = Buffer(new[] { 1u })) using (var b = Buffer(new[] { 0u }))
             using (var cmd = new CommandBuffer())

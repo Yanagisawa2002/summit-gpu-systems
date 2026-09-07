@@ -80,7 +80,8 @@ namespace Summit.GpuPrimitives
         {
             GpuPrimitiveCandidate c;
             try { c = Get(id); } catch (ArgumentException) { reason = "unknown-candidate"; return false; }
-            if (!SystemInfo.supportsComputeShaders) { reason = "compute-unavailable"; return false; }
+            if (!SystemInfo.supportsComputeShaders || SystemInfo.graphicsDeviceType == GraphicsDeviceType.Null)
+            { reason = "compute-unavailable"; return false; }
             if (c.WaveSize != 0 && SystemInfo.graphicsDeviceType != GraphicsDeviceType.Direct3D12 &&
                 SystemInfo.graphicsDeviceType != GraphicsDeviceType.Vulkan)
             { reason = "wave-api-unavailable"; return false; }
