@@ -27,6 +27,10 @@ ID set (no duplicate/missing IDs), proper cell membership, and the exact input
 snapshot. A seventh history dispatch stores both queries, full index state and
 both CSR counters. These are additional diagnostic work, separately timed.
 Original two draw calls still execute and streaming content is really loaded.
+Rendering is explicitly submitted by Camera.Render into a 1280x720 ARGB32/depth24
+RenderTexture, with CPU render submission reported separately. This guarantees
+the hidden diagnostic Player executes camera commands; it intentionally does
+not measure window presentation or the original auto-render cadence.
 
 The outer native interval includes the complete paired diagnostic graph,
 validation/history and both draws. It is neither the original scene interval,

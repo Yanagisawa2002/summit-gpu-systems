@@ -29,14 +29,14 @@ namespace Summit.IndexCostDiagnostics
         public int frame,unityFrame,activeCount,changedSlots,indexOrder,queryOrder;public bool measured;
         public long uploadedBytes,recordAllocatedBytes;
         public double pollCpuMs,traceCpuMs,contentCpuMs,uploadCpuMs,recordCpuMs,fullRecordCpuMs,incrementalRecordCpuMs,compactQueryRecordCpuMs,reservedQueryRecordCpuMs;
-        public double validationRecordCpuMs,engineDiagnosticIntervalMs;
+        public double validationRecordCpuMs,renderSubmitCpuMs,engineDiagnosticIntervalMs;
         public List<Timing> timing=new List<Timing>();public uint[] state,compactCsrCounters,reservedCsrCounters;
     }
     [Serializable] public sealed class Report
     {
         public string status="running",error,startedUtc,endedUtc,device,graphicsApi,unityVersion,buildGuid;
         public int pid;public bool development,formalPerformanceEvidence=false;
-        public string scope="Diagnostic paired graph: both complete indices, compact/reserved queries over identical incremental Samples, six independent CSR-validation dispatches, history, original two draws. Not original scene/full-engine/presentation time.";
+        public string scope="Diagnostic paired graph rendered explicitly into a 1280x720 target: both complete indices, compact/reserved queries over identical incremental Samples, six independent CSR-validation dispatches, history, original two draws. Not original scene/full-engine/presentation time.";
         public string counterScope="Dedicated GPU validation scans count all CSR live/Invalid slots and verify exact active membership, no duplicates, correct cells and snapshot equality every frame. These are not hardware counters nor query-specific slots-visited. Layout, ordering, reservation and consumer capacity differ together.";
         public string phaseScope="Phase-on adds native scopes around 13 incremental dispatch calls and full key/clear/count/scan/prepare/scatter. Empty indirect dispatch timings include markers, barriers and command processing. No marker subtraction or free compaction claim.";
         public Config config;public List<Frame> frames=new List<Frame>();public List<ContentEvent> contentEvents=new List<ContentEvent>();
@@ -47,7 +47,7 @@ namespace Summit.IndexCostDiagnostics
     {
         const int N=262144;Config config;Report report;GpuTimestampSession timestamps;
         readonly List<Pending> pending=new List<Pending>();readonly Dictionary<string,Pending> phases=new Dictionary<string,Pending>();
-        Frame row;ulong nextToken=1;Camera cameraView;Material material;ComputeShader counterShader;
+        Frame row;ulong nextToken=1;Camera cameraView;Material material;ComputeShader counterShader;RenderTexture target;
         int clearKernel,membersKernel,seenKernel,historyKernel;
         struct Pending {public GpuTimestampToken token;public Timing timing;}
         void Awake()
@@ -89,6 +89,8 @@ namespace Summit.IndexCostDiagnostics
             clearKernel=counterShader.FindKernel("ClearSeen");membersKernel=counterShader.FindKernel("ValidateMembers");seenKernel=counterShader.FindKernel("ValidateSeen");historyKernel=counterShader.FindKernel("StoreHistory");
             cameraView=new GameObject("Diagnostic Camera").AddComponent<Camera>();cameraView.clearFlags=CameraClearFlags.SolidColor;
             cameraView.backgroundColor=new Color(.015f,.025f,.055f);cameraView.nearClipPlane=.03f;cameraView.farClipPlane=250;
+            target=new RenderTexture(1280,720,24,RenderTextureFormat.ARGB32);target.Create();
+            cameraView.targetTexture=target;cameraView.enabled=false;
             var backend=config.scenario=="hotspot-dynamic"?GpuSensorQueryBackend.CellSerial:GpuSensorQueryBackend.BatchedPointScanWave;
             using(var input=new GraphicsBuffer(GraphicsBuffer.Target.Structured,N,16))
             using(var flags=new GraphicsBuffer(GraphicsBuffer.Target.Structured,N,4))
@@ -145,6 +147,7 @@ namespace Summit.IndexCostDiagnostics
                     commands.DrawProcedural(Matrix4x4.identity,material,0,MeshTopology.Points,N,1,props);
                     commands.DrawProcedural(Matrix4x4.identity,material,1,MeshTopology.Triangles,54,1,props);End(commands,draw);End(commands,outer);
                     row.recordAllocatedBytes=GC.GetAllocatedBytesForCurrentThread()-allocation;row.recordCpuMs=timer.Elapsed.TotalMilliseconds;
+                    timer.Restart();cameraView.Render();row.renderSubmitCpuMs=timer.Elapsed.TotalMilliseconds;
                     yield return new WaitForEndOfFrame();if(config.scenario=="streaming-switch")content.MarkRendered(frame);
                     commands.Clear();yield return null;row.engineDiagnosticIntervalMs=(Time.realtimeSinceStartupAsDouble-frameStart)*1000;
                 }
@@ -188,7 +191,8 @@ namespace Summit.IndexCostDiagnostics
         Pending Begin(CommandBuffer c,string name)
         {
             var timing=new Timing{name=name};row.timing.Add(timing);
-            if(timestamps.Acquire(nextToken++,GpuTimestampSampleFlags.None,Time.frameCount,out var token)!=GpuTimestampStatus.Ready)throw new Exception("Timestamp acquire failed");
+            var status=timestamps.Acquire(nextToken++,GpuTimestampSampleFlags.None,Time.frameCount,out var token);
+            if(status!=GpuTimestampStatus.Ready)throw new Exception("Timestamp acquire failed: "+status+"; pending="+pending.Count);
             timestamps.GetScope(token).RecordBegin(c);var item=new Pending{token=token,timing=timing};pending.Add(item);return item;
         }
         void End(CommandBuffer c,Pending item){timestamps.GetScope(item.token).RecordEnd(c);if(timestamps.MarkSubmitted(item.token)!=GpuTimestampStatus.Ready)throw new Exception("Timestamp submit failed");}
@@ -204,7 +208,7 @@ namespace Summit.IndexCostDiagnostics
         }
         static double Ms(long ticks)=>ticks*1000.0/Stopwatch.Frequency;
         void Save()=>File.WriteAllText(Path.Combine(config.output,"result.json"),JsonUtility.ToJson(report,true));
-        void OnDestroy(){timestamps?.Dispose();if(material!=null)Destroy(material);}
+        void OnDestroy(){timestamps?.Dispose();if(material!=null)Destroy(material);if(target!=null){target.Release();Destroy(target);}}
         sealed class Full:IDisposable
         {
             readonly GpuSensorFullRebuildIndex original;readonly CostProfiledFullIndex profiled;
