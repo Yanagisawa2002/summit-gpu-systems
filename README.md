@@ -72,7 +72,7 @@ During local development, add an embedded package with a `file:` dependency. Aft
 }
 ```
 
-Packages with internal dependencies require the corresponding `com.summit.*` dependencies to be added to the consumer manifest as well. Public repository access does not require credentials. Repository visibility does not grant an open-source license; see [`LICENSE.md`](LICENSE.md) for the current terms.
+Packages with internal dependencies require the corresponding `com.summit.*` dependencies to be added to the consumer manifest as well. Public repository access does not require credentials. The [limited benchmark reproduction permission](LICENSE.md#limited-benchmark-reproduction-permission) allows benchmark execution, local reproduction changes, and publication of measurement results. Other plugin rights remain reserved; this is not an open-source license.
 
 ## Repository policy
 
