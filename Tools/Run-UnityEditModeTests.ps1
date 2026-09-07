@@ -54,8 +54,8 @@ $unityProcess = Start-Process `
     -FilePath $UnityEditorPath `
     -ArgumentList $arguments `
     -PassThru `
-    -Wait `
     -WindowStyle Hidden
+$unityProcess.WaitForExit()
 if ($unityProcess.ExitCode -ne 0) {
     throw "Unity EditMode tests failed with exit code $($unityProcess.ExitCode). See $logPath"
 }

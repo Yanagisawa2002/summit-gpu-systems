@@ -239,32 +239,32 @@ internal sealed class GpuPrimitiveBenchmarkCoreAdapter : IDisposable
         {
             BenchmarkCase = benchmarkCase,
             Phase = phase,
-            Requests = new List<AsyncGPUReadbackRequest>(2)
+            Requests = new List<OwnedReadback>(2)
         };
 
         switch (benchmarkCase.Operation)
         {
             case "reduce-sum":
-                pending.Requests.Add(AsyncGPUReadback.Request(outputCount));
+                pending.Requests.Add(OwnedReadback.Request(outputCount));
                 pending.ReadbackBytes = 4;
                 break;
             case "exclusive-scan":
-                pending.Requests.Add(AsyncGPUReadback.Request(output));
+                pending.Requests.Add(OwnedReadback.Request(output));
                 pending.ReadbackBytes = (long)count * sizeof(uint);
                 break;
             case "histogram-16":
-                pending.Requests.Add(AsyncGPUReadback.Request(histogram));
+                pending.Requests.Add(OwnedReadback.Request(histogram));
                 pending.ReadbackBytes = (long)HistogramBinCount * sizeof(uint);
                 break;
             case "stable-compaction":
             case "append-compaction":
-                pending.Requests.Add(AsyncGPUReadback.Request(outputCount));
-                pending.Requests.Add(AsyncGPUReadback.Request(output));
+                pending.Requests.Add(OwnedReadback.Request(outputCount));
+                pending.Requests.Add(OwnedReadback.Request(output));
                 pending.ReadbackBytes = ((long)count + 1L) * sizeof(uint);
                 break;
             case "radix-sort-32":
-                pending.Requests.Add(AsyncGPUReadback.Request(output));
-                pending.Requests.Add(AsyncGPUReadback.Request(radixValuesOutput));
+                pending.Requests.Add(OwnedReadback.Request(output));
+                pending.Requests.Add(OwnedReadback.Request(radixValuesOutput));
                 pending.ReadbackBytes = (long)count * sizeof(uint) * 2L;
                 break;
             default:
@@ -285,7 +285,7 @@ internal sealed class GpuPrimitiveBenchmarkCoreAdapter : IDisposable
 
         for (int i = 0; i < pendingValidation.Requests.Count; i++)
         {
-            if (!pendingValidation.Requests[i].done)
+            if (!pendingValidation.Requests[i].Completed)
             {
                 return false;
             }
@@ -304,7 +304,7 @@ internal sealed class GpuPrimitiveBenchmarkCoreAdapter : IDisposable
 
         for (int i = 0; i < completed.Requests.Count; i++)
         {
-            if (completed.Requests[i].hasError)
+            if (completed.Requests[i].HasError)
             {
                 validation.Passed = false;
                 validation.Message = "Async GPU readback failed.";
@@ -523,7 +523,7 @@ internal sealed class GpuPrimitiveBenchmarkCoreAdapter : IDisposable
         {
             case "reduce-sum":
             {
-                var actual = completed.Requests[0].GetData<uint>();
+                var actual = completed.Requests[0].Data;
                 validation.Passed = actual[0] == reductionExpected;
                 validation.Message = validation.Passed ? "Sum matches independent CPU oracle." : "Reduction mismatch.";
                 validation.ResultHash = actual[0].ToString("X8");
@@ -531,7 +531,7 @@ internal sealed class GpuPrimitiveBenchmarkCoreAdapter : IDisposable
             }
             case "exclusive-scan":
             {
-                NativeArray<uint> actual = completed.Requests[0].GetData<uint>();
+                uint[] actual = completed.Requests[0].Data;
                 int mismatch = FindMismatch(actual, scanExpected, scanExpected.Length);
                 validation.Passed = mismatch < 0;
                 validation.Message = mismatch < 0
@@ -542,7 +542,7 @@ internal sealed class GpuPrimitiveBenchmarkCoreAdapter : IDisposable
             }
             case "histogram-16":
             {
-                NativeArray<uint> actual = completed.Requests[0].GetData<uint>();
+                uint[] actual = completed.Requests[0].Data;
                 int mismatch = FindMismatch(actual, histogramExpected, histogramExpected.Length);
                 validation.Passed = mismatch < 0;
                 validation.Message = mismatch < 0
@@ -553,9 +553,9 @@ internal sealed class GpuPrimitiveBenchmarkCoreAdapter : IDisposable
             }
             case "stable-compaction":
             {
-                NativeArray<uint> countData = completed.Requests[0].GetData<uint>();
+                uint[] countData = completed.Requests[0].Data;
                 int actualCount = checked((int)countData[0]);
-                NativeArray<uint> actual = completed.Requests[1].GetData<uint>();
+                uint[] actual = completed.Requests[1].Data;
                 int mismatch = actualCount == compactExpected.Length
                     ? FindMismatch(actual, compactExpected, actualCount)
                     : -2;
@@ -570,9 +570,9 @@ internal sealed class GpuPrimitiveBenchmarkCoreAdapter : IDisposable
             }
             case "append-compaction":
             {
-                NativeArray<uint> countData = completed.Requests[0].GetData<uint>();
+                uint[] countData = completed.Requests[0].Data;
                 int actualCount = checked((int)countData[0]);
-                NativeArray<uint> actualData = completed.Requests[1].GetData<uint>();
+                uint[] actualData = completed.Requests[1].Data;
                 uint[] actual = new uint[Math.Min(actualCount, actualData.Length)];
                 for (int i = 0; i < actual.Length; i++)
                 {
@@ -595,8 +595,8 @@ internal sealed class GpuPrimitiveBenchmarkCoreAdapter : IDisposable
             }
             case "radix-sort-32":
             {
-                NativeArray<uint> actualKeys = completed.Requests[0].GetData<uint>();
-                NativeArray<uint> actualValues = completed.Requests[1].GetData<uint>();
+                uint[] actualKeys = completed.Requests[0].Data;
+                uint[] actualValues = completed.Requests[1].Data;
                 int keyMismatch = FindMismatch(actualKeys, radixKeysExpected, count);
                 int valueMismatch = FindMismatch(actualValues, radixValuesExpected, count);
                 validation.Passed = keyMismatch < 0 && valueMismatch < 0;
@@ -673,22 +673,6 @@ internal sealed class GpuPrimitiveBenchmarkCoreAdapter : IDisposable
         return result;
     }
 
-    private static int FindMismatch(NativeArray<uint> actual, uint[] expected, int length)
-    {
-        if (actual.Length < length || expected.Length < length)
-        {
-            return -2;
-        }
-        for (int i = 0; i < length; i++)
-        {
-            if (actual[i] != expected[i])
-            {
-                return i;
-            }
-        }
-        return -1;
-    }
-
     private static int FindMismatch(uint[] actual, uint[] expected, int length)
     {
         if (actual.Length < length || expected.Length < length)
@@ -740,11 +724,35 @@ internal sealed class GpuPrimitiveBenchmarkCoreAdapter : IDisposable
         return (value << bits) | (value >> (32 - bits));
     }
 
+    // A completed AsyncGPUReadbackRequest is valid for one frame only. Copy in
+    // its own callback so a second request completing later cannot invalidate
+    // the first result. These allocations are outside every measurement scope.
+    private sealed class OwnedReadback
+    {
+        public bool Completed, HasError;
+        public uint[] Data;
+        public static OwnedReadback Request(GraphicsBuffer buffer)
+        {
+            var owned = new OwnedReadback();
+            AsyncGPUReadback.Request(buffer, request =>
+            {
+                try
+                {
+                    owned.HasError = request.hasError;
+                    if (!owned.HasError) owned.Data = request.GetData<uint>().ToArray();
+                }
+                catch { owned.HasError = true; }
+                finally { owned.Completed = true; }
+            });
+            return owned;
+        }
+    }
+
     private sealed class PendingValidation
     {
         public GpuPrimitiveBenchmarkCase BenchmarkCase;
         public GpuPrimitiveValidationPhase Phase;
-        public List<AsyncGPUReadbackRequest> Requests;
+        public List<OwnedReadback> Requests;
         public long ReadbackBytes;
     }
 }

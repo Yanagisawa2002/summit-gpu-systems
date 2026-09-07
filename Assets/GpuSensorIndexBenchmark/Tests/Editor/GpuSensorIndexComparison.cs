@@ -98,6 +98,7 @@ namespace Summit.GpuSensorIndex.Benchmark.Tests
                 foreach (var scenario in Scenarios(smoke))
                 for (int round = 0; round < rounds; round++)
                 {
+                    UnityEngine.Debug.Log($"Index comparison: scenario={scenario.Name}, round={round}, capacity={scenario.Capacity}");
                     // Raw control overhead is disclosed and never subtracted.
                     Assert.That(timestamps.Acquire((ulong)(serial * 3 + 1), GpuTimestampSampleFlags.EmptyScope,
                         serial, out var control), Is.EqualTo(GpuTimestampStatus.Ready));
@@ -122,6 +123,7 @@ namespace Summit.GpuSensorIndex.Benchmark.Tests
                     for (int orderIndex = 0; orderIndex < 2; orderIndex++)
                     {
                         bool incremental = (round + orderIndex) % 2 == 1;
+                        UnityEngine.Debug.Log($"Index comparison arm: incremental={incremental}");
                         using (var data = new Data(scenario, incremental))
                         {
                             var captures = new GpuSensorQueryDigest[(warmup + samples) * data.Queries.Length];

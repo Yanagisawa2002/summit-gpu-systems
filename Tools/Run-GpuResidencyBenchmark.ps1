@@ -144,9 +144,24 @@ if (-not $SkipTests) {
         -WorkingDirectory $root -WindowStyle Hidden -PassThru
     Wait-Bounded $process (30 * 60 * 1000) 'EditMode tests'
     [xml]$xml = Get-Content -LiteralPath $testResults
-    if ([string]$xml.'test-run'.result -cne 'Passed' -or
-        [int]$xml.'test-run'.failed -ne 0) {
+    if ([int]$xml.'test-run'.passed -le 0 -or [int]$xml.'test-run'.failed -ne 0) {
         throw 'EditMode tests failed.'
+    }
+    # NUnit reports Skipped:Ignored for the complete suite when optional explicit
+    # wave variants and the separately invoked index benchmark use Assert.Ignore.
+    # Preserve the full suite and fail on every undeclared skip or other outcome.
+    $testCases = @($xml.SelectNodes('//test-case'))
+    if ($testCases.Count -ne [int]$xml.'test-run'.total) { throw 'Incomplete EditMode test evidence.' }
+    foreach ($testCase in $testCases) {
+        if ($testCase.result -ceq 'Passed') { continue }
+        $explicitWave = $testCase.fullname -cmatch '^Summit\.GpuPrimitives\.Tests\.GpuPrimitiveCandidateTests\.CandidateMatchesIndependentOracles\("primitives-v1-wave(32|64)-t128-e4-r4"\)$'
+        $indexOptIn = $testCase.fullname -ceq 'Summit.GpuSensorIndex.Benchmark.Tests.GpuSensorIndexComparison.Compare'
+        $reason = [string]$testCase.reason.message.InnerText
+        if ($testCase.result -cne 'Skipped' -or
+            -not (($explicitWave -and $reason.StartsWith('Explicit wave candidate unavailable:')) -or
+                  ($indexOptIn -and $reason.StartsWith('Use the dedicated comparison runner')))) {
+            throw "Unexpected EditMode outcome: $($testCase.fullname): $($testCase.result)"
+        }
     }
 }
 
