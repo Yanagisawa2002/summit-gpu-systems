@@ -215,3 +215,14 @@ The timestamp DLL metadata uses Unity 6000.5's `serializedVersion: 3` platform
 dictionary. The old list encoding silently disabled Editor native loading.
 Windows x64 Editor and Win64 Player are enabled; other targets are disabled.
 The DLL bytes and native ABI are unchanged.
+
+## Empty-cell capacity screening
+
+The [fixed-trace causal audit](CausalIndexCosts.md) reproduces the published GPU
+state and separates zero-capacity insertion from occupied-cell exhaustion.
+A single modeled policy reserving one word in every empty cell did not pass
+the frozen engineering screen: streaming still rebuilt on every steady-state
+frame, while its CSR extent increased. It was not added to the runtime or
+measured on GPU. The existing opt-in policy, default and APIs remain unchanged.
+The audit also accounts for compact-consumer construction needs and explains
+why logical range visits do not predict GPU time.

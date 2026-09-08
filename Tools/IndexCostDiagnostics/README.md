@@ -103,3 +103,13 @@ performance retry. Source-differences and failures are disclosed in the report.
 Generated public source archives carry the repository's complete limited
 benchmark reproduction license. Post-collection license copying and report/
 analysis additions do not imply the measured Player was rebuilt.
+
+## Subsequent deterministic capacity replay
+
+The causal continuation uses [a separately frozen plan](CausalPlan.md) and
+`Run-CapacityReplay.ps1` / `CapacityReplay.cs` to audit the original GPU state
+and screen one empty-cell reserve policy. It does not execute Unity, load
+bundles or measure GPU/CPU performance. `analyze_capacity.py` verifies hashes,
+raw-history correspondence, CSV invariants and destination multiplicity.
+See [the complete result and reproduction instructions](../../Docs/CausalIndexCosts.md).
+The original focused-cost tools and evidence are retained unchanged.
