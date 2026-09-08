@@ -1,13 +1,6 @@
-# Streaming baseline / candidate comparison
+# Withdrawn streaming comparison: historical measurement notes
 
-[Watch the 49.9-second comparison](https://github.com/Yanagisawa2002/summit-gpu-systems/releases/download/streaming-comparison-2026-09-08/summit-streaming-comparison.mp4) · [Video, original captures and evidence](https://github.com/Yanagisawa2002/summit-gpu-systems/releases/tag/streaming-comparison-2026-09-08)
-
-[![Equal-work Player recordings and scoped historical measurements](Media/streaming-comparison.png)](https://github.com/Yanagisawa2002/summit-gpu-systems/releases/download/streaming-comparison-2026-09-08/summit-streaming-comparison.mp4)
-
-**Stable full-frame gains remain unconfirmed.** This video pairs real execution
-footage with separately collected, explicitly historical measurements. It does
-not demonstrate that the candidate looks smoother. The candidate remains opt-in.
-This is the public procedural streaming fixture, separate from NYCGIS results.
+The video, original capture downloads and poster were withdrawn on 2026-09-08 at the author's request. They do not establish stable full-frame gains and are no longer portfolio media. Measurement data, code and the historical description below are retained for audit. The evidence archive contains pre-withdrawal documentation; its video download links are no longer available.
 
 ## Read the video
 
@@ -104,7 +97,7 @@ subset with all five full process reports, selected histories, original oracles,
 protocol and published analysis; `capture` contains both recording reports,
 histories, logs and build receipts. Existing absolute paths are provenance only.
 
-Download `baseline-original.mp4` and `candidate-original.mp4`, placing them as
+The original video downloads have been withdrawn. To reproduce the historical composition, make fresh recordings with the commands below and place them as
 `capture/baseline-v1/summit-streaming-point-cloud.mp4` and
 `capture/candidate-v1/summit-streaming-point-cloud.mp4`. In a Python virtual
 environment, install `render-requirements.txt` from the evidence `composition`

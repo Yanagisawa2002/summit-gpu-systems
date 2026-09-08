@@ -1,10 +1,6 @@
-# Live streaming point-cloud showcase
+# Withdrawn streaming showcase: recording notes
 
-For a labelled baseline/candidate view with independent timing evidence, see the [comparison video](StreamingComparison.md).
-
-[Watch or download the full 50-second MP4](https://github.com/Yanagisawa2002/summit-gpu-systems/releases/download/streaming-point-cloud-showcase-2026-09-08/summit-streaming-point-cloud.mp4)
-
-[![Live point cloud with GPU query bars](Media/streaming-point-cloud.png)](https://github.com/Yanagisawa2002/summit-gpu-systems/releases/download/streaming-point-cloud-showcase-2026-09-08/summit-streaming-point-cloud.mp4)
+The video and poster were withdrawn on 2026-09-08 at the author's request. This paced functional demonstration does not establish smoother optimized execution. Code, correctness evidence and historical recording notes remain available for audit.
 
 The video is an uninterrupted recording of the real Unity Release Player on
 AMD Radeon AI PRO R9700, using D3D12. It shows a camera orbit around the procedural
@@ -37,7 +33,7 @@ and not a performance measurement. Native timing probes are disabled.
 - SHA256: `6dfc53d46b031cf06415fbcc1bc91e4aee4eccf4da354771ff4865ffe42de49a`.
 
 The [release](https://github.com/Yanagisawa2002/summit-gpu-systems/releases/tag/streaming-point-cloud-showcase-2026-09-08)
-includes the video, validation JSON, poster, and a capture evidence archive with
+now retains only validation JSON and a capture evidence archive with
 the original oracle, GPU history, result, exact recorder arguments, source/build
 identity and SHA256 manifest. The large MP4 is a release asset rather than a Git
 blob. Repository and third-party license terms remain unchanged.

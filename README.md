@@ -41,12 +41,6 @@ the procedural benchmarks are the asset-independent reproduction entry points.
 
 ## Visual walkthrough
 
-[![Equal-work baseline and candidate recordings with scoped timings](Docs/Media/streaming-comparison.png)](https://github.com/Yanagisawa2002/summit-gpu-systems/releases/download/streaming-comparison-2026-09-08/summit-streaming-comparison.mp4)
-
-[Watch the 49.9-second comparison](https://github.com/Yanagisawa2002/summit-gpu-systems/releases/download/streaming-comparison-2026-09-08/summit-streaming-comparison.mp4) · [Scopes, statistics, correctness and reproduction](Docs/StreamingComparison.md). Real recordings share the same workload; the labelled charts use five independent historical processes. **Stable full-frame gains remain unconfirmed.** This procedural scene is separate from the NYCGIS measurements above.
-
-The [original single-arm live showcase](Docs/StreamingShowcase.md) remains available as a functional demonstration.
-
 [![Engineering overview and evidence](Docs/portfolio/overview.svg)](Docs/portfolio/overview.png)
 
 The before/after flow explains the change in representation, with the reported logical output sizes shown on a zero-based scale. [Sources and reproduction](Docs/portfolio/README.md).
