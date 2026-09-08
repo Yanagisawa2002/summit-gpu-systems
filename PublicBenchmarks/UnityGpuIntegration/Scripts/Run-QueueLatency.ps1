@@ -5,7 +5,8 @@ param(
  [Parameter(Mandatory)][string]$Oracle,
  [ValidateSet('old-full','new-full')][string]$Arm,
  [uint32]$Seed=928201,[int]$Replicate=0,
- [switch]$Capture,[string]$Ffmpeg='ffmpeg'
+ [switch]$Capture,[string]$Ffmpeg='ffmpeg',
+ [ValidateSet('gdigrab','ddagrab')][string]$CaptureBackend='gdigrab'
 )
 $ErrorActionPreference='Stop'
 $out=[IO.Path]::GetFullPath($OutputRoot);$build=[IO.Path]::GetFullPath($BuildRoot)
@@ -17,7 +18,7 @@ New-Item -ItemType Directory -Path $out|Out-Null
 $run=Join-Path $out 'player';New-Item -ItemType Directory -Path $run|Out-Null
 $config=[ordered]@{arm=$Arm;seed=$Seed;replicate=$Replicate;sourceSha=$att.sourceSha;output=$run;oracle=[IO.Path]::GetFullPath($Oracle)}
 $cfg=Join-Path $out 'config.json';$config|ConvertTo-Json|Set-Content -LiteralPath $cfg
-$receipt=[ordered]@{status='prepared';sourceSha=$att.sourceSha;capture=[bool]$Capture;oracleSha256=(Get-FileHash $Oracle).Hash.ToLowerInvariant();arm=$Arm;seed=$Seed;replicate=$Replicate}
+$receipt=[ordered]@{status='prepared';sourceSha=$att.sourceSha;capture=[bool]$Capture;captureBackend=$CaptureBackend;oracleSha256=(Get-FileHash $Oracle).Hash.ToLowerInvariant();arm=$Arm;seed=$Seed;replicate=$Replicate}
 Add-Type @'
 using System;
 using System.Runtime.InteropServices;
@@ -54,6 +55,10 @@ try {
     $ff=(Get-Command $Ffmpeg).Source;$receipt.ffmpeg=$ff;$receipt.ffmpegSha256=(Get-FileHash $ff).Hash.ToLowerInvariant()
     $video=Join-Path $out 'recording.mp4';$progress=Join-Path $out 'encode-progress.txt'
     $args=@('-hide_banner','-nostdin','-f','gdigrab','-framerate','60','-draw_mouse','0','-offset_x',[string]$origin.X,'-offset_y',[string]$origin.Y,'-video_size','1280x720','-i','desktop','-t','55','-an','-c:v','libx264','-preset','fast','-crf','18','-pix_fmt','yuv420p','-fps_mode','vfr','-movflags','+faststart','-stats_period','0.1','-progress',('"'+$progress+'"'),('"'+$video+'"'))
+    if($CaptureBackend -eq 'ddagrab'){
+     $filter="ddagrab=output_idx=0:draw_mouse=0:framerate=60:dup_frames=0:video_size=1280x720:offset_x=$($origin.X):offset_y=$($origin.Y),hwdownload,format=bgra"
+     $args=@('-hide_banner','-nostdin','-f','lavfi','-i',$filter,'-t','55','-an','-c:v','libx264','-preset','fast','-crf','18','-pix_fmt','yuv420p','-fps_mode','vfr','-movflags','+faststart','-stats_period','0.1','-progress',('"'+$progress+'"'),('"'+$video+'"'))
+    }
     $receipt.captureArguments=$args
     $recorder=Start-Process -FilePath $ff -ArgumentList $args -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $out 'ffmpeg.stdout.log') -RedirectStandardError (Join-Path $out 'ffmpeg.log')
     $receipt.recorderPid=$recorder.Id
