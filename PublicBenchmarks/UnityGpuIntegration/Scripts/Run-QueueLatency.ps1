@@ -53,7 +53,7 @@ try {
    if($Capture){
     $ff=(Get-Command $Ffmpeg).Source;$receipt.ffmpeg=$ff;$receipt.ffmpegSha256=(Get-FileHash $ff).Hash.ToLowerInvariant()
     $video=Join-Path $out 'recording.mp4';$progress=Join-Path $out 'encode-progress.txt'
-    $args=@('-hide_banner','-nostdin','-f','gdigrab','-framerate','60','-draw_mouse','0','-offset_x',[string]$origin.X,'-offset_y',[string]$origin.Y,'-video_size','1280x720','-i','desktop','-t','35','-an','-c:v','libx264','-preset','fast','-crf','18','-pix_fmt','yuv420p','-fps_mode','vfr','-movflags','+faststart','-stats_period','0.1','-progress',('"'+$progress+'"'),('"'+$video+'"'))
+    $args=@('-hide_banner','-nostdin','-f','gdigrab','-framerate','60','-draw_mouse','0','-offset_x',[string]$origin.X,'-offset_y',[string]$origin.Y,'-video_size','1280x720','-i','desktop','-t','55','-an','-c:v','libx264','-preset','fast','-crf','18','-pix_fmt','yuv420p','-fps_mode','vfr','-movflags','+faststart','-stats_period','0.1','-progress',('"'+$progress+'"'),('"'+$video+'"'))
     $receipt.captureArguments=$args
     $recorder=Start-Process -FilePath $ff -ArgumentList $args -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $out 'ffmpeg.stdout.log') -RedirectStandardError (Join-Path $out 'ffmpeg.log')
     $receipt.recorderPid=$recorder.Id
@@ -66,7 +66,7 @@ try {
    $deadline=[DateTime]::UtcNow.AddSeconds(95)
    while(!(Test-Path -LiteralPath (Join-Path $run 'work-completed.signal'))){if($player.HasExited -or [DateTime]::UtcNow -gt $deadline){throw 'Workload incomplete or failed.'};Start-Sleep -Milliseconds 100}
    if($Capture){
-    if(!$recorder.WaitForExit(45000) -or $recorder.ExitCode -ne 0){throw 'Recorder failed.'}
+    if(!$recorder.WaitForExit(60000) -or $recorder.ExitCode -ne 0){throw 'Recorder failed.'}
     $receipt.videoSha256=(Get-FileHash $video).Hash.ToLowerInvariant();$receipt.videoBytes=(Get-Item $video).Length
    }
    Set-Content -LiteralPath (Join-Path $run 'capture-stop.signal') -Value 'owned runner finished'
