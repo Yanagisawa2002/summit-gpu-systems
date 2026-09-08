@@ -21,6 +21,7 @@ RWStructuredBuffer<uint4> _Samples;
 RWStructuredBuffer<uint> _PreviousKeys, _NextKeys, _Positions, _Reservations;
 RWStructuredBuffer<uint> _Offsets, _Members, _Heads, _Counts, _BlockSums, _State;
 int _Capacity, _StaticCount, _StaticRevision, _Force, _ChurnThreshold, _FragmentationThreshold;
+int _MaintainLiveCounts;
 RWStructuredBuffer<uint> _ChangedIds;
 RWByteAddressBuffer _DispatchArguments;
 groupshared uint changeBase;
@@ -206,7 +207,10 @@ void RemoveMembers(uint3 tid : SV_DispatchThreadID)
     if (_State[8] != 0 || id >= (uint)_Capacity) return;
     uint oldKey = _PreviousKeys[id];
     if (oldKey != _NextKeys[id] && oldKey != Invalid)
+    {
         _Members[_Positions[id]] = Invalid;
+        if (_MaintainLiveCounts != 0) InterlockedAdd(_Counts[oldKey], 0xffffffffu);
+    }
 }
 [numthreads(256,1,1)]
 void InsertMembers(uint3 tid : SV_DispatchThreadID)
@@ -218,7 +222,11 @@ void InsertMembers(uint3 tid : SV_DispatchThreadID)
     if (key == _PreviousKeys[id]) return;
     _PreviousKeys[id] = key;
     _Positions[id] = key == Invalid ? Invalid : _Reservations[id];
-    if (key != Invalid) _Members[_Reservations[id]] = id;
+    if (key != Invalid)
+    {
+        _Members[_Reservations[id]] = id;
+        if (_MaintainLiveCounts != 0) InterlockedAdd(_Counts[key], 1u);
+    }
 }
 [numthreads(1,1,1)]
 void FinishUpdate(uint3 tid : SV_DispatchThreadID)

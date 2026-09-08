@@ -6,6 +6,9 @@ namespace Summit.GpuSensorPipeline
         CellSerial = 0,
         PointChunks = 1,
         PointChunksWave = 2,
-        BatchedPointScanWave = 3
+        BatchedPointScanWave = 3,
+        // Explicit Unmeasured candidates; never selected by the pipeline default.
+        CellSpans = 4,
+        CellSpansWave = 5
     }
 }

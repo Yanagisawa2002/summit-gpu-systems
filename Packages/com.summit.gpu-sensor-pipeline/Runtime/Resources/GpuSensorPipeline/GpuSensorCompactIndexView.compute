@@ -1,0 +1,78 @@
+#pragma kernel ScanLiveCells
+#pragma kernel ScanLiveBlocks
+#pragma kernel PrepareCompactCells
+#pragma kernel ScatterLiveSlots
+#pragma target 5.0
+
+StructuredBuffer<uint> _LiveCounts, _CurrentKeys, _IndexState;
+RWStructuredBuffer<uint> _Offsets, _BlockOffsets, _Heads, _Members;
+int _Capacity;
+groupshared uint liveScan[1024];
+
+[numthreads(256, 1, 1)]
+void ScanLiveCells(uint3 tid : SV_DispatchThreadID, uint3 gid : SV_GroupID, uint lane : SV_GroupIndex)
+{
+    uint count = 0u;
+    if (_IndexState[0] != 0u) count = _LiveCounts[tid.x];
+    liveScan[lane] = count;
+    GroupMemoryBarrierWithGroupSync();
+    for (uint offset = 1u; offset < 256u; offset <<= 1u)
+    {
+        uint add = lane >= offset ? liveScan[lane - offset] : 0u;
+        GroupMemoryBarrierWithGroupSync();
+        liveScan[lane] += add;
+        GroupMemoryBarrierWithGroupSync();
+    }
+    _Offsets[tid.x] = liveScan[lane] - count;
+    if (lane == 255u) _BlockOffsets[gid.x] = liveScan[255];
+}
+
+[numthreads(256, 1, 1)]
+void ScanLiveBlocks(uint lane : SV_GroupIndex)
+{
+    // Four entries per thread, using a parallel Blelloch scan over all 1024 blocks.
+    for (uint loadIndex = lane; loadIndex < 1024u; loadIndex += 256u) liveScan[loadIndex] = _BlockOffsets[loadIndex];
+    GroupMemoryBarrierWithGroupSync();
+    for (uint upStride = 1u; upStride < 1024u; upStride <<= 1u)
+    {
+        for (uint upNode = lane; upNode < 1024u / (upStride * 2u); upNode += 256u)
+        {
+            uint upIndex = (upNode + 1u) * upStride * 2u - 1u;
+            liveScan[upIndex] += liveScan[upIndex - upStride];
+        }
+        GroupMemoryBarrierWithGroupSync();
+    }
+    if (lane == 0u) { _Offsets[262144] = liveScan[1023]; liveScan[1023] = 0u; }
+    GroupMemoryBarrierWithGroupSync();
+    for (uint downStride = 512u; downStride != 0u; downStride >>= 1u)
+    {
+        for (uint downNode = lane; downNode < 1024u / (downStride * 2u); downNode += 256u)
+        {
+            uint downIndex = (downNode + 1u) * downStride * 2u - 1u;
+            uint left = liveScan[downIndex - downStride];
+            liveScan[downIndex - downStride] = liveScan[downIndex];
+            liveScan[downIndex] += left;
+        }
+        GroupMemoryBarrierWithGroupSync();
+    }
+    for (uint storeIndex = lane; storeIndex < 1024u; storeIndex += 256u) _BlockOffsets[storeIndex] = liveScan[storeIndex];
+}
+
+[numthreads(256, 1, 1)]
+void PrepareCompactCells(uint3 tid : SV_DispatchThreadID)
+{
+    uint offset = _Offsets[tid.x] + _BlockOffsets[tid.x / 256u];
+    _Offsets[tid.x] = offset;
+    _Heads[tid.x] = offset;
+}
+
+[numthreads(256, 1, 1)]
+void ScatterLiveSlots(uint3 tid : SV_DispatchThreadID)
+{
+    if (tid.x >= (uint)_Capacity || _IndexState[0] == 0u) return;
+    uint key = _CurrentKeys[tid.x];
+    if (key >= 262144u) return;
+    uint position;
+    InterlockedAdd(_Heads[key], 1u, position);
+    _Members[position] = tid.x;
+}

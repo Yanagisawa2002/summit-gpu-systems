@@ -1,0 +1,7 @@
+#pragma kernel BuildSpans
+#pragma kernel PrepareSpanDispatch
+#pragma kernel ConsumeSpans
+#pragma target 6.0
+#pragma use_dxc
+#define SPAN_WAVE_REDUCTION
+#include "GpuSensorCellSpanQuery.hlsl"

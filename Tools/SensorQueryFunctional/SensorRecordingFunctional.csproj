@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Deliberately has NO reference to Unity/native libraries. -->
+    <Compile Include="RecordingStubs.cs" />
+    <Compile Include="RecordingTests.cs" />
+    <Compile Include="../../Packages/com.summit.gpu-sensor-pipeline/Runtime/GpuSensorContracts.cs" />
+    <Compile Include="../../Packages/com.summit.gpu-sensor-pipeline/Runtime/GpuSensorQueryBackend.cs" />
+    <Compile Include="../../Packages/com.summit.gpu-sensor-pipeline/Runtime/GpuSensorCellSpanLayout.cs" />
+    <Compile Include="../../Packages/com.summit.gpu-sensor-pipeline/Runtime/GpuSensorCellSpanQuery.cs" />
+    <Compile Include="../../Packages/com.summit.gpu-sensor-pipeline/Runtime/GpuSensorCompactIndexView.cs" />
+    <Compile Include="../../Packages/com.summit.gpu-sensor-pipeline/Runtime/GpuSensorIncrementalIndex.cs" />
+  </ItemGroup>
+</Project>

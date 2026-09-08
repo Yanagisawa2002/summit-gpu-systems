@@ -1,0 +1,5 @@
+#pragma kernel BuildSpans
+#pragma kernel PrepareSpanDispatch
+#pragma kernel ConsumeSpans
+#pragma target 5.0
+#include "GpuSensorCellSpanQuery.hlsl"
