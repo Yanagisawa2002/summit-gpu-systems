@@ -15,6 +15,7 @@ namespace Summit.PublicIntegration
     [Serializable] public sealed class QueueConfig
     {
         public string arm="old-full",output,oracle,sourceSha;
+        public string observationDeviceDriverId="unknown";
         public uint seed=928201;
         public int replicate;
     }
@@ -24,6 +25,7 @@ namespace Summit.PublicIntegration
         public long uploadedBytes,submitTicks,readbackObservedTicks,verifiedTicks;
         public double arrivalMs,submitMs,readbackObservedMs,resultReadyMs,latencyMs;
         public bool verified;
+        public int sourceFrame=-1,observedFrame=-1;
     }
     [Serializable] public struct QueueObservation
     {
@@ -179,7 +181,7 @@ namespace Summit.PublicIntegration
                     if(!data[j].Equals(expected[completed*10+j]))throw new Exception("Oracle mismatch job "+completed+" digest "+j);
                     actual[completed*10+j]=data[j];
                 }
-                row.verifiedTicks=Tick();row.resultReadyMs=Ms(row.verifiedTicks);row.latencyMs=row.resultReadyMs-row.arrivalMs;row.verified=true;
+                row.verifiedTicks=Tick();row.resultReadyMs=Ms(row.verifiedTicks);row.latencyMs=row.resultReadyMs-row.arrivalMs;row.verified=true;row.observedFrame=Time.frameCount;
                 lastLatency=row.latencyMs;pending=false;completed++;report.completed=completed;
                 if(completed==Count)
                 {
@@ -196,7 +198,7 @@ namespace Summit.PublicIntegration
                 var row=report.jobs[submitted];row.changedSlots=IntegrationFixture.Advance("hotspot-dynamic",samples,active,submitted);
                 if(row.changedSlots>0){input.SetData(samples);flags.SetData(active);row.uploadedBytes=(long)N*20;}
                 RecordJob(submitted,row.changedSlots);
-                row.submitTicks=Tick();row.submitMs=Ms(row.submitTicks);
+                row.sourceFrame=Time.frameCount;row.submitTicks=Tick();row.submitMs=Ms(row.submitTicks);
                 Graphics.ExecuteCommandBuffer(jobCommands);
                 request=AsyncGPUReadback.Request(history,160,submitted*160);
                 pending=true;submitted++;
@@ -239,7 +241,8 @@ namespace Summit.PublicIntegration
         void Text(float x,float y,string s,GUIStyle style,Color? color=null)
         {GUI.color=color??Color.white;GUI.Label(new Rect(x,y,1220-x,60),s,style);GUI.color=Color.white;}
         void Box(Rect r,Color c){GUI.color=c;GUI.DrawTexture(r,Texture2D.whiteTexture);GUI.color=Color.white;}
-        void Save(){if(report!=null)File.WriteAllText(Path.Combine(config.output,"result.json"),JsonUtility.ToJson(report,true));}
+        void Save(){if(report!=null){File.WriteAllText(Path.Combine(config.output,"result.json"),JsonUtility.ToJson(report,true));
+            using(var writer=new StreamWriter(Path.Combine(config.output,"observations.csv")))Summit.GpuTimestamps.ObservationCsv.Write(writer,QueueObservations.Enumerate(report));}}
         void Fail(Exception e)
         {
             failed=true;if(report!=null){report.status="failed";report.error=e.ToString();Save();}

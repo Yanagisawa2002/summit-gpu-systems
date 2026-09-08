@@ -1,0 +1,14 @@
+#pragma kernel ToRaw
+#pragma kernel ToStructured
+#pragma target 5.0
+StructuredBuffer<uint> _StructuredInput;
+RWByteAddressBuffer _RawOutput;
+ByteAddressBuffer _RawInput;
+RWStructuredBuffer<uint> _StructuredOutput;
+uint _Count;
+[numthreads(256,1,1)]
+void ToRaw(uint3 id:SV_DispatchThreadID)
+{ if(id.x<_Count)_RawOutput.Store(id.x*4,_StructuredInput[id.x]); }
+[numthreads(256,1,1)]
+void ToStructured(uint3 id:SV_DispatchThreadID)
+{ if(id.x<_Count)_StructuredOutput[id.x]=_RawInput.Load(id.x*4); }

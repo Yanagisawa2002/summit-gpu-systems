@@ -15,6 +15,7 @@ namespace Summit.PublicIntegration
     [Serializable] public sealed class BoundaryConfig
     {
         public string mode="boundary",arm="scan",distribution="uniform",output,sourceSha;
+        public string observationDeviceDriverId="unknown";
         public int replicate,blocks=3,repeats=16,jobs=128;
         public uint seed=928301;
         public bool corruptOracle;
@@ -26,6 +27,7 @@ namespace Summit.PublicIntegration
         public double recordMs,submitToReadbackMs;
         public long startTicks,endTicks;
         public bool verified,focused;
+        public int sourceFrame=-1,observedFrame=-1;
         public uint[] counts;
     }
     [Serializable] public sealed class DispatchOrder
@@ -34,11 +36,13 @@ namespace Summit.PublicIntegration
         public double arrivalMs,prepareMs,uploadMs,recordMs,submitMs,resultReadyMs,decisionMs,renderedDecisionMs=-1,deliveredMs=-1;
         public long submitTicks,readbackTicks,decisionTicks;
         public bool verified;
+        public int sourceFrame=-1,observedFrame=-1;
         public uint[] counts;
     }
     [Serializable] public sealed class BoundaryReport
     {
         public string status="preparing",error,device,api,unity,startedUtc,endedUtc;
+        public int processId;public string buildGuid;
         public string boundaryScope="Host-observed submit-to-readback time for 16 repeated query batches on a prebuilt index; no CPU upload or index build in this interval; not a hardware GPU timestamp";
         public string businessScope="Sensor snapshot arrival to route application, first Unity end-of-frame and simulated transport completion; includes CPU update/upload and required index build; not physical display latency";
         public BoundaryConfig config;
@@ -80,7 +84,7 @@ namespace Summit.PublicIntegration
                 if(UnityEngine.Debug.isDebugBuild||Application.isEditor||SystemInfo.graphicsDeviceType!=GraphicsDeviceType.Direct3D12||!SystemInfo.supportsAsyncGPUReadback)throw new Exception("Release D3D12 async readback required");
                 Application.runInBackground=true;Application.targetFrameRate=-1;QualitySettings.vSyncCount=0;
                 Directory.CreateDirectory(config.output);
-                report=new BoundaryReport{config=config,device=SystemInfo.graphicsDeviceName,api=SystemInfo.graphicsDeviceType.ToString(),unity=Application.unityVersion,frequency=Stopwatch.Frequency};
+                report=new BoundaryReport{config=config,processId=Process.GetCurrentProcess().Id,buildGuid=Application.buildGUID,device=SystemInfo.graphicsDeviceName,api=SystemInfo.graphicsDeviceType.ToString(),unity=Application.unityVersion,frequency=Stopwatch.Frequency};
                 font=Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
                 title=Style(32);label=Style(23);small=Style(18);
                 var camera=new GameObject("Dispatch dashboard").AddComponent<Camera>();camera.clearFlags=CameraClearFlags.SolidColor;camera.backgroundColor=new Color(.025f,.04f,.065f);camera.cullingMask=0;
@@ -175,12 +179,12 @@ namespace Summit.PublicIntegration
                     string arm=QueryBoundaryFixture.Arms[ai];
                     long begin=Tick();commands.Clear();for(int r=0;r<config.repeats;r++)Query(arm);
                     double recordMs=(Tick()-begin)*1000.0/Stopwatch.Frequency;
-                    long start=Tick();Graphics.ExecuteCommandBuffer(commands);request=AsyncGPUReadback.Request(Output(arm));pending=true;
+                    int sourceFrame=Time.frameCount;long start=Tick();Graphics.ExecuteCommandBuffer(commands);request=AsyncGPUReadback.Request(Output(arm));pending=true;
                     while(!request.done)yield return null;
                     long end=Tick();var counts=Check(request,expected);pending=false;
                     var data=request.GetData<GpuSensorQueryDigest>();for(int q=0;q<queries.Length;q++)captured.Add(data[q]);
                     report.samples.Add(new BoundarySample{workload=name,arm=arm,block=b,order=pos,queries=queries.Length,repeats=config.repeats,
-                        recordMs=recordMs,startTicks=start,endTicks=end,submitToReadbackMs=(end-start)*1000.0/Stopwatch.Frequency,counts=counts,verified=true,focused=Application.isFocused});
+                        sourceFrame=sourceFrame,observedFrame=Time.frameCount,recordMs=recordMs,startTicks=start,endTicks=end,submitToReadbackMs=(end-start)*1000.0/Stopwatch.Frequency,counts=counts,verified=true,focused=Application.isFocused});
                 }
                 WriteDigests(name+"-actual.bin",captured.ToArray());Save();
             }
@@ -241,7 +245,7 @@ namespace Summit.PublicIntegration
                 var returned=request.GetData<GpuSensorQueryDigest>();for(int q=0;q<9;q++)actualBusiness[completed*9+q]=returned[q];
                 row.routeMask=0;for(int q=0;q<9;q++)if(row.counts[q]>threshold[q])row.routeMask|=1<<q;
                 if(row.routeMask!=row.expectedRouteMask)throw new Exception("Route mismatch");
-                row.verified=true;row.decisionTicks=Tick();row.decisionMs=Ms(row.decisionTicks);
+                row.verified=true;row.observedFrame=Time.frameCount;row.decisionTicks=Tick();row.decisionMs=Ms(row.decisionTicks);
                 pending=false;completed++;report.completed=completed;
                 if(completed==config.jobs)report.finishMs=row.decisionMs;
             }
@@ -263,7 +267,7 @@ namespace Summit.PublicIntegration
                 var row=report.orders[submitted];long t=Tick();QueryBoundaryFixture.MoveCohort(samples,submitted);row.prepareMs=(Tick()-t)*1000.0/Stopwatch.Frequency;
                 t=Tick();input.SetData(samples);flags.SetData(active);row.uploadMs=(Tick()-t)*1000.0/Stopwatch.Frequency;
                 t=Tick();commands.Clear();RecordService(config.arm);row.recordMs=(Tick()-t)*1000.0/Stopwatch.Frequency;
-                row.submitTicks=Tick();row.submitMs=Ms(row.submitTicks);Graphics.ExecuteCommandBuffer(commands);
+                row.sourceFrame=Time.frameCount;row.submitTicks=Tick();row.submitMs=Ms(row.submitTicks);Graphics.ExecuteCommandBuffer(commands);
                 request=AsyncGPUReadback.Request(Output(config.arm),queries.Length*16,0);pending=true;submitted++;
             }
         }
@@ -294,7 +298,8 @@ namespace Summit.PublicIntegration
         {
             using(var w=new BinaryWriter(File.Create(Path.Combine(config.output,name))))foreach(var v in values){w.Write(v.Count);w.Write(v.XorHash);w.Write(v.SumHash0);w.Write(v.SumHash1);}
         }
-        void Save(){if(report!=null)File.WriteAllText(Path.Combine(config.output,"result.json"),JsonUtility.ToJson(report,true));}
+        void Save(){if(report!=null){File.WriteAllText(Path.Combine(config.output,"result.json"),JsonUtility.ToJson(report,true));
+            using(var writer=new StreamWriter(Path.Combine(config.output,"observations.csv")))Summit.GpuTimestamps.ObservationCsv.Write(writer,QueueObservations.Enumerate(report));}}
         void Finish(){if(actualBusiness!=null)WriteDigests("business-actual.bin",actualBusiness);report.status="completed";report.endedUtc=DateTime.UtcNow.ToString("O");Save();File.WriteAllText(Path.Combine(config.output,"done.signal"),"completed");Application.Quit(0);}
         void Fail(Exception e){failed=true;UnityEngine.Debug.LogException(e);if(report!=null){report.status="failed";report.error=e.ToString();Save();}Application.Quit(2);}
         void OnDestroy()

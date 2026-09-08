@@ -1,0 +1,5 @@
+{
+  "name": "Summit.ExternalWorkloads",
+  "references": ["Summit.GpuSensorPipeline", "Summit.GpuPrimitives", "Summit.GpuDirectBinning"],
+  "autoReferenced": true
+}

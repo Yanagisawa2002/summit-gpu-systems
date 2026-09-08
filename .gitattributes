@@ -16,3 +16,8 @@
 *.psm1 text eol=crlf
 *.dll binary
 *.png binary
+# Imported source bytes are bound by the HLSL exporter manifest, including line endings.
+Integrations/HlslKernelPipeline/Artifact~/** -text
+Integrations/HlslKernelPipeline/Artifact~/consumer-manifest.json text eol=lf
+# Preserve upstream notice whitespace along with its exact reviewed byte hash.
+PublicBenchmarks/External/Notices/*.txt -text whitespace=-trailing-space

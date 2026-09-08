@@ -44,3 +44,8 @@ Desktop.ini
 *.rdc
 *.pix3
 *.wpix
+
+# Explicit CPU-only functional harness (the rest of Unity-generated projects stay ignored).
+!Tools/FunctionalChecks/Summit.FunctionalChecks.csproj
+Tools/**/bin/
+**/__pycache__/

@@ -1,0 +1,6 @@
+{
+  "name": "Summit.HlslIntegration",
+  "references": ["Summit.GpuPrimitives", "EdwinLiu.HlslPerf.ProfileConsumer"],
+  "includePlatforms": ["Editor"],
+  "autoReferenced": true
+}

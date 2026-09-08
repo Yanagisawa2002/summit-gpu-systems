@@ -6,7 +6,14 @@ Large real-time scenes spend GPU time moving and rebuilding data as well as
 rendering it. I built reusable Unity packages for resident sensor data, spatial
 indexing, scheduling and native timing, extracted from my personal SUMMIT project.
 
-## Results
+The [September 8 implementation update](Docs/RemediationIntegration20260908.md)
+adds spatially pruned CellSpans queries, an optional compact index view, complete
+Cabana/ArborX workload adapters, a real ECS Boids consumer, verified HLSL scan
+consumption and scope-preserving observation exports. These new paths are
+**Unmeasured** and opt-in; their validation is compilation and deterministic CPU
+functionality. [External sources and preparation](PublicBenchmarks/External/README.md).
+
+## Historical NYCGIS results
 
 - **Logical visible output: approximately 385.7 MB → 8.04 MB** by replacing copied
   visible indices with compact tile descriptors in the NYCGIS integration.
@@ -17,6 +24,9 @@ Recorded on AMD Radeon AI PRO R9700, D3D12 and Unity 6000.5.2f1. These numbers
 describe the dedicated NYCGIS comparison; the standalone procedural benchmarks
 provide separate, asset-independent reproduction paths.
 [Results index and source reports](Docs/GPU_PERFORMANCE_ENGINEERING_PORTFOLIO_INDEX_2026-07-31.md).
+The 52.5% result belongs to the historical `codex/gpu-no-copy-visible-tiles`
+experiment identified in that report. It is not a measurement of the new
+integration source; the retained report snapshot is pinned in the implementation update.
 
 [Competitive baseline and transport consumer](PublicBenchmarks/UnityGpuIntegration/RESULTS-query-boundary-2026-09-08.md):
 index-free parallel scan, six query workloads, and GPU-driven route decisions.
@@ -84,9 +94,11 @@ results and follow-up investigations into complete-frame performance.
 | [HLSL Kernel Pipeline](https://github.com/Yanagisawa2002/hlsl-kernel-pipeline) | Engine-neutral kernel execution, correctness, autotuning and device-specific profile emission. Unity is a profile consumer. | Its SDK, execution ABI and paired measurement reports. |
 
 Both contain GPU primitives, but their system boundaries and measurements differ.
-They are complementary portfolio projects, not evidence of an automatically
-connected pipeline. A kernel-level speedup must not be substituted for a SUMMIT
-scene-level or full-engine frame-time improvement.
+The [optional verified scan bridge](Integrations/HlslKernelPipeline/README.md)
+now maps an exact HLSL source artifact and validated profile selection to real
+Unity buffer bindings and dispatch recording, including explicit Raw/Structured
+conversion. A kernel-level speedup does not establish a SUMMIT scene-level or
+full-engine frame-time improvement.
 
 ## What is here
 
@@ -118,15 +130,14 @@ scene-level or full-engine frame-time improvement.
 
 1. Clone the repository and open its root as a Unity project.
 2. Let Unity resolve the embedded packages and compile the benchmark assemblies.
-3. Run the repository checks:
+3. Run the explicit CPU functional checks:
 
    ```powershell
-   .\Tools\Test-RepositoryLayout.ps1
-   .\Tools\Run-UnityEditModeTests.ps1
-   .\Tools\Run-UnityEditModeTests.ps1 -UseGraphics -ForceDirect3D12
+   .\Tools\Run-FunctionalChecks.ps1
    ```
 
-4. Run a benchmark, for example:
+4. For a separately selected performance run, existing benchmark commands remain
+   available. They were not run for the Unmeasured implementation update:
 
    ```powershell
    .\Tools\Run-GpuPrimitiveBenchmark.ps1

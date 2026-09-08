@@ -1,0 +1,5 @@
+{
+  "name": "Summit.ExternalBoids",
+  "references": ["Summit.ExternalWorkloads", "Samples.Boids", "Unity.Entities", "Unity.Transforms", "Unity.Collections", "Unity.Mathematics"],
+  "autoReferenced": true
+}
