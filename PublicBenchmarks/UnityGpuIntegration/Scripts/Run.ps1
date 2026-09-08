@@ -3,7 +3,8 @@ param(
     [Parameter(Mandatory)][string]$BuildRoot,
     [Parameter(Mandatory)][string]$ConfigPath,
     [string]$SerializedRunner=(Join-Path $PSScriptRoot 'Invoke-Serialized.ps1'),
-    [int]$TimeoutSeconds=1800
+    [int]$TimeoutSeconds=1800,
+    [string]$PresentMon
 )
 $ErrorActionPreference='Stop'
 $build=[IO.Path]::GetFullPath($BuildRoot)
@@ -34,8 +35,32 @@ try {
             '-integration-config',('"'+$savedConfig+'"'),'-logFile',('"'+(Join-Path $output 'player.log')+'"'))
         $owned=Start-Process -FilePath (Join-Path $build 'Player/Integration.exe') -ArgumentList $arguments -PassThru
         $receipt.processId=$owned.Id;$receipt.arguments=$arguments;$receipt.status='running'
+        $capture=$null
+        if($PresentMon){
+            # Attach only to this owned PID. Never request elevation or stop an existing session.
+            $session='CodexScene-'+$owned.Id+'-'+[guid]::NewGuid().ToString('N')
+            $captureArgs=@('--process_id',[string]$owned.Id,'--output_file',('"'+(Join-Path $output 'presentmon.csv')+'"'),
+                '--qpc_time','--timed',[string]($TimeoutSeconds+30),'--terminate_after_timed','--terminate_on_proc_exit',
+                '--no_console_stats','--session_name',$session,'--v2_metrics')
+            $receipt.presentation=[ordered]@{tool=$PresentMon;toolSha256=(Get-FileHash -LiteralPath $PresentMon).Hash.ToLowerInvariant();
+                arguments=$captureArgs;targetProcessId=$owned.Id;session=$session;startedUtc=[DateTime]::UtcNow.ToString('o');
+                elevated=([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator);
+                overhead='Concurrent ETW consumer; no correction applied; earliest startup may precede PID attachment';status='starting'}
+            try{
+                $capture=Start-Process -FilePath $PresentMon -ArgumentList $captureArgs -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $output 'presentmon.stdout.txt') -RedirectStandardError (Join-Path $output 'presentmon.stderr.txt')
+                $receipt.presentation.captureProcessId=$capture.Id;$receipt.presentation.status='running'
+            }catch{$receipt.presentation.status='failed';$receipt.presentation.error=$_.Exception.ToString()}
+        }
         $receipt | ConvertTo-Json -Depth 12 | Set-Content (Join-Path $output 'process.json') -Encoding utf8
-        if(!$owned.WaitForExit($TimeoutSeconds*1000)){$owned.Kill();$owned.WaitForExit();throw 'Owned Player timed out; failed attempt retained.'}
+        try {
+            if(!$owned.WaitForExit($TimeoutSeconds*1000)){$owned.Kill();$owned.WaitForExit();throw 'Owned Player timed out; failed attempt retained.'}
+        } finally {
+            if($capture){
+                if(!$capture.WaitForExit(30000)){$capture.Kill();$capture.WaitForExit();$receipt.presentation.status='timed-out-owned-consumer'}
+                else{$receipt.presentation.status=if($capture.ExitCode -eq 0){'exited'}else{'failed'}}
+                $receipt.presentation.exitCode=$capture.ExitCode;$receipt.presentation.endedUtc=[DateTime]::UtcNow.ToString('o')
+            }
+        }
         $receipt.exitCode=$owned.ExitCode
         if($owned.ExitCode -ne 0){throw "Player exited $($owned.ExitCode)"}
         $result=Get-Content -LiteralPath (Join-Path $output 'result.json') -Raw | ConvertFrom-Json

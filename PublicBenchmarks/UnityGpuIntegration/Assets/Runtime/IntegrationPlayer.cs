@@ -21,6 +21,7 @@ namespace Summit.PublicIntegration
         public string mode="oracle",scenario="sparse-low-change",output,oracle,sourceSha;
         public uint seed=920071;public int frames=384,warmup=64,blocks=1,processReplicate;
         public string[] arms={"old-full"};public bool screenshot,engineTimingAudit;
+        public string nativeProbeMode="three";
     }
     [Serializable] public sealed class NativeTiming
     {
@@ -51,6 +52,7 @@ namespace Summit.PublicIntegration
     {
         public int unityFrame,logicalFrame;public long qpc;public double engineIntervalMs;public string phase;
         public double collectorCpuMs;public long collectorAllocatedBytes;public uint returnedTimings;
+        public bool focused,runInBackground;public int targetFrameRate,vSyncCount,fullScreenMode;
     }
     [Serializable] public struct EngineObservation
     {
@@ -62,6 +64,7 @@ namespace Summit.PublicIntegration
     {
         public int schemaVersion=1,processId;public string status="running",error,startedUtc,endedUtc,buildGuid,unityVersion,device,graphicsApi;
         public bool development,formalPerformanceEvidence,osPresentationAvailable=false;
+        public int nativeFrequencyEvents,nativeBeginEvents,nativeEndEvents,nativeCompletionEvents;
         public string firstScreenMetric="Engine first rendered frame proxy; OS first-present unavailable";
         public string nativeScope="Main D3D12 queue: explicit scene clear + index + nine queries + digest history + actual draw; full engine GPU separately from FrameTimingManager";
         public string engineScope="All process Update intervals retained, plus complete per-arm windows and predeclared warmup exclusion for steady comparisons; not OS displayed cadence";
@@ -141,7 +144,8 @@ namespace Summit.PublicIntegration
             long auditBegin=config.engineTimingAudit?Stopwatch.GetTimestamp():0;
             long auditAllocated=config.engineTimingAudit&&result.allocationCounterAvailable?GC.GetAllocatedBytesForCurrentThread():0;
             double now=Time.realtimeSinceStartupAsDouble;
-            var processFrame=new ProcessFrame{unityFrame=Time.frameCount,logicalFrame=logicalFrame,qpc=Qpc(),engineIntervalMs=(now-lastProcessFrame)*1000,phase=phase,collectorAllocatedBytes=-1};
+            var processFrame=new ProcessFrame{unityFrame=Time.frameCount,logicalFrame=logicalFrame,qpc=Qpc(),engineIntervalMs=(now-lastProcessFrame)*1000,phase=phase,collectorAllocatedBytes=-1,
+                focused=Application.isFocused,runInBackground=Application.runInBackground,targetFrameRate=Application.targetFrameRate,vSyncCount=QualitySettings.vSyncCount,fullScreenMode=(int)Screen.fullScreenMode};
             result.processFrames.Add(processFrame);
             lastProcessFrame=now;
             FrameTimingManager.CaptureFrameTimings();
@@ -173,13 +177,16 @@ namespace Summit.PublicIntegration
             if(config.mode!="oracle"&&config.mode!="validate"&&config.mode!="formal")throw new Exception("Unknown run mode");
             if(config.mode=="formal"&&!result.formalPerformanceEvidence)throw new Exception("Formal evidence requires a non-Development standalone Player");
             if(config.mode=="formal"&&config.engineTimingAudit)throw new Exception("Raw repeated timing audit is diagnostic only");
+            if(config.nativeProbeMode!="none"&&config.nativeProbeMode!="whole"&&config.nativeProbeMode!="three")throw new Exception("Unknown native probe mode");
+            if(config.mode=="formal"&&config.nativeProbeMode!="three")throw new Exception("Reduced probe controls are diagnostic only");
             if(SystemInfo.graphicsDeviceType!=GraphicsDeviceType.Direct3D12)throw new Exception("D3D12 required");
-            if(!GpuTimestampSession.TryCreate(out timestamps,out var support))throw new Exception("Native timestamp support: "+support.Message);
+            if(config.nativeProbeMode!="none"&&!GpuTimestampSession.TryCreate(out timestamps,out var support))throw new Exception("Native timestamp support: "+support.Message);
+            if(config.nativeProbeMode=="none")result.nativeScope="Not requested: no native timestamp session or events; asynchronous full history verification remains enabled";
             material=new Material(Resources.Load<Shader>("IntegrationParticles"));
             historyShader=Resources.Load<ComputeShader>("IntegrationHistory");historyKernel=historyShader.FindKernel("StoreHistory");
             cameraView=new GameObject("Deterministic Camera").AddComponent<Camera>();cameraView.clearFlags=CameraClearFlags.SolidColor;
             cameraView.backgroundColor=new Color(0.015f,0.025f,0.055f);cameraView.nearClipPlane=0.03f;cameraView.farClipPlane=250;
-            using(var initialize=new CommandBuffer()){timestamps.RecordFrequencyInitialization(initialize);Graphics.ExecuteCommandBuffer(initialize);}
+            if(timestamps!=null)using(var initialize=new CommandBuffer()){timestamps.RecordFrequencyInitialization(initialize);Graphics.ExecuteCommandBuffer(initialize);result.nativeFrequencyEvents++;}
             yield return null;
             for(int block=0;block<config.blocks;block++)
             {
@@ -190,7 +197,7 @@ namespace Summit.PublicIntegration
                     while(armRoutine.MoveNext())yield return armRoutine.Current;
                 }
             }
-            timestamps.Dispose();timestamps=null;
+            timestamps?.Dispose();timestamps=null;
             phase="engine-timing-drain";for(int i=0;i<8;i++)yield return null;
         }
         IEnumerator RunArm(string arm,int block,int position)
@@ -246,11 +253,11 @@ namespace Summit.PublicIntegration
                     cameraView.transform.position=new Vector3(Mathf.Sin(angle)*radius,radius*0.35f,Mathf.Cos(angle)*radius);
                     cameraView.transform.LookAt(Vector3.zero);
                     properties.SetTexture("_Palette",content.CurrentTexture);
-                    commands.Clear();var whole=Begin(commands,row.sceneGpu);commands.ClearRenderTarget(true,true,cameraView.backgroundColor);
-                    var indexToken=Begin(commands,row.indexGpu);
+                    commands.Clear();var whole=Begin(commands,row.sceneGpu,config.nativeProbeMode!="none");commands.ClearRenderTarget(true,true,cameraView.backgroundColor);
+                    var indexToken=Begin(commands,row.indexGpu,config.nativeProbeMode=="three");
                     if(incremental)updated.RecordUpdate(commands,input,flags);else index.RecordUpdate(commands,input,flags);
                     End(commands,indexToken);
-                    var queryToken=Begin(commands,row.queryGpu);
+                    var queryToken=Begin(commands,row.queryGpu,config.nativeProbeMode=="three");
                     consumer.RecordExternalIndexQueries(commands,incremental?updated.Samples:input,
                         incremental?updated.BinOffsets:index.BinOffsets,incremental?updated.BinnedIds:index.BinnedIds,N,9,0);End(commands,queryToken);
                     commands.SetComputeBufferParam(historyShader,historyKernel,"_Digests",consumer.QueryDigests);
@@ -303,14 +310,15 @@ namespace Summit.PublicIntegration
             report.checkpointMilliseconds=(Time.realtimeSinceStartupAsDouble-checkpointAt)*1000;
             yield return null;
         }
-        GpuTimestampToken Begin(CommandBuffer commands,NativeTiming output)
+        GpuTimestampToken Begin(CommandBuffer commands,NativeTiming output,bool enabled)
         {
+            if(!enabled){output.status="NotRequested";return default;}
             var status=timestamps.Acquire(nextTag++,GpuTimestampSampleFlags.None,Time.frameCount,out var token);
             if(status!=GpuTimestampStatus.Ready)throw new Exception("Native timestamp acquisition: "+status);
-            timestamps.GetScope(token).RecordBegin(commands);pending.Add(new PendingTiming{token=token,result=output});return token;
+            timestamps.GetScope(token).RecordBegin(commands);result.nativeBeginEvents++;pending.Add(new PendingTiming{token=token,result=output});return token;
         }
         void End(CommandBuffer commands,GpuTimestampToken token)
-        {timestamps.GetScope(token).RecordEnd(commands);if(timestamps.MarkSubmitted(token)!=GpuTimestampStatus.Ready)throw new Exception("Timestamp submit failed");}
+        {if(token.Value==0)return;timestamps.GetScope(token).RecordEnd(commands);result.nativeEndEvents++;result.nativeCompletionEvents++;if(timestamps.MarkSubmitted(token)!=GpuTimestampStatus.Ready)throw new Exception("Timestamp submit failed");}
         void PollNative()
         {
             for(int i=pending.Count-1;i>=0;i--)
