@@ -22,6 +22,7 @@ namespace Summit.PublicIntegration
         public uint seed=920071;public int frames=384,warmup=64,blocks=1,processReplicate;
         public string[] arms={"old-full"};public bool screenshot,engineTimingAudit;
         public string nativeProbeMode="three";
+        public float showcaseSeconds;
     }
     [Serializable] public sealed class NativeTiming
     {
@@ -65,6 +66,7 @@ namespace Summit.PublicIntegration
         public int schemaVersion=1,processId;public string status="running",error,startedUtc,endedUtc,buildGuid,unityVersion,device,graphicsApi;
         public bool development,formalPerformanceEvidence,osPresentationAvailable=false;
         public int nativeFrequencyEvents,nativeBeginEvents,nativeEndEvents,nativeCompletionEvents;
+        public string showcaseStartedUtc,showcaseEndedUtc;
         public string firstScreenMetric="Engine first rendered frame proxy; OS first-present unavailable";
         public string nativeScope="Main D3D12 queue: explicit scene clear + index + nine queries + digest history + actual draw; full engine GPU separately from FrameTimingManager";
         public string engineScope="All process Update intervals retained, plus complete per-arm windows and predeclared warmup exclusion for steady comparisons; not OS displayed cadence";
@@ -88,6 +90,7 @@ namespace Summit.PublicIntegration
         readonly List<PendingTiming> pending=new List<PendingTiming>(2048);
         readonly WaitForEndOfFrame endOfFrame=new WaitForEndOfFrame();
         double lastProcessFrame;string phase="startup";ulong nextTag=1;int logicalFrame=-1;
+        double showcaseStart=-1;
         struct PendingTiming {public GpuTimestampToken token;public NativeTiming result;}
         [DllImport("kernel32.dll")] static extern bool QueryPerformanceCounter(out long ticks);
         [DllImport("kernel32.dll")] static extern bool QueryPerformanceFrequency(out long frequency);
@@ -100,6 +103,11 @@ namespace Summit.PublicIntegration
             var args=Environment.GetCommandLineArgs();int at=Array.IndexOf(args,"-integration-config");
             if(at<0||at+1>=args.Length)throw new Exception("Provide -integration-config JSON path");
             config=JsonUtility.FromJson<IntegrationConfig>(File.ReadAllText(args[at+1]));
+            if(config.showcaseSeconds!=0)
+            {
+                if(config.showcaseSeconds<30||config.showcaseSeconds>50||config.mode!="validate"||config.nativeProbeMode!="none"||config.scenario!="streaming-switch"||config.frames!=384||config.blocks!=1||config.arms.Length!=1||config.arms[0]!="new-full")throw new Exception("Showcase requires a bounded streaming/new-full validation run without timing probes");
+                Application.targetFrameRate=60;
+            }
             if(config.frames<384||config.frames>1024||config.warmup<0||config.warmup>=config.frames||config.blocks<1||config.blocks>4)throw new Exception("Invalid bounded config");
             Directory.CreateDirectory(config.output);
             result=new IntegrationResult{processId=Process.GetCurrentProcess().Id,startedUtc=DateTime.UtcNow.ToString("O"),
@@ -141,6 +149,12 @@ namespace Summit.PublicIntegration
         void Update()
         {
             if(result==null)return;
+            if(showcaseStart>=0&&cameraView!=null)
+            {
+                float angle=Mathf.Clamp01((float)((Time.realtimeSinceStartupAsDouble-showcaseStart)/config.showcaseSeconds))*Mathf.PI*0.65f;
+                cameraView.transform.position=new Vector3(Mathf.Sin(angle)*100,35,Mathf.Cos(angle)*100);
+                cameraView.transform.LookAt(Vector3.zero);
+            }
             long auditBegin=config.engineTimingAudit?Stopwatch.GetTimestamp():0;
             long auditAllocated=config.engineTimingAudit&&result.allocationCounterAvailable?GC.GetAllocatedBytesForCurrentThread():0;
             double now=Time.realtimeSinceStartupAsDouble;
@@ -277,6 +291,28 @@ namespace Summit.PublicIntegration
                     {
                         var picture=ScreenCapture.CaptureScreenshotAsTexture();
                         File.WriteAllBytes(Path.Combine(config.output,config.scenario+".png"),picture.EncodeToPNG());Destroy(picture);
+                    }
+                    if(config.showcaseSeconds>0)
+                    {
+                        // Presentation-only wall-clock pacing. Keep rendering the current real
+                        // GPU commands between logical updates; no prerecorded frames or timing claim.
+                        if(frame==0)
+                        {
+                            File.WriteAllText(Path.Combine(config.output,"capture-ready.txt"),DateTime.UtcNow.ToString("O"));
+                            double readyAt=Time.realtimeSinceStartupAsDouble;
+                            while(!File.Exists(Path.Combine(config.output,"capture-start.signal")))
+                            {if(Time.realtimeSinceStartupAsDouble-readyAt>60)throw new Exception("Capture handshake timed out");yield return null;}
+                            showcaseStart=Time.realtimeSinceStartupAsDouble+3;
+                            result.showcaseStartedUtc=DateTime.UtcNow.ToString("O");
+                        }
+                        double until=showcaseStart+(frame+1)*config.showcaseSeconds/config.frames;
+                        while(Time.realtimeSinceStartupAsDouble<until)yield return null;
+                        if(frame==config.frames-1)
+                        {
+                            result.showcaseEndedUtc=DateTime.UtcNow.ToString("O");
+                            double holdUntil=Time.realtimeSinceStartupAsDouble+5;
+                            while(Time.realtimeSinceStartupAsDouble<holdUntil)yield return null;
+                        }
                     }
                     commands.Clear();yield return null;
                     row.engineCadenceMs=(Time.realtimeSinceStartupAsDouble-frameStart)*1000;
