@@ -99,6 +99,8 @@ namespace Summit.PublicIntegration
         static readonly int[][] Orders={new[]{0,1,3,2},new[]{1,2,0,3},new[]{2,3,1,0},new[]{3,0,2,1}};
         void Awake()
         {
+            if(Array.IndexOf(Environment.GetCommandLineArgs(),"-queue-config")>=0)
+            { enabled=false;gameObject.AddComponent<QueueLatencyPlayer>();return; }
             Application.runInBackground=true;Application.targetFrameRate=-1;QualitySettings.vSyncCount=0;
             var args=Environment.GetCommandLineArgs();int at=Array.IndexOf(args,"-integration-config");
             if(at<0||at+1>=args.Length)throw new Exception("Provide -integration-config JSON path");
