@@ -1,0 +1,33 @@
+{
+  "kind": "diagnostic-only",
+  "baselineSource": "573c873e672cbb5d6216efd8bc465d4904662a12",
+  "seed": 920071,
+  "frames": 384,
+  "warmup": 64,
+  "blocks": 1,
+  "processReplicate": 0,
+  "capacity": 262144,
+  "arms": ["old-full", "new-full", "old-incremental", "new-incremental"],
+  "armExecutionOrder": ["old-full", "new-full", "new-incremental", "old-incremental"],
+  "sceneProbeOrder": {
+    "sparse-low-change": ["none", "whole", "three"],
+    "hotspot-dynamic": ["whole", "three", "none"],
+    "streaming-switch": ["three", "none", "whole"]
+  },
+  "hypothesis": "Scope completion callbacks and their required flush/sync can perturb command submission, CPU costs and Present-wait distribution. Remove complete probes, never required completion flags, to test instrumentation sensitivity.",
+  "expectedPerProcessEvents": {
+    "none": {"frequency": 0, "begin": 0, "end": 0, "completion": 0},
+    "whole": {"frequency": 1, "begin": 1536, "end": 1536, "completion": 1536},
+    "three": {"frequency": 1, "begin": 4608, "end": 4608, "completion": 4608}
+  },
+  "correctness": [
+    "All four 61440-byte GPU history outputs must match the same independent seed920071 CPU oracle byte for byte.",
+    "Every frame sentinel must match logical frame, active count, N262144 and changed slots.",
+    "Keep all nine queries, index updates, history dispatch and two actual draw calls (262144 points and 54 overlay vertices). Retain prescribed real AssetBundle load/register/cancel/unregister/unload events.",
+    "Requested native samples must finish Ready with valid tick conversion and original source frame. Unrequested samples are NotRequested with milliseconds=-1, zero token/ticks/frequency; never fabricated zero-duration measurements.",
+    "Exact declared native event counts, clean measured source, Release build identity, distinct owned PIDs and nonoverlapping measured processes are audited. Failures are retained and stop dependent comparisons."
+  ],
+  "capture": "Optional ordinary-token PresentMon 2.5.1, unique ETW session, owned Player PID, qpc_time and v2_metrics. Attach after process creation; early startup may be missed. Preserve tool hash, arguments, capture PID, target PID, timestamps, errors, exit and actual CSV mapping/coverage. First failure disables subsequent capture, without elevation or statistical retakes. No WPR start or existing-session cancellation.",
+  "decision": "Examine equal work, event counts, focus/pacing, cadence/record CPU/Present wait distributions and missing engine GPU. Nine processes only diagnose sensitivity: one run per scene-mode cannot establish stable causal effect. No formal promotion or full confirmation unless a safe mechanistic candidate is supported and separately frozen with five independent processes and original gates.",
+  "limitations": ["Latin mode order only partially balances time and cache effects.", "Native scopes and Unity timing boundaries differ; none is not whole-engine GPU timing.", "PresentMon incurs concurrent ETW overhead and is not assumed free.", "Missing or zero FrameTimingManager GPU values remain unavailable."]
+}
