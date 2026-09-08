@@ -41,6 +41,10 @@ the procedural benchmarks are the asset-independent reproduction entry points.
 
 ## Visual walkthrough
 
+[![Live streaming point-cloud demonstration](Docs/Media/streaming-point-cloud.png)](https://github.com/Yanagisawa2002/summit-gpu-systems/releases/download/streaming-point-cloud-showcase-2026-09-08/summit-streaming-point-cloud.mp4)
+
+[Watch the 50-second live Player video](https://github.com/Yanagisawa2002/summit-gpu-systems/releases/download/streaming-point-cloud-showcase-2026-09-08/summit-streaming-point-cloud.mp4) · [Recording details and reproduction](Docs/StreamingShowcase.md). This standalone procedural scene shows real GPU queries and AssetBundle loading on a presentation schedule; it is separate from the NYCGIS measurements above and is not a performance comparison.
+
 [![Engineering overview and evidence](Docs/portfolio/overview.svg)](Docs/portfolio/overview.png)
 
 The before/after flow explains the change in representation, with the reported logical output sizes shown on a zero-based scale. [Sources and reproduction](Docs/portfolio/README.md).
@@ -79,9 +83,6 @@ scene-level or full-engine frame-time improvement.
 
 ## What is here
 
-[![Live streaming point-cloud demonstration](Docs/Media/streaming-point-cloud.png)](https://github.com/Yanagisawa2002/summit-gpu-systems/releases/download/streaming-point-cloud-showcase-2026-09-08/summit-streaming-point-cloud.mp4)
-
-[Watch the 50-second live Player video](https://github.com/Yanagisawa2002/summit-gpu-systems/releases/download/streaming-point-cloud-showcase-2026-09-08/summit-streaming-point-cloud.mp4) · [Recording details and reproduction](Docs/StreamingShowcase.md). A presentation-paced streaming scene with real GPU queries and AssetBundle loading; this video is not a performance comparison.
 
 | Area | Package | Purpose |
 | --- | --- | --- |
