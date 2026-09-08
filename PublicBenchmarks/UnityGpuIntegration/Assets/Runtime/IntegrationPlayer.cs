@@ -314,7 +314,7 @@ namespace Summit.PublicIntegration
                             while(Time.realtimeSinceStartupAsDouble<holdUntil)yield return null;
                         }
                     }
-                    commands.Clear();yield return null;
+                    if(config.showcaseSeconds<=0){commands.Clear();yield return null;}
                     row.engineCadenceMs=(Time.realtimeSinceStartupAsDouble-frameStart)*1000;
                     row.qpcEnd=Qpc();
                 }
