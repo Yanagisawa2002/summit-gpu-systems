@@ -3,8 +3,23 @@
 Real completion-driven progress, outstanding work and per-job result latency are
 implemented and validated. **The frozen performance confirmation is inconclusive**:
 both capture modes fail baseline CV and drift gates. Some processes also lose
-focus. No new video is published as a portfolio performance demonstration.
+focus. The English diagnostic video below shows the observed task delivery,
+without claiming a confirmed stable speedup or smoother displayed frames.
 The previously withdrawn streaming videos remain withdrawn.
+
+## Minimal English video
+
+The [50-second English edit](https://github.com/Yanagisawa2002/summit-gpu-systems/releases/tag/r9700-task-delivery-video-2026-09-08)
+is published at the owner's request. It uses the same two DXGI reliability-check
+recordings described below. It removes the long explanations, retains captured
+live metrics and task tiles, and keeps a short English scope statement. Only
+spatial cropping and constant start offsets are applied; no speed change,
+interpolation, replacement load or new performance sample is introduced.
+The source marker alignment is checked before cropping. The original evidence-only
+release and its publication-state receipts describe the earlier delivery and remain
+unchanged. The new release carries its own composition receipt and decode check.
+Reproduce this edit with `Scripts/compose_queue_video_english.py` using the same
+capture root and `analysis-final/analysis.json`.
 
 ## What now drives the visible progress
 

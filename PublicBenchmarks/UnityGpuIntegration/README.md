@@ -5,7 +5,7 @@ This standalone procedural scene compares two explicit query choices and two ind
 The [focused collection diagnosis](RESULTS-focused-costs-2026-09-08.md) documents persistent engine GPU missing values, allocation-counter calibration, the collector/checkpoint repair and its single frozen confirmation. Its separate protocol is `protocol-focused-costs.json`; pass it through `Matrix.ps1 -ProtocolPath` to reproduce that round. Unavailable allocation counters now produce -1 in raw rows and null in analysis; historical uncalibrated zero values do not establish zero allocation.
 
 
-The [GPU-verified task delivery experiment](RESULTS-queue-latency-2026-09-08.md) adds real completion, outstanding-work and result-latency displays. All job histories passed; performance confirmation remains inconclusive and no new portfolio video is published.
+The [GPU-verified task delivery experiment](RESULTS-queue-latency-2026-09-08.md) adds real completion, outstanding-work and result-latency displays. Watch the [50-second English comparison](https://github.com/Yanagisawa2002/summit-gpu-systems/releases/download/r9700-task-delivery-video-2026-09-08/gpu-task-delivery-english.mp4): separate recordings, original speed, live verified results. All job histories passed; stable performance improvement remains unconfirmed.
 
 ## Requirements and provenance
 
