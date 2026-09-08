@@ -41,9 +41,11 @@ the procedural benchmarks are the asset-independent reproduction entry points.
 
 ## Visual walkthrough
 
-[![Live streaming point-cloud demonstration](Docs/Media/streaming-point-cloud.png)](https://github.com/Yanagisawa2002/summit-gpu-systems/releases/download/streaming-point-cloud-showcase-2026-09-08/summit-streaming-point-cloud.mp4)
+[![Equal-work baseline and candidate recordings with scoped timings](Docs/Media/streaming-comparison.png)](https://github.com/Yanagisawa2002/summit-gpu-systems/releases/download/streaming-comparison-2026-09-08/summit-streaming-comparison.mp4)
 
-[Watch the 50-second live Player video](https://github.com/Yanagisawa2002/summit-gpu-systems/releases/download/streaming-point-cloud-showcase-2026-09-08/summit-streaming-point-cloud.mp4) · [Recording details and reproduction](Docs/StreamingShowcase.md). This standalone procedural scene shows real GPU queries and AssetBundle loading on a presentation schedule; it is separate from the NYCGIS measurements above and is not a performance comparison.
+[Watch the 49.9-second comparison](https://github.com/Yanagisawa2002/summit-gpu-systems/releases/download/streaming-comparison-2026-09-08/summit-streaming-comparison.mp4) · [Scopes, statistics, correctness and reproduction](Docs/StreamingComparison.md). Real recordings share the same workload; the labelled charts use five independent historical processes. **Stable full-frame gains remain unconfirmed.** This procedural scene is separate from the NYCGIS measurements above.
+
+The [original single-arm live showcase](Docs/StreamingShowcase.md) remains available as a functional demonstration.
 
 [![Engineering overview and evidence](Docs/portfolio/overview.svg)](Docs/portfolio/overview.png)
 

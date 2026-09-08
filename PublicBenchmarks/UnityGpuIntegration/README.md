@@ -4,9 +4,11 @@ This standalone procedural scene compares two explicit query choices and two ind
 
 The [focused collection diagnosis](RESULTS-focused-costs-2026-09-08.md) documents persistent engine GPU missing values, allocation-counter calibration, the collector/checkpoint repair and its single frozen confirmation. Its separate protocol is `protocol-focused-costs.json`; pass it through `Matrix.ps1 -ProtocolPath` to reproduce that round. Unavailable allocation counters now produce -1 in raw rows and null in analysis; historical uncalibrated zero values do not establish zero allocation.
 
+A [matched baseline/candidate video](../../Docs/StreamingComparison.md) adds scoped historical timing curves, five-process statistics and oracle verification. The paced footage is not a performance measurement; stable full-frame gains remain unconfirmed.
+
 ## Requirements and provenance
 
-A [50-second live streaming showcase](../../Docs/StreamingShowcase.md) records the same procedural point cloud and query bars with a bounded presentation schedule. `showcaseSeconds` is restricted to the streaming/new-full validation arm without native probes; formal experiments reject it.
+A [50-second live streaming showcase](../../Docs/StreamingShowcase.md) records the same procedural point cloud and query bars with a bounded presentation schedule. `showcaseSeconds` is restricted to one streaming full-rebuild validation arm (`old-full` or `new-full`) without native probes; formal experiments reject it.
 
 Clone `https://github.com/Yanagisawa2002/summit-gpu-systems.git` and check out the complete source commit named in the build attestation accompanying a result. Install Unity **6000.5.2f1**, Windows x64 build support, PowerShell 7, and Python 3.12 or newer. A Windows D3D12 GPU with Shader Model 6 wave operations is required; the reported reference device is the AMD Radeon AI PRO R9700. Unity has its own installation/license terms. No Unity account, company asset, network service, PSO package, Addressables package, or author-specific filesystem path is a project dependency.
 

@@ -1,5 +1,7 @@
 # Live streaming point-cloud showcase
 
+For a labelled baseline/candidate view with independent timing evidence, see the [comparison video](StreamingComparison.md).
+
 [Watch or download the full 50-second MP4](https://github.com/Yanagisawa2002/summit-gpu-systems/releases/download/streaming-point-cloud-showcase-2026-09-08/summit-streaming-point-cloud.mp4)
 
 [![Live point cloud with GPU query bars](Media/streaming-point-cloud.png)](https://github.com/Yanagisawa2002/summit-gpu-systems/releases/download/streaming-point-cloud-showcase-2026-09-08/summit-streaming-point-cloud.mp4)
