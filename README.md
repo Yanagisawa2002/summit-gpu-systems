@@ -39,6 +39,12 @@ The diagram groups responsibilities; it does not imply every package is enabled
 in every benchmark. The NYCGIS snapshot requires its separate host contracts;
 the procedural benchmarks are the asset-independent reproduction entry points.
 
+## Visual walkthrough
+
+[![Engineering overview and evidence](Docs/portfolio/overview.svg)](Docs/portfolio/overview.png)
+
+The before/after flow explains the change in representation, with the reported logical output sizes shown on a zero-based scale. [Sources and reproduction](Docs/portfolio/README.md).
+
 ## Engineering challenges
 
 1. **Avoid paying for intermediate data repeatedly.** Producers, spatial indices

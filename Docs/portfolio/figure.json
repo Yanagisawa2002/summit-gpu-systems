@@ -1,0 +1,48 @@
+{
+  "title": "Visible tiles: pass descriptors instead of copied indices",
+  "subtitle": "NYCGIS dedicated comparison \u00b7 AMD R9700 / D3D12 \u00b7 Unity 6000.5.2f1",
+  "diagram": "before_after",
+  "before": [
+    "Visible clusters",
+    "Copy visible indices",
+    "Render copied output"
+  ],
+  "after": [
+    "Visible clusters",
+    "Compact descriptors",
+    "Read source indices"
+  ],
+  "kind": "bars",
+  "panels": [
+    {
+      "title": "Logical visible-output payload",
+      "unit": "MB as reported \u00b7 lower is better",
+      "max": 470,
+      "labels": [
+        "Copied indices",
+        "Tile descriptors"
+      ],
+      "values": [
+        385.7,
+        8.04
+      ],
+      "format": "{:.2f}"
+    }
+  ],
+  "note": "The dedicated single-camera comparison recorded 52.5% lower GPU average time versus WaveCompact.\nPayload accounting is not a physical VRAM counter; the flow is schematic.",
+  "source_label": "Docs/GPU_PERFORMANCE_ENGINEERING_PORTFOLIO_INDEX_2026-07-31.md",
+  "sources": [
+    {
+      "path": "Docs/GPU_PERFORMANCE_ENGINEERING_PORTFOLIO_INDEX_2026-07-31.md",
+      "sha256": "05f7a33f0f957dbbb9ca650cb6e15110625224439ecffa53a452f5d08be03109",
+      "hash_normalization": "CRLF to LF"
+    }
+  ],
+  "chart_contract": {
+    "surface": "GitHub README; static SVG and PNG",
+    "palette": "single blue root plus neutrals; explicit labels and hatching",
+    "footprint": "1200 x 860 logical pixels",
+    "question": "Visible tiles: pass descriptors instead of copied indices",
+    "data_grain": "As labeled per panel; schematic flow has no timing or dimensional scale."
+  }
+}
