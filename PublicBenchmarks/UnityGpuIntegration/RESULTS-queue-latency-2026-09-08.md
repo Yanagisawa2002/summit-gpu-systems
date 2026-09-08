@@ -1,5 +1,10 @@
 # GPU-verified task delivery experiment — 2026-09-08
 
+Follow-up: the [competitive baseline and transport study](RESULTS-query-boundary-2026-09-08.md)
+adds a reasonable parallel scan. It has not shown extra user-facing benefit from
+batch over that stronger reference. The video below compares the older CellSerial
+baseline and should be interpreted with that limitation.
+
 Real completion-driven progress, outstanding work and per-job result latency are
 implemented and validated. **The frozen performance confirmation is inconclusive**:
 both capture modes fail baseline CV and drift gates. Some processes also lose

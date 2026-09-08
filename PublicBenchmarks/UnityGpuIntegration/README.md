@@ -7,6 +7,12 @@ The [focused collection diagnosis](RESULTS-focused-costs-2026-09-08.md) document
 
 The [GPU-verified task delivery experiment](RESULTS-queue-latency-2026-09-08.md) adds real completion, outstanding-work and result-latency displays. Watch the [50-second English comparison](https://github.com/Yanagisawa2002/summit-gpu-systems/releases/download/r9700-task-delivery-video-2026-09-08/gpu-task-delivery-english.mp4): separate recordings, original speed, live verified results. All job histories passed; stable performance improvement remains unconfirmed.
 
+The [competitive query and transport study](RESULTS-query-boundary-2026-09-08.md)
+adds an index-free parallel scan, six fixed query cases and a complete
+occupancy-to-route-to-transport consumer. All 45 processes passed correctness;
+batch has not shown extra user-facing benefit over the stronger scan baseline.
+[Download the runnable Windows demo and evidence](https://github.com/Yanagisawa2002/summit-gpu-systems/releases/tag/r9700-query-boundary-2026-09-08).
+
 ## Requirements and provenance
 
 

@@ -18,7 +18,13 @@ describe the dedicated NYCGIS comparison; the standalone procedural benchmarks
 provide separate, asset-independent reproduction paths.
 [Results index and source reports](Docs/GPU_PERFORMANCE_ENGINEERING_PORTFOLIO_INDEX_2026-07-31.md).
 
-[Watch: GPU Task Delivery — 50-second English comparison](https://github.com/Yanagisawa2002/summit-gpu-systems/releases/download/r9700-task-delivery-video-2026-09-08/gpu-task-delivery-english.mp4).
+[Competitive baseline and transport consumer](PublicBenchmarks/UnityGpuIntegration/RESULTS-query-boundary-2026-09-08.md):
+index-free parallel scan, six query workloads, and GPU-driven route decisions.
+All 45 runs passed correctness; extra user-facing benefit from the batch candidate
+over parallel scan remains unproven.
+[Runnable Windows demo and evidence](https://github.com/Yanagisawa2002/summit-gpu-systems/releases/tag/r9700-query-boundary-2026-09-08).
+
+[Watch: legacy CellSerial comparison — 50-second English video](https://github.com/Yanagisawa2002/summit-gpu-systems/releases/download/r9700-task-delivery-video-2026-09-08/gpu-task-delivery-english.mp4).
 Real verified completion and queue latency, recorded separately at original speed.
 This diagnostic comparison does not establish stable speedup or smoother frames;
 see the [full report](PublicBenchmarks/UnityGpuIntegration/RESULTS-queue-latency-2026-09-08.md).
