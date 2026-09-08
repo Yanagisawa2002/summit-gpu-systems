@@ -6,6 +6,10 @@ This repository is a Unity 6 benchmark host and a monorepo of reusable UPM packa
 
 ## What is here
 
+[![Live streaming point-cloud demonstration](Docs/Media/streaming-point-cloud.png)](https://github.com/Yanagisawa2002/summit-gpu-systems/releases/download/streaming-point-cloud-showcase-2026-09-08/summit-streaming-point-cloud.mp4)
+
+[Watch the 50-second live Player video](https://github.com/Yanagisawa2002/summit-gpu-systems/releases/download/streaming-point-cloud-showcase-2026-09-08/summit-streaming-point-cloud.mp4) · [Recording details and reproduction](Docs/StreamingShowcase.md). A presentation-paced streaming scene with real GPU queries and AssetBundle loading; this video is not a performance comparison.
+
 | Area | Package | Purpose |
 | --- | --- | --- |
 | GPU primitives | `com.summit.gpu-primitives` | CommandBuffer-first scan, histogram, stable compaction, and radix sort with portable and WaveOps backends. |

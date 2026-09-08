@@ -6,6 +6,8 @@ The [focused collection diagnosis](RESULTS-focused-costs-2026-09-08.md) document
 
 ## Requirements and provenance
 
+A [50-second live streaming showcase](../../Docs/StreamingShowcase.md) records the same procedural point cloud and query bars with a bounded presentation schedule. `showcaseSeconds` is restricted to the streaming/new-full validation arm without native probes; formal experiments reject it.
+
 Clone `https://github.com/Yanagisawa2002/summit-gpu-systems.git` and check out the complete source commit named in the build attestation accompanying a result. Install Unity **6000.5.2f1**, Windows x64 build support, PowerShell 7, and Python 3.12 or newer. A Windows D3D12 GPU with Shader Model 6 wave operations is required; the reported reference device is the AMD Radeon AI PRO R9700. Unity has its own installation/license terms. No Unity account, company asset, network service, PSO package, Addressables package, or author-specific filesystem path is a project dependency.
 
 The manifest uses four repository-relative packages: GPU primitives, direct binning, sensor pipeline, and native GPU timestamps. All package sources and the timestamp plugin DLL are pinned by the checkout. Bootstrap hashes every dependency file and preserves each complete package license; the build attestation also hashes all Player files, including the native DLL. `Native~` contains the plugin's source for inspection; rebuilding that DLL is optional and is not required to reproduce the pinned binary experiment. Existing third-party notices remain applicable. The project does not import root Assets or Integrations. Generated bundles, textures and particles are created by the checked-in build/fixture code.
