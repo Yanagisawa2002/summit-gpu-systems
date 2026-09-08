@@ -147,3 +147,12 @@ fallback frequency and CSR extent, not maintenance time alone. `HolesWord`
 counts removals since rebuild and does not measure all reserved Invalid slots.
 See [the scoped evidence and diagnostic limitations](../../Docs/FocusedIndexCosts.md)
 and [the external snapshot contract](../../Docs/GPU_SENSOR_INCREMENTAL_INDEX.md).
+
+The subsequent [capacity mechanism replay](../../Docs/CausalIndexCosts.md)
+matched the original GPU state history and screened one minimal policy: reserve
+one slot in an empty cell. Streaming still rebuilt on all 320 steady-state
+updates because some empty destinations received two inserts in one update;
+logical consumer reads also increased. The candidate was rejected before GPU
+testing, with no new performance claim or production change. This does not
+rule out other capacity or compact-consumer designs, which must include their
+complete maintenance, conversion and memory costs.
