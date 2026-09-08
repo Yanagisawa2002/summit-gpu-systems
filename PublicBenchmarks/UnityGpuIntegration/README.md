@@ -44,4 +44,6 @@ Engine cadence is a coroutine frame interval, not OS display cadence. OS present
 
 ## Evidence files
 
+The subsequent [native probe diagnosis](RESULTS-causal-costs-2026-09-08.md) uses the separately frozen [causal protocol](protocol-causal-costs.json). `Scripts/Causal.ps1` runs nine diagnostic processes with `nativeProbeMode=none/whole/three`; `three` remains the default and the only formal mode. Unrequested scopes retain `NotRequested`/-1 values. `Scripts/audit_causal.py` checks equal work, full history, event counts and descriptive timing distributions. The optional `Run.ps1 -PresentMon` attaches to the owned PID without elevation; actual capture failures and unavailable presentation data remain explicit.
+
 `build-attestation.json` binds clean source, Unity hash, process arguments and complete binary hashes. `release-build.json` adds Unity build GUID, bundle byte counts, SHA256 and CRC. `dependency-inventory.json` records package provenance. Each run retains its exact config, OS/GPU/CPU/driver and owned PID receipt, Player log, complete timing/results JSON and all binary histories. Oracle SHA256 binds every arm to its expected trajectory. Analysis writes JSON, per-block CSV and every over-budget cadence frame. These files, including failed diagnostics, must accompany any result claim.
