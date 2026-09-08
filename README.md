@@ -4,6 +4,39 @@ Publicly available, asset-independent GPU performance engineering code extracted
 
 This repository is a Unity 6 benchmark host and a monorepo of reusable UPM packages. It contains GPU algorithms, DX12 timestamp instrumentation, deterministic A/B harnesses, tests, PowerShell automation, engineering reports, and an isolated snapshot of the NYCGIS/BFP2 integration. City geometry, imagery, textures, scenes, generated players, raw captures, and third-party assets are intentionally excluded.
 
+## System architecture
+
+```mermaid
+flowchart TD
+    Host["Procedural Unity benchmark host"] --> Sensor["GPU-resident sensor data"]
+    Sensor --> Index["Spatial index: direct or radix backend"]
+    Primitives["Scan / histogram / compaction / sort"] --> Index
+    Index --> Consumers["Range-query and simulation consumers"]
+    Calibration["Device calibration and backend profiles"] --> Index
+    Residency["Map and point-cloud residency"] --> Consumers
+    Schedule["Copy / compute / graphics scheduling"] --> Consumers
+    Host --> Measure["Native D3D12 timestamps and A/B harnesses"]
+    Consumers --> Measure
+    Measure --> Evidence["Correctness checks, samples and engineering reports"]
+    Integration["Separate NYCGIS integration snapshot"] -.-> Consumers
+```
+
+The diagram groups responsibilities; it does not imply every package is enabled
+in every benchmark. The NYCGIS snapshot requires its separate host contracts;
+the procedural benchmarks are the asset-independent reproduction entry points.
+
+## Relationship to HLSL Kernel Pipeline
+
+| Project | Engineering focus | Review entry point |
+| --- | --- | --- |
+| **SUMMIT GPU Systems** | Unity runtime composition: resident data, spatial queries, scheduling, residency and native instrumentation. | Packages below and the [procedural integration benchmark](PublicBenchmarks/UnityGpuIntegration/README.md). |
+| [HLSL Kernel Pipeline](https://github.com/Yanagisawa2002/hlsl-kernel-pipeline) | Engine-neutral kernel execution, correctness, autotuning and device-specific profile emission. Unity is a profile consumer. | Its SDK, execution ABI and paired measurement reports. |
+
+Both contain GPU primitives, but their system boundaries and measurements differ.
+They are complementary portfolio projects, not evidence of an automatically
+connected pipeline. A kernel-level speedup must not be substituted for a SUMMIT
+scene-level or full-engine frame-time improvement.
+
 ## What is here
 
 | Area | Package | Purpose |
