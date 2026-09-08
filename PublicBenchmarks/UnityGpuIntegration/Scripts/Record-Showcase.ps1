@@ -3,7 +3,9 @@ param(
  [Parameter(Mandatory)][string]$BuildRoot,
  [Parameter(Mandatory)][string]$OutputRoot,
  [Parameter(Mandatory)][string]$Oracle,
- [string]$Ffmpeg='ffmpeg'
+ [string]$Ffmpeg='ffmpeg',
+ [ValidateSet('old-full','new-full')][string]$Arm='new-full',
+ [uint32]$Seed=920071
 )
 $ErrorActionPreference='Stop'
 $out=[IO.Path]::GetFullPath($OutputRoot);$build=[IO.Path]::GetFullPath($BuildRoot)
@@ -13,7 +15,7 @@ if($att.status -ne 'built' -or $att.development -or $att.sourceDirty){throw 'Cle
 foreach($f in $att.files){if((Get-FileHash -LiteralPath (Join-Path $build $f.path)).Hash.ToLowerInvariant() -ne $f.sha256){throw 'Frozen Player changed.'}}
 New-Item -ItemType Directory -Path $out|Out-Null
 $run=Join-Path $out 'player';New-Item -ItemType Directory -Path $run|Out-Null
-$config=[ordered]@{mode='validate';scenario='streaming-switch';nativeProbeMode='none';showcaseSeconds=45;frames=384;warmup=64;blocks=1;seed=920071;processReplicate=0;arms=@('new-full');screenshot=$false;engineTimingAudit=$false;sourceSha=$att.sourceSha;output=$run;oracle=[IO.Path]::GetFullPath($Oracle)}
+$config=[ordered]@{mode='validate';scenario='streaming-switch';nativeProbeMode='none';showcaseSeconds=45;frames=384;warmup=64;blocks=1;seed=$Seed;processReplicate=0;arms=@($Arm);screenshot=$false;engineTimingAudit=$false;sourceSha=$att.sourceSha;output=$run;oracle=[IO.Path]::GetFullPath($Oracle)}
 $cfg=Join-Path $out 'config.json';$config|ConvertTo-Json|Set-Content -LiteralPath $cfg
 $ff=(Get-Command $Ffmpeg).Source
 $receipt=[ordered]@{status='prepared';sourceSha=$att.sourceSha;kind='real-time visible Player recording; presentation-paced demonstration, not performance evidence';ffmpeg=$ff;ffmpegSha256=(Get-FileHash $ff).Hash;oracleSha256=(Get-FileHash $Oracle).Hash;durationSeconds=50;fps=30}

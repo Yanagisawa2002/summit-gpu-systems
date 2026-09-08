@@ -105,7 +105,7 @@ namespace Summit.PublicIntegration
             config=JsonUtility.FromJson<IntegrationConfig>(File.ReadAllText(args[at+1]));
             if(config.showcaseSeconds!=0)
             {
-                if(config.showcaseSeconds<30||config.showcaseSeconds>50||config.mode!="validate"||config.nativeProbeMode!="none"||config.scenario!="streaming-switch"||config.frames!=384||config.blocks!=1||config.arms.Length!=1||config.arms[0]!="new-full")throw new Exception("Showcase requires a bounded streaming/new-full validation run without timing probes");
+                if(config.showcaseSeconds<30||config.showcaseSeconds>50||config.mode!="validate"||config.nativeProbeMode!="none"||config.scenario!="streaming-switch"||config.frames!=384||config.blocks!=1||config.arms==null||config.arms.Length!=1||(config.arms[0]!="old-full"&&config.arms[0]!="new-full"))throw new Exception("Showcase requires a bounded streaming full-rebuild validation run without timing probes");
                 Application.targetFrameRate=60;
             }
             if(config.frames<384||config.frames>1024||config.warmup<0||config.warmup>=config.frames||config.blocks<1||config.blocks>4)throw new Exception("Invalid bounded config");
