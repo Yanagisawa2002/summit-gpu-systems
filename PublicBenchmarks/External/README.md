@@ -35,12 +35,19 @@ python Tools/ExternalSources/prepare.py stage-boids entities-boids --directory C
 ```
 
 `stage-boids` requires an untouched checkout at the pin and a new destination. It
-copies the complete official project and adds the three embedded SUMMIT packages
-and optional consumer sources. Upstream dependency versions and the original
-package lock remain preserved. The default `Build-Native` action prints a build
+copies the complete committed official project and adds the three embedded SUMMIT
+packages and optional consumer sources. Ignored local caches are excluded. Staging
+rejects nested paths, changed source bytes, dependency collisions and long Windows
+paths before copying. The receipt records every upstream file and the hashes of
+the actual added files, so a dirty local adapter cannot inherit an unchanged commit's
+identity. Upstream dependency versions and the original package lock remain
+preserved. The default `Build-Native` action prints a build
 plan. `-Mode Build -DependencyPrefix <installed-prefix>` compiles only the named
 upstream target, records hashes of the resolved dependency installation and never
 invokes its executable or CTest. Supply an installed CMake with `-CMakePath`.
+Build mode checks the source, installed Kokkos configuration and CMake before
+creating output; use a short, separate `-OutputDirectory C:/b/summit-native`.
+Upstream CMake validates the remaining dependency versions during configuration.
 The C++ snapshot hook also has a standalone **object-library-only** CMake target.
 
 In an explicitly launched Boids host, attach `BoidsSphereConsumer` and opt in to
@@ -48,7 +55,10 @@ the Unmeasured consumer. No auto-start hook or altered scene is shipped. Unsuppo
 compute/readback uses the labeled CPU complete-CSR fallback. A complete-result
 capacity limit fails visibly instead of truncating entities. Readbacks retain the
 owner until both offsets and IDs finish; disable/world replacement invalidates old
-results without freeing submitted buffers prematurely. Published Entity handles
+results without freeing submitted buffers prematurely. Readback extraction and
+result-validation errors still finish both callbacks; failure while recording
+creates no pending submission. An error after submission is attempted retains
+ownership until completion is known. Published Entity handles
 belong to `SourceFrame`; callers must check version/existence before acting on a
 later world's entities.
 

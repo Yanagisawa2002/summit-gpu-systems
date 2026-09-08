@@ -81,8 +81,7 @@ namespace Summit.ExternalBoids
             try
             {
                 adapter.Record(commands);
-                ulong ticket = epoch.Submit(); int frame = Time.frameCount; var owner = adapter;
-                busy = true;
+                ulong ticket = 0; int frame = Time.frameCount; var owner = adapter;
                 // Both readbacks follow scatter. Keep the owner alive until BOTH complete,
                 // including error, disable, destruction, and world replacement paths.
                 uint[] offsets = null, ids = null; bool failed = false; int remaining = 2;
@@ -94,6 +93,8 @@ namespace Summit.ExternalBoids
                     {
                         if (current && !failed && this != null && AllowUnmeasured && isActiveAndEnabled && sourceWorld != null && sourceWorld.IsCreated)
                         {
+                            if (offsets == null || ids == null || offsets.Length < spheres.Length + 1 || offsets[0] != 0)
+                                throw new InvalidOperationException("Malformed complete CSR header");
                             var rows = new uint[spheres.Length][];
                             for (int j = 0; j < rows.Length; j++)
                             {
@@ -105,14 +106,33 @@ namespace Summit.ExternalBoids
                         }
                         else if (failed && this != null) { Status = "GPU result unavailable / Unmeasured"; Invalidate(); }
                     }
+                    catch (Exception e)
+                    {
+                        failed = true;
+                        if (this != null) { Status = e.Message + " / Unmeasured"; Invalidate(); }
+                    }
                     finally
                     {
                         if (!current || failed || this == null || !isActiveAndEnabled || !AllowUnmeasured)
                         { owner.Dispose(); if (ReferenceEquals(owner, adapter)) adapter = null; }
                     }
                 }
-                commands.RequestAsyncReadback(owner.Offsets, request => { failed |= request.hasError; if (!request.hasError) offsets = request.GetData<uint>().ToArray(); Finish(); });
-                commands.RequestAsyncReadback(owner.Ids, request => { failed |= request.hasError; if (!request.hasError) ids = request.GetData<uint>().ToArray(); Finish(); });
+                commands.RequestAsyncReadback(owner.Offsets, request =>
+                {
+                    try { failed |= request.hasError; if (!request.hasError) offsets = request.GetData<uint>().ToArray(); }
+                    catch (Exception) { failed = true; }
+                    finally { Finish(); }
+                });
+                commands.RequestAsyncReadback(owner.Ids, request =>
+                {
+                    try { failed |= request.hasError; if (!request.hasError) ids = request.GetData<uint>().ToArray(); }
+                    catch (Exception) { failed = true; }
+                    finally { Finish(); }
+                });
+                // Recording failure has submitted nothing and must not create a pending
+                // ticket. After submission is attempted, retain ownership until callbacks
+                // complete even when the graphics API reports an error.
+                ticket = epoch.Submit(); busy = true;
                 Graphics.ExecuteCommandBuffer(commands);
             }
             finally { commands.Dispose(); }

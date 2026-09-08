@@ -81,6 +81,30 @@ and conversion shaders compiled with DXC. The fixed HLSL asset compiled at cs_6_
 Algorithm-specific CPU, recording-double and shader compile commands are in the
 [query document](SensorCellSpansAndCompactView.md).
 
+The integrated validation run passed:
+
+- 132 deterministic observation/allocation/external/HLSL assertions, six query
+  correctness suites, and the real query/index command recorders against inert
+  resource doubles. No Unity/native library is loaded by these executable tests.
+- Four offline source/staging tests, including complete tracked-project copying,
+  cache exclusion, local-content attestation, drift and nested-path rejection.
+- 79 C# source files compiled against real Unity/Entities and the HLSL profile SDK,
+  including the Editor asset factory. The existing unused `QueryBoundaryPlayer.ready`
+  warning remains; compilation has no errors.
+- 36 query/index entry points compiled with FXC/DXC, plus seven external sphere,
+  Raw/Structured conversion and fixed HLSL scan entry points compiled with DXC.
+  The snapshot hook compiled to an object file only.
+- Repository layout and whitespace checks. The default CI explicitly names the
+  CPU projects above and does not discover benchmark or Player test suites.
+
+The query dependency `19639cd1cd5060dd9d78985cd7572fef973521cb` was integrated as
+`2615bb2` after the observation/consumer integration `11887bc`. The accompanying
+HLSL artifact remains pinned to source
+`274e5077455e6c08959a274a84379dfc4e1345dd`, with the independent asset digest and
+ABI recorded in [the consumer contract](../Integrations/HlslKernelPipeline/README.md).
+The HLSL repository's final integration is
+`de978aff15d5cd6e405a3d3bcfef3fbf0d7b46e0`; it retains those exact artifact bytes.
+
 `PublicBenchmarks/External/sources.lock.json` contains full source identities and
 licenses. Large official sample assets and complete Kokkos/Boost builds were not
 downloaded; upstream native executable builds and all performance execution remain

@@ -17,6 +17,10 @@ $files = @(Get-ChildItem -LiteralPath (Join-Path $compileRoot 'Packages') -Filte
 $files += Get-ChildItem -LiteralPath (Join-Path $compileRoot 'PublicBenchmarks/UnityGpuIntegration/Assets/Runtime') -Filter '*.cs' -File
 $files += Get-ChildItem -LiteralPath (Join-Path $compileRoot 'PublicBenchmarks/External/Adapters') -Filter '*.cs' -File
 $references = @(Get-ChildItem -LiteralPath $unityManaged -Filter '*.dll' -File)
+$files += Get-ChildItem -LiteralPath (Join-Path $compileRoot 'Integrations/HlslKernelPipeline/Editor') -Filter '*.cs' -File
+if (!($references | Where-Object BaseName -eq 'UnityEditor.CoreModule')) {
+    $references += Get-Item -LiteralPath (Join-Path (Split-Path $unityManaged -Parent) 'UnityEditor.dll')
+}
 if ($EntitiesAssemblyDirectory) {
     if (!$ReferenceDirectory) { throw 'Pinned upstream source directory is required for Boids API compilation.' }
     foreach($assemblyName in @('Unity.Entities','Unity.Entities.Hybrid','Unity.Transforms','Unity.Mathematics','Unity.Collections','Unity.Burst')) {
