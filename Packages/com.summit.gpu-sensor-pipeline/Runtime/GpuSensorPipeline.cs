@@ -960,6 +960,21 @@ namespace Summit.GpuSensorPipeline
             GraphicsBuffer binOffsets, GraphicsBuffer binnedIds,
             int stableIdCapacity, int queryCount, uint logicalState)
         {
+            RecordExternalIndexQueriesCore(commands, samples, binOffsets, binnedIds, stableIdCapacity, queryCount, logicalState, true);
+        }
+
+        /// <summary>Queries a trusted external index without the optional aggregate
+        /// frame digest. Query output semantics and validation are unchanged.</summary>
+        public void RecordExternalIndexQueriesOnly(CommandBuffer commands, GraphicsBuffer samples,
+            GraphicsBuffer binOffsets, GraphicsBuffer binnedIds, int stableIdCapacity, int queryCount)
+        {
+            RecordExternalIndexQueriesCore(commands, samples, binOffsets, binnedIds, stableIdCapacity, queryCount, 0, false);
+        }
+
+        private void RecordExternalIndexQueriesCore(CommandBuffer commands, GraphicsBuffer samples,
+            GraphicsBuffer binOffsets, GraphicsBuffer binnedIds, int stableIdCapacity, int queryCount,
+            uint logicalState, bool includeFrameDigest)
+        {
             ThrowIfDisposed();
             ValidateCommands(commands);
             ValidateElementCount(stableIdCapacity);
@@ -980,7 +995,7 @@ namespace Summit.GpuSensorPipeline
                 throw new ArgumentException("Index inputs must not alias query outputs.");
             RecordRangeQuerySegment(commands, stableIdCapacity, 0, queryCount,
                 false, samples, binOffsets, binnedIds);
-            RecordFrameDigest(commands, queryCount, logicalState);
+            if (includeFrameDigest) RecordFrameDigest(commands, queryCount, logicalState);
         }
 
         private static void ValidateExternalUintBuffer(GraphicsBuffer buffer, int count, string name)
