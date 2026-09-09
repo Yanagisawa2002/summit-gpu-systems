@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <UseSharedCompilation>false</UseSharedCompilation>
+    <CheckForOverflowUnderflow>true</CheckForOverflowUnderflow>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="../../../Packages/com.summit.gpu-sensor-pipeline/Runtime/GpuSensorContracts.cs" />
+    <Compile Include="../../../Packages/com.summit.gpu-sensor-pipeline/Runtime/GpuSensorQueryBackend.cs" />
+    <Compile Include="../../../Packages/com.summit.gpu-sensor-pipeline/Runtime/GpuSensorCellSpanLayout.cs" />
+    <Compile Include="../../../Packages/com.summit.gpu-sensor-pipeline/Runtime/GpuSensorIndexQueryPlanner.cs" />
+  </ItemGroup>
+</Project>

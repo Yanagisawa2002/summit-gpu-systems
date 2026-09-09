@@ -9,8 +9,11 @@ CPU producer -> CommandBuffer.SetBufferData(samples + keys) --+
 GPU deterministic producer ---------------------------------+
 ```
 
-The package is scene-independent. It does not contain an adaptive selector,
-production-scene policy, benchmark controller, or performance claim.
+The package is scene-independent. It also accepts external snapshots through
+full-rebuild and incremental indices, with optional query/compact-view candidates
+and a pure `GpuSensorIndexQueryPlanner`. The planner returns an explicit plan;
+it does not select a measured winner or change a running pipeline. There is no
+automatic production-scene policy or benchmark controller in the package.
 
 ## Fixed data contract
 
@@ -27,7 +30,7 @@ states (`0..63`). Each state applies whole-cell modular translations to a
 stateless base sample, preserving the occupancy histogram up to a permutation
 of cell identifiers while changing positions and keys.
 
-All externally visible records are fixed 16-byte layouts:
+The GPU sample, query and digest records have fixed 16-byte layouts:
 
 - `GpuSensorSample`: `uint4(x, y, z, payload)`.
 - `GpuSensorRangeQuery`: `uint4(centerX, centerY, centerZ, radius)`.
@@ -40,8 +43,8 @@ modulo-`uint` sums, so equal-key atomic-scatter order cannot affect correctness.
 
 ## Recording
 
-Create the pipeline and initialize stable identity IDs and queries before a
-measurement window:
+Create the pipeline and initialize stable identity IDs and queries before
+recording consumers:
 
 ```csharp
 using var pipeline = new GpuSensorPipeline(
@@ -131,6 +134,24 @@ See [query contracts and comparison commands](../../Docs/GPU_SENSOR_QUERY_BACKEN
 for capacities, queue lifetime, fallbacks, native timing scope and validation.
 
 ## Incremental index applicability
+
+The [complete-task adoption example](../../Tools/Examples/IndexQueryPlanning/README.md)
+calls the real planner on the CPU with labeled synthetic facts and no measurements.
+`CellSpans`/`CellSpansWave`, maintained live counts and a separate compact view
+are implemented opt-ins; [their contract](../../Docs/SensorCellSpansAndCompactView.md)
+describes the exact calls and storage. Their complete-task performance is
+**Unmeasured**. The planner defaults to full rebuild plus `CellSerial` with
+unavailable work (`-1`), which the example exports as `null`. Its work score is
+not milliseconds, and `AdditionalResidentBytes` covers extra view/query scratch
+only, not all index, input/output or concurrently retained storage.
+
+Full-rebuild consumers use the original `inputSamples`; incremental and
+compact-view consumers use `index.Samples` with the matching offsets/IDs. Keep
+the stable-ID address bound at capacity even when active IDs are sparse. After
+bypassing incremental maintenance with a full rebuild, mark its state invalid
+until an explicit forced incremental update refreshes it. A compact view must
+refresh after membership changes and remain alive through its consumers.
+See [snapshot ownership and complete costs](../../Docs/WHOLE_TASK_DECISIONS.md).
 
 The incremental index remains an explicit opt-in; defaults and public APIs are
 unchanged. The September 2026 R9700 cost audit does **not recommend it for the

@@ -1,5 +1,9 @@
 # Portfolio figure
 
+This is the historical NYCGIS representation case. Its logical output and
+dedicated GPU-scope results do not measure the current integration or whole
+engine frames. Start with the current [complete-task case and adoption path](../WHOLE_TASK_DECISIONS.md).
+
 The before/after flow explains the change in representation, with the reported logical output sizes shown on a zero-based scale.
 
 ## Reproduce

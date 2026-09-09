@@ -1,10 +1,18 @@
 # SUMMIT GPU Systems
 
-**Keep simulation data on the GPU and reduce the work between generation and use.**
+**Choose GPU data representations by the cost of the complete producer-to-consumer task.**
 
 Large real-time scenes spend GPU time moving and rebuilding data as well as
 rendering it. I built reusable Unity packages for resident sensor data, spatial
 indexing, scheduling and native timing, extracted from my personal SUMMIT project.
+
+Start with the [complete-task engineering case](Docs/WHOLE_TASK_DECISIONS.md):
+an incremental index saved maintenance time but made its query consumer slower.
+The implemented response combines spatial pruning, compact consumer views and
+explicit maintenance/conversion/query planning. A [CPU-only application example](Tools/Examples/IndexQueryPlanning/README.md)
+shows the actual planner, unavailable costs and capacity recovery. Current-source
+complete-task performance remains **Unmeasured**; its structural score is not a
+measured speedup or automatic runtime winner.
 
 The [September 8 implementation update](Docs/RemediationIntegration20260908.md)
 adds spatially pruned CellSpans queries, an optional compact index view, complete
@@ -64,7 +72,9 @@ the procedural benchmarks are the asset-independent reproduction entry points.
 
 [![Engineering overview and evidence](Docs/portfolio/overview.svg)](Docs/portfolio/overview.png)
 
-The before/after flow explains the change in representation, with the reported logical output sizes shown on a zero-based scale. [Sources and reproduction](Docs/portfolio/README.md).
+This historical NYCGIS figure explains one representation change, with logical
+output sizes on a zero-based scale. It does not measure the current planner or
+an entire engine frame. [Sources and reproduction](Docs/portfolio/README.md).
 
 ## Engineering challenges
 
@@ -90,7 +100,7 @@ results and follow-up investigations into complete-frame performance.
 
 | Project | Engineering focus | Review entry point |
 | --- | --- | --- |
-| **SUMMIT GPU Systems** | Unity runtime composition: resident data, spatial queries, scheduling, residency and native instrumentation. | Packages below and the [procedural integration benchmark](PublicBenchmarks/UnityGpuIntegration/README.md). |
+| **SUMMIT GPU Systems** | Data representation and complete producer/maintenance/conversion/query/consumer cost in a Unity runtime. | [Complete-task decisions and adoption example](Docs/WHOLE_TASK_DECISIONS.md), then the packages and scoped evidence below. |
 | [HLSL Kernel Pipeline](https://github.com/Yanagisawa2002/hlsl-kernel-pipeline) | Engine-neutral kernel execution, correctness, autotuning and device-specific profile emission. Unity is a profile consumer. | Its SDK, execution ABI and paired measurement reports. |
 
 Both contain GPU primitives, but their system boundaries and measurements differ.
@@ -120,6 +130,8 @@ full-engine frame-time improvement.
 
 ## Requirements
 
+For the Unity host and native instrumentation:
+
 - Windows x64
 - Unity `6000.5.2f1`
 - Direct3D 12 for native timestamp measurements
@@ -128,14 +140,21 @@ full-engine frame-time improvement.
 
 ## Quick start
 
-1. Clone the repository and open its root as a Unity project.
-2. Let Unity resolve the embedded packages and compile the benchmark assemblies.
-3. Run the explicit CPU functional checks:
+1. With .NET 10 installed, inspect the pure decision API from the repository root:
+
+   ```powershell
+   dotnet run --project Tools/Examples/IndexQueryPlanning/IndexQueryPlanning.csproj -c Release
+   ```
+
+   The four synthetic examples construct plans only; Unity is not required.
+2. With PowerShell 7 and Python also available, run the explicit CPU functional checks:
 
    ```powershell
    .\Tools\Run-FunctionalChecks.ps1
    ```
 
+3. To integrate the GPU packages, open the root as a Unity project and let Unity
+   resolve the embedded packages and compile the benchmark assemblies.
 4. For a separately selected performance run, existing benchmark commands remain
    available. They were not run for the Unmeasured implementation update:
 
