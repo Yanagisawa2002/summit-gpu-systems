@@ -16,5 +16,8 @@ jobs:
       - name: Explicit CPU-only assertions and source contracts
         shell: pwsh
         run: ./Tools/Run-FunctionalChecks.ps1
+      - name: CPU planner adoption example
+        shell: pwsh
+        run: dotnet run --project Tools/Examples/IndexQueryPlanning -c Release
       # No Unity/Player, GPU dispatch, profiling, allocation counters, performance
       # framework, benchmark enumeration, autotuning, or upstream executable runs.

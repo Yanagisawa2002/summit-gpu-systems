@@ -45,6 +45,10 @@ consumption cost; those still belong in a future complete-task measurement.
 No runtime algorithm, heuristic, default candidate, shader or benchmark entry
 was changed. All original measurements and failure records remain untouched.
 
+The CPU workflow also explicitly builds and runs this example using its existing
+.NET 10 setup. This keeps the adoption path checked when its linked public APIs
+change. The workflow edit was reviewed locally; no remote CI run was triggered.
+
 ## Executed validation
 
 The installed .NET SDK was `10.0.302`. The example restored against an empty
