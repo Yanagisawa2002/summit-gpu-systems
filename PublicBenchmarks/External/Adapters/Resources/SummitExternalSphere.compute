@@ -2,6 +2,9 @@
 #pragma kernel FinishOffsets
 #pragma kernel ScatterMatches
 #pragma target 5.0
+// Unity's FXC path fails CountMatches with "flattened side effect". Compile
+// the unchanged precise predicate/CSR traversal with its supported DXC path.
+#pragma use_dxc
 
 // SUMMIT adapter for the pinned ArborX float point/sphere predicate. Original
 // floats and IDs survive broad phase. Output is complete CSR, not a count digest.
