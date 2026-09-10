@@ -1,10 +1,19 @@
 # External workloads and application consumers
 
-These are prepared source contracts and opt-in adapters. All new SUMMIT paths are
-**Unmeasured**. No benchmark, GPU dispatch, Player, profiling, allocation counter,
-calibration, or autotuning was executed for this change. Normal runtime APIs and
-existing benchmark commands remain available. Preparation tools default to source
-preparation; CI runs an explicit CPU functional allowlist.
+These are pinned source contracts and opt-in adapters. The September 8 preparation
+validated compilation and CPU contracts. The [September 10 actual report](../../Docs/EXTERNAL_ACTUAL_RESULTS_2026-09-10.md)
+adds canonical native execution and full-CSR CPU/GPU snapshot comparisons for
+Cabana LinkedCell and ArborX spheres. All five compared task cases cost more on
+the current SUMMIT adaptation than on native Serial replay. The source lock and
+default/profile eligibility remain **Unmeasured**; dated results do not promote a
+default. Normal runtime APIs remain available. Preparation tools default to source
+preparation; CI retains its CPU functional allowlist.
+
+The [frozen protocol](../../Docs/EXTERNAL_ACTUAL_PROTOCOL_2026-09-10.md) and
+[actual replay sources/instructions](../../Tools/ExternalSources/ActualNative/README.md)
+identify timing boundaries, dependencies, exact inputs, complete output validation
+and four independent process pairs. The small replay Player hosts upstream data;
+it does not establish an external application scene or a new generic benchmark.
 
 | Source | Classification and preserved contract | SUMMIT connection |
 | --- | --- | --- |
@@ -72,7 +81,8 @@ pinned driver, `PrimitivesWithRadius` stores the radius in the point coordinate
 type (`float`), even though the radius formula is calculated in double. Preserve
 that converted value. Record the upstream Spec, compiler/backend, commit and
 SHA256 of the `SMSPH001` file alongside the export. The hook contains no generator,
-clock, `main`, or Kokkos startup. It was instantiated and compiled, never executed.
+clock, `main`, or Kokkos startup. The September 8 preparation instantiated and
+compiled it; the September 10 native capture executes it on original driver data.
 
 `ArborXSnapshot.Read` verifies the independently supplied SHA, source commit,
 complete file length, positive upstream radius, unique original IDs and full CSR.
@@ -81,9 +91,11 @@ domain. `Record` constructs SUMMIT's compact index, counts exact matches through
 conservative candidate spans, scans counts, materializes the final offset, and
 scatters **all original IDs**. Allocate worst-case `pointCapacity * queryCapacity`
 result IDs or reject the request; there is no truncation/overflow success path.
-Read back full CSR outside a future measured window and compare membership with
+Read back full CSR and compare membership with
 `SphereWorkloadContract.RequireFullMembership`; ordering within a query is not
-promised, while multiplicity and every ID are required.
+promised, while multiplicity and every ID are required. Equality checking stays
+outside the comparison interval. The dated host-wall replay includes full GPU
+readback and result consumption inside that interval.
 
 The exact test follows upstream `sqrt(sum(float delta * delta)) <= float radius`,
 including the inclusive boundary. Supported finite coordinates/centers/radii are
@@ -94,17 +106,18 @@ remain distinct. Quantization only supplies a broad phase. Its axis halo is
 `radius * (1 + 8 * float_epsilon) + 1e-18`, covering bounded float rounding and
 squared-distance underflow before outward cell selection. Original floats are
 never clamped or replaced by quantized coordinates in the final predicate.
-GPU floating-point boundary behavior still requires execution validation; CPU
-models and DXC compilation are not that validation.
+The dated GPU gate covers every original query in the frozen default snapshot.
+Other GPU floating-point boundary cases still require execution validation; CPU
+models and DXC compilation alone do not establish them.
 
-Future complete-cost accounting must include original input export/staging or
+Complete-cost accounting must identify original input export/staging or
 equivalent production upload, quantization/key conversion, index construction or
 maintenance, candidate traversal, exact filtering, scan, complete CSR materialization,
 copies, synchronization, and actual consumption. Keep count-only/callback, full CSR,
 neighbor iteration, permutation and kNN results in their distinct contracts.
 
-The exact pinned Unity Editor and complete native Kokkos/Boost dependency builds
-were not installed for this task. Validation compiled the adapters against actual
-Unity 6000.5.2f1 and existing Entities assemblies, compiled the C++ snapshot hook and
-HLSL entry points, and ran only small CPU contract cases. Full pinned application
-import and upstream benchmark linking/execution are separate, unperformed checks.
+The September 10 run built Kokkos Serial and the native Kokkos/Boost-dependent
+drivers, then ran the corrected sphere shader with Unity 6000.5.2f1/D3D12 on R9700.
+The exact Boids Editor 6000.2.10f1 and complete official assets remain unavailable
+in this worktree. Pinned Boids import/application execution, native GPU backends,
+kNN, and comparative GPU neighbor-iteration/permutation remain unperformed.

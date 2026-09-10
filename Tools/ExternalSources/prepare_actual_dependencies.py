@@ -32,7 +32,9 @@ def main():
     source_lock = json.loads((ROOT/'PublicBenchmarks/External/sources.lock.json').read_text())
     frozen = [(s['id'], s['repository'].split('github.com/')[1].removesuffix('.git'), s['commit'])
               for s in source_lock['sources'] if s['id'] in ('cabana', 'arborx')]
-    frozen += [('kokkos', 'kokkos/kokkos', '4.7.02'), ('benchmark', 'google/benchmark', 'v1.9.1')]
+    # Resolved release commits from the actual-run receipts, not mutable tag heads.
+    frozen += [('kokkos', 'kokkos/kokkos', '6739bc623081648af9e752b616d9671527922cbf'),
+               ('benchmark', 'google/benchmark', 'c58e6d0710581e3a08d65c349664128a8d9a2461')]
     for name, repository, revision in frozen:
         commit = revision if len(revision)==40 else api('repos/'+repository+'/commits/'+revision)['sha']
         url = f'https://codeload.github.com/{repository}/zip/{commit}'

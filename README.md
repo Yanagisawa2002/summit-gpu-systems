@@ -10,16 +10,22 @@ Start with the [complete-task engineering case](Docs/WHOLE_TASK_DECISIONS.md):
 an incremental index saved maintenance time but made its query consumer slower.
 The implemented response combines spatial pruning, compact consumer views and
 explicit maintenance/conversion/query planning. A [CPU-only application example](Tools/Examples/IndexQueryPlanning/README.md)
-shows the actual planner, unavailable costs and capacity recovery. Current-source
-complete-task performance remains **Unmeasured**; its structural score is not a
+shows the actual planner, unavailable costs and capacity recovery. The planner's
+complete-task benefit remains **Unmeasured**; its structural score is not a
 measured speedup or automatic runtime winner.
 
 The [September 8 implementation update](Docs/RemediationIntegration20260908.md)
 adds spatially pruned CellSpans queries, an optional compact index view, complete
 Cabana/ArborX workload adapters, a real ECS Boids consumer, verified HLSL scan
-consumption and scope-preserving observation exports. These new paths are
-**Unmeasured** and opt-in; their validation is compilation and deterministic CPU
-functionality. [External sources and preparation](PublicBenchmarks/External/README.md).
+consumption and scope-preserving observation exports. That update validated
+compilation and deterministic CPU functionality; default/profile eligibility
+remains **Unmeasured** and opt-in. [External source contracts](PublicBenchmarks/External/README.md).
+
+The [September 10 actual external comparison](Docs/EXTERNAL_ACTUAL_RESULTS_2026-09-10.md)
+now validates complete GPU CSR against native Cabana/ArborX results. In all five
+frozen cases, the current SUMMIT upload/rebuild/readback/consume path costs more
+than native Serial replay. These are cross-backend task observations with fixed
+inputs, distinct from the canonical native benchmark timers and historical results.
 
 ## Historical NYCGIS results
 
