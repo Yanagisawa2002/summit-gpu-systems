@@ -3,8 +3,8 @@
 These are pinned source contracts and opt-in adapters. The September 8 preparation
 validated compilation and CPU contracts. The [September 10 actual report](../../Docs/EXTERNAL_ACTUAL_RESULTS_2026-09-10.md)
 adds canonical native execution and full-CSR CPU/GPU snapshot comparisons for
-Cabana LinkedCell and ArborX spheres. All five compared task cases cost more on
-the current SUMMIT adaptation than on native Serial replay. The source lock and
+Cabana LinkedCell and ArborX spheres. All five baseline task cases cost more on
+that SUMMIT adaptation than on native Serial replay. The source lock and
 default/profile eligibility remain **Unmeasured**; dated results do not promote a
 default. Normal runtime APIs remain available. Preparation tools default to source
 preparation; CI retains its CPU functional allowlist.
@@ -14,6 +14,14 @@ The [frozen protocol](../../Docs/EXTERNAL_ACTUAL_PROTOCOL_2026-09-10.md) and
 identify timing boundaries, dependencies, exact inputs, complete output validation
 and four independent process pairs. The small replay Player hosts upstream data;
 it does not establish an external application scene or a new generic benchmark.
+
+The subsequent [sphere reuse API](Adapters/SPHERE_REUSE.md) separates point
+preparation/index construction from query batches. The [finite optimization
+protocol](../../Docs/SPHERE_REUSE_PROTOCOL_2026-09-10.md) retains the original
+128-query batches and complete upstream input/output, and charges one point
+upload and real rebuild inside every repetition. New correctness and three-arm
+evidence belong in `Artifacts/optimization-20260910-sphere-reuse/`; the baseline
+Player and results remain preserved.
 
 | Source | Classification and preserved contract | SUMMIT connection |
 | --- | --- | --- |
@@ -96,6 +104,12 @@ Read back full CSR and compare membership with
 promised, while multiplicity and every ID are required. Equality checking stays
 outside the comparison interval. The dated host-wall replay includes full GPU
 readback and result consumption inside that interval.
+
+For multiple batches over one unchanged snapshot, use `UploadPoints`,
+`RecordIndexBuild`/`CompleteIndexBuild`, then `UploadQueries`/`RecordQueries`.
+The [ownership and invalidation guide](Adapters/SPHERE_REUSE.md) covers explicit
+submission, full-output lifetime and point/domain replacement. The convenience
+`Upload`/`Record` path keeps its rebuild-per-call behavior.
 
 The exact test follows upstream `sqrt(sum(float delta * delta)) <= float radius`,
 including the inclusive boundary. Supported finite coordinates/centers/radii are

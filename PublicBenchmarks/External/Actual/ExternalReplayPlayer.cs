@@ -21,7 +21,7 @@ namespace Summit.ActualWorkloads
         [Serializable] public sealed class Config { public string kind,manifest,expectedManifestSha256,output,sourceCommit; public bool validateOnly; }
         [Serializable] public sealed class InputFile { public string name,path,sha256,kind; }
         [Serializable] public sealed class Manifest { public InputFile[] files; public string cabanaCommit,arborxCommit; }
-        [Serializable] public sealed class Row { public string name,phase,checksum; public int step,queries,ids; public bool verified; public double uploadMs,submitReadbackMs,consumeMs,hostWallMs; }
+        [Serializable] public sealed class Row { public string name,phase,checksum; public int step,queries,ids; public bool verified; public double uploadMs,submitReadbackMs,consumeMs,hostWallMs; public double pointUploadMs,indexBuildAndSyncMs,queryUploadMs,querySubmitReadbackMs; public ulong pointGeneration; }
         [Serializable] public sealed class Report { public string sourceCommit,manifestSha256,kind,measurementScope,unityVersion,buildGuid,deviceName,deviceVersion,cpu,status,error; public int vendorId,deviceId,logicalCpuCount; public List<Row> rows=new List<Row>(); }
         sealed class Csr { public uint[] offsets,ids; }
         sealed class LinkedInput { public LinkedCellWorkloadContract contract; public LinkedCellPoint[] points; public Csr reference; public string name; }
@@ -46,7 +46,9 @@ namespace Summit.ActualWorkloads
                 if(!SystemInfo.supportsComputeShaders||SystemInfo.graphicsDeviceType!=GraphicsDeviceType.Direct3D12)throw new NotSupportedException("Actual D3D12 compute required; no CPU fallback in this comparison");
                 var manifest=JsonUtility.FromJson<Manifest>(File.ReadAllText(config.manifest));
                 foreach(var file in manifest.files)if(Hash(file.path)!=file.sha256)throw new InvalidDataException("Input SHA mismatch: "+file.name);
-                if(config.kind=="cabana")RunLinked(manifest);else if(config.kind=="arborx")RunSphere(manifest);else throw new ArgumentException("Unknown workload");
+                if(config.kind=="cabana")RunLinked(manifest);else if(config.kind=="arborx")RunSphere(manifest);
+                else if(config.kind=="sphere-api"&&config.validateOnly)SphereReuseFunctional.Run(config.output);
+                else throw new ArgumentException("Unknown workload");
                 report.status="completed";Save();Debug.Log("PASS actual GPU full CSR: "+config.kind);Application.Quit(0);
             }catch(Exception error){
                 Debug.LogException(error);
@@ -73,7 +75,7 @@ namespace Summit.ActualWorkloads
             for(int i=1;i<=rows;i++)if(result.offsets[i]<result.offsets[i-1])throw new InvalidDataException("GPU CSR offsets not monotone");
             result.ids=new uint[result.offsets[rows]];if(result.ids.Length>0)ids.GetData(result.ids,0,0,result.ids.Length);return result;
         }
-        void Record(string name,int step,Csr actual,Csr expected,long start,long uploaded,long readback,long end,ulong checksum,double? uploadOverride=null,double? queueOverride=null)
+        void Record(string name,int step,Csr actual,Csr expected,long start,long uploaded,long readback,long end,ulong checksum,double? uploadOverride=null,double? queueOverride=null,double pointUpload=0,double indexBuild=0,double queryUpload=0,double querySubmit=0,ulong pointGeneration=0)
         {
             string phase=config.validateOnly?"validation":step<0?"warmup":"measured";
             // Retain raw actual GPU output before equality can fail.
@@ -83,7 +85,9 @@ namespace Summit.ActualWorkloads
             }
             var row=new Row{name=name,phase=phase,step=step,queries=actual.offsets.Length-1,ids=actual.ids.Length,checksum=checksum.ToString(CultureInfo.InvariantCulture),
                 uploadMs=config.validateOnly?-1:uploadOverride??Ms(start,uploaded),submitReadbackMs=config.validateOnly?-1:queueOverride??Ms(uploaded,readback),
-                consumeMs=config.validateOnly?-1:Ms(readback,end),hostWallMs=config.validateOnly?-1:Ms(start,end)};
+                consumeMs=config.validateOnly?-1:Ms(readback,end),hostWallMs=config.validateOnly?-1:Ms(start,end),
+                pointUploadMs=config.validateOnly?-1:pointUpload,indexBuildAndSyncMs=config.validateOnly?-1:indexBuild,
+                queryUploadMs=config.validateOnly?-1:queryUpload,querySubmitReadbackMs=config.validateOnly?-1:querySubmit,pointGeneration=pointGeneration};
             report.rows.Add(row);Save();Equal(actual,expected);row.verified=true;Save();
         }
         static LinkedInput ReadLinked(InputFile file)
@@ -124,13 +128,21 @@ namespace Summit.ActualWorkloads
             const int batchSize=128;var batches=new List<SourceSphere[]>();for(int q=0;q<20000;q+=batchSize)batches.Add(input.Spheres.Skip(q).Take(Math.Min(batchSize,20000-q)).ToArray());
             double extent=Math.Ceiling(Math.Pow(input.Points.Length,1.0/3.0));var domain=new SphereWorkloadDomain(-extent,-extent,-extent,2*extent);
             using(var adapter=new GpuSphereWorkloadAdapter(50000,batchSize,true))using(var commands=new CommandBuffer()){
-                for(int step=config.validateOnly?0:-10;step<(config.validateOnly?1:10);step++){
+                for(int step=config.validateOnly?0:-10;step<(config.validateOnly?2:10);step++){
                     long start=Tick();double upload=0,queue=0;var actual=new Csr{offsets=new uint[20001]};var allIds=new List<uint>();int row=0;
-                    foreach(var batch in batches){commands.Clear();long a=Tick();adapter.Upload(domain,input.Points,batch);long b=Tick();adapter.Record(commands);Graphics.ExecuteCommandBuffer(commands);var current=Readback(adapter.Offsets,adapter.Ids,batch.Length);long c=Tick();upload+=Ms(a,b);queue+=Ms(b,c);
+                    // Every complete repetition pays point preparation and a real
+                    // index build inside its primary timer. Only its 157 query
+                    // batches reuse that index; nothing is cached across repeats.
+                    long p0=Tick();adapter.UploadPoints(domain,input.Points);long p1=Tick();
+                    commands.Clear();adapter.RecordIndexBuild(commands);Graphics.ExecuteCommandBuffer(commands);adapter.CompleteIndexBuild();long p2=Tick();
+                    double pointUpload=Ms(p0,p1),indexBuild=Ms(p1,p2);upload+=pointUpload;queue+=indexBuild;
+                    double queryUpload=0,querySubmit=0;
+                    foreach(var batch in batches){commands.Clear();long a=Tick();adapter.UploadQueries(batch);long b=Tick();adapter.RecordQueries(commands);Graphics.ExecuteCommandBuffer(commands);var current=Readback(adapter.Offsets,adapter.Ids,batch.Length);long c=Tick();queryUpload+=Ms(a,b);querySubmit+=Ms(b,c);
                         uint baseId=(uint)allIds.Count;for(int i=0;i<batch.Length;i++)actual.offsets[row+i+1]=baseId+current.offsets[i+1];row+=batch.Length;allIds.AddRange(current.ids);
                     }
                     actual.ids=allIds.ToArray();long readback=Tick();ulong checksum=Consume(actual);long end=Tick();
-                    Record("arborx-default",step,actual,expected,start,start,readback,end,checksum,upload,queue);
+                    upload+=queryUpload;queue+=querySubmit;
+                    Record("arborx-default",step,actual,expected,start,start,readback,end,checksum,upload,queue,pointUpload,indexBuild,queryUpload,querySubmit,adapter.PointGeneration);
                 }
             }
         }
