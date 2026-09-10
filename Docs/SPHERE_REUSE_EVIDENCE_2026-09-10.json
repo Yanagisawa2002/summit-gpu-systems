@@ -1,0 +1,565 @@
+{
+  "schema": "summit.sphere-reuse-evidence.v1",
+  "baseCommit": "e54a35eff9cf19540d94a34a35fee955c433c1b1",
+  "sourceCommit": "360688314eaa275123db0dc3e0d14c2e54d9569a",
+  "playerIdentity": {
+    "old": {
+      "sourceCommit": "acc4a669f0403e9ff4d6f5d152db974da050c430",
+      "executable": "Artifacts/actual-20260910/player-r1/SummitExternalReplay.exe",
+      "buildGuid": "614f4469570a4f0cbb76c499f5619901",
+      "treeSha256": "4852e5ac1038a858e6bb8ba6fad982c8136174b87d957e2e9b923e7a7d1c4c9c",
+      "managedAssemblies": [
+        {
+          "path": "SummitExternalReplay_Data/Managed/Assembly-CSharp.dll",
+          "sha256": "77cf6a5f1c78f1d55c050841ea71c560e360fcab9c31c677527cd04053e1f94d",
+          "bytes": 18432
+        },
+        {
+          "path": "SummitExternalReplay_Data/Managed/Summit.ExternalWorkloads.dll",
+          "sha256": "3aea3d33dc9540d1214cd5d175b3e86c41cb0676b7246e9fa10db0f4cc0084fe",
+          "bytes": 22528
+        }
+      ]
+    },
+    "new": {
+      "sourceCommit": "360688314eaa275123db0dc3e0d14c2e54d9569a",
+      "executable": "Artifacts/optimization-20260910-sphere-reuse/player-r1/SummitExternalReplay.exe",
+      "buildGuid": "fe6baeb037424518afac7ff4aa4ed47c",
+      "treeSha256": "3f1c94b5a3724b0f378bbce445d3810bb2822422ff29d5e165e0eee2d5a9f560",
+      "managedAssemblies": [
+        {
+          "path": "SummitExternalReplay_Data/Managed/Assembly-CSharp.dll",
+          "sha256": "90a5a1009225970cbafeb4df01eed981bacc6e61d7e904c8d7e3252cd18817d4",
+          "bytes": 28672
+        },
+        {
+          "path": "SummitExternalReplay_Data/Managed/Summit.ExternalWorkloads.dll",
+          "sha256": "29b9343191c7574c00e22935665f33db80df8b054b6e45760c1e7a9b37f0dbc3",
+          "bytes": 26112
+        }
+      ]
+    }
+  },
+  "nativeExecutable": {
+    "path": "Artifacts/actual-20260910/native-build/ArborXReplay.exe",
+    "sha256": "34b47c852dfadee01a85c04edecac1ecdbeec9f51e9fe4ee3765c3af9fc9458c",
+    "bytes": 562176
+  },
+  "inputManifestSha256": "9d35f71c55f924d84b031316932ff025bc13ada43e8d450640ab92b957575737",
+  "arborxSnapshotSha256": "750d9a9fa8331b005fe5709e8f25395d8b4ce856d0b174d470639a78fa9fad59",
+  "benchmarkInputsUnchanged": true,
+  "pointCount": 50000,
+  "queryCount": 20000,
+  "batchSize": 128,
+  "batchesPerTask": 157,
+  "referenceIdsPerTask": 213313,
+  "pointPreparationsAndIndexBuildsPerRepetition": {
+    "old": 157,
+    "new": 1
+  },
+  "correctness": {
+    "totalFiles": 202,
+    "totalRowsCompared": 3241000,
+    "totalIdsCompared": 34578706,
+    "apiChecks": 44
+  },
+  "correctnessBeforeTiming": {
+    "untimedGpuApiChecks": 44,
+    "completeArborxTasks": 2,
+    "cabanaSnapshots": 40
+  },
+  "formalProcesses": 12,
+  "warmupsPerProcess": 10,
+  "measurementsPerProcess": 10,
+  "statistics": {
+    "sourceCommit": "360688314eaa275123db0dc3e0d14c2e54d9569a",
+    "frozenRunSha256": "778bebadc377e89fd312ab11591dc069eb04d6c3662527f2eaf40bc1311f7fb3",
+    "inputManifestSha256": "9d35f71c55f924d84b031316932ff025bc13ada43e8d450640ab92b957575737",
+    "scope": "Full snapshot staging through complete CSR host consumption; cross-backend Serial CPU versus Mono/D3D12 GPU",
+    "statistics": "Four same-round independent process means per arm, 10 warmup + 10 measured each, all samples retained; nominal log-ratio Student-t 95% CI, df=3, no cross-device generalization",
+    "rounds": [
+      {
+        "round": 1,
+        "order": [
+          "native",
+          "old",
+          "new"
+        ],
+        "native": {
+          "meanMs": 45.20826,
+          "minMaxMs": [
+            43.8163,
+            47.3646
+          ],
+          "measuredMs": [
+            44.7736,
+            45.1494,
+            47.3646,
+            45.4787,
+            44.6774,
+            45.4782,
+            44.4433,
+            45.6945,
+            45.2066,
+            43.8163
+          ],
+          "phasesMeanMs": {
+            "inputCopyMs": 0.045649999999999996,
+            "indexQueryMs": 44.68666,
+            "outputConsumeMs": 0.47595,
+            "hostWallMs": 45.20826
+          },
+          "processReceipt": "Artifacts/optimization-20260910-sphere-reuse/runs/r01-native/process.process.json"
+        },
+        "old": {
+          "meanMs": 787.05461,
+          "minMaxMs": [
+            783.2543,
+            790.1588
+          ],
+          "measuredMs": [
+            787.7622,
+            785.3644,
+            786.8317,
+            788.2497,
+            787.5131,
+            787.8824,
+            788.482,
+            785.0475,
+            783.2543,
+            790.1588
+          ],
+          "phasesMeanMs": {
+            "uploadMs": 617.6192299999999,
+            "submitReadbackMs": 168.84775999999997,
+            "consumeMs": 0.26859,
+            "hostWallMs": 787.05461,
+            "aggregationAndClockRemainderMs": 0.3190300000001116
+          },
+          "processReceipt": "Artifacts/optimization-20260910-sphere-reuse/runs/r01-old/process.process.json"
+        },
+        "new": {
+          "meanMs": 179.15137,
+          "minMaxMs": [
+            170.9089,
+            188.1151
+          ],
+          "measuredMs": [
+            184.2109,
+            178.714,
+            176.6461,
+            177.9702,
+            182.4198,
+            178.4098,
+            170.9089,
+            179.994,
+            174.1249,
+            188.1151
+          ],
+          "phasesMeanMs": {
+            "uploadMs": 8.02294,
+            "submitReadbackMs": 170.52315,
+            "consumeMs": 0.27658,
+            "hostWallMs": 179.15137,
+            "pointUploadMs": 4.3178,
+            "indexBuildAndSyncMs": 1.22749,
+            "queryUploadMs": 3.7051399999999997,
+            "querySubmitReadbackMs": 169.29566,
+            "aggregationAndClockRemainderMs": 0.32869999999999777
+          },
+          "processReceipt": "Artifacts/optimization-20260910-sphere-reuse/runs/r01-new/process.process.json"
+        }
+      },
+      {
+        "round": 2,
+        "order": [
+          "old",
+          "new",
+          "native"
+        ],
+        "old": {
+          "meanMs": 781.36268,
+          "minMaxMs": [
+            778.3532,
+            784.0583
+          ],
+          "measuredMs": [
+            781.2069,
+            779.8194,
+            783.2742,
+            784.0583,
+            781.7174,
+            780.0334,
+            782.4182,
+            782.0638,
+            778.3532,
+            780.682
+          ],
+          "phasesMeanMs": {
+            "uploadMs": 612.6424499999999,
+            "submitReadbackMs": 168.13288999999997,
+            "consumeMs": 0.26894,
+            "hostWallMs": 781.36268,
+            "aggregationAndClockRemainderMs": 0.3183999999999969
+          },
+          "processReceipt": "Artifacts/optimization-20260910-sphere-reuse/runs/r02-old/process.process.json"
+        },
+        "new": {
+          "meanMs": 123.46089,
+          "minMaxMs": [
+            109.181,
+            151.9726
+          ],
+          "measuredMs": [
+            119.7035,
+            123.5897,
+            126.611,
+            122.4892,
+            127.7143,
+            125.0453,
+            114.6589,
+            113.6434,
+            109.181,
+            151.9726
+          ],
+          "phasesMeanMs": {
+            "uploadMs": 8.59354,
+            "submitReadbackMs": 114.2294,
+            "consumeMs": 0.29614,
+            "hostWallMs": 123.46089,
+            "pointUploadMs": 4.97516,
+            "indexBuildAndSyncMs": 1.03094,
+            "queryUploadMs": 3.61838,
+            "querySubmitReadbackMs": 113.19846000000001,
+            "aggregationAndClockRemainderMs": 0.3418100000000095
+          },
+          "processReceipt": "Artifacts/optimization-20260910-sphere-reuse/runs/r02-new/process.process.json"
+        },
+        "native": {
+          "meanMs": 42.80453,
+          "minMaxMs": [
+            42.1351,
+            43.1793
+          ],
+          "measuredMs": [
+            42.3883,
+            42.3399,
+            43.1612,
+            42.5739,
+            43.0533,
+            43.1763,
+            43.1793,
+            43.1205,
+            42.9175,
+            42.1351
+          ],
+          "phasesMeanMs": {
+            "inputCopyMs": 0.05222,
+            "indexQueryMs": 42.39557,
+            "outputConsumeMs": 0.35674,
+            "hostWallMs": 42.80453
+          },
+          "processReceipt": "Artifacts/optimization-20260910-sphere-reuse/runs/r02-native/process.process.json"
+        }
+      },
+      {
+        "round": 3,
+        "order": [
+          "new",
+          "native",
+          "old"
+        ],
+        "new": {
+          "meanMs": 124.2642,
+          "minMaxMs": [
+            120.1017,
+            129.3107
+          ],
+          "measuredMs": [
+            124.4026,
+            125.7885,
+            126.1726,
+            121.2981,
+            124.8144,
+            120.1017,
+            126.6349,
+            122.4048,
+            121.7137,
+            129.3107
+          ],
+          "phasesMeanMs": {
+            "uploadMs": 8.642299999999999,
+            "submitReadbackMs": 114.97337,
+            "consumeMs": 0.28713,
+            "hostWallMs": 124.2642,
+            "pointUploadMs": 4.69862,
+            "indexBuildAndSyncMs": 1.04631,
+            "queryUploadMs": 3.943679999999999,
+            "querySubmitReadbackMs": 113.92706,
+            "aggregationAndClockRemainderMs": 0.3614000000000033
+          },
+          "processReceipt": "Artifacts/optimization-20260910-sphere-reuse/runs/r03-new/process.process.json"
+        },
+        "native": {
+          "meanMs": 44.23788,
+          "minMaxMs": [
+            41.9702,
+            54.231
+          ],
+          "measuredMs": [
+            42.607,
+            42.0326,
+            42.6215,
+            43.4308,
+            43.265,
+            43.0959,
+            41.9702,
+            46.1438,
+            54.231,
+            42.981
+          ],
+          "phasesMeanMs": {
+            "inputCopyMs": 0.057999999999999996,
+            "indexQueryMs": 43.80938,
+            "outputConsumeMs": 0.3705,
+            "hostWallMs": 44.23788
+          },
+          "processReceipt": "Artifacts/optimization-20260910-sphere-reuse/runs/r03-native/process.process.json"
+        },
+        "old": {
+          "meanMs": 778.32719,
+          "minMaxMs": [
+            777.1563,
+            780.1392
+          ],
+          "measuredMs": [
+            778.0552,
+            778.2092,
+            777.6499,
+            778.9255,
+            780.1392,
+            777.4934,
+            777.6029,
+            777.1563,
+            778.45,
+            779.5903
+          ],
+          "phasesMeanMs": {
+            "uploadMs": 609.7025100000001,
+            "submitReadbackMs": 168.05603000000002,
+            "consumeMs": 0.26966,
+            "hostWallMs": 778.32719,
+            "aggregationAndClockRemainderMs": 0.29898999999988973
+          },
+          "processReceipt": "Artifacts/optimization-20260910-sphere-reuse/runs/r03-old/process.process.json"
+        }
+      },
+      {
+        "round": 4,
+        "order": [
+          "new",
+          "old",
+          "native"
+        ],
+        "new": {
+          "meanMs": 117.04628,
+          "minMaxMs": [
+            113.4623,
+            127.7653
+          ],
+          "measuredMs": [
+            113.4623,
+            114.6097,
+            115.6147,
+            114.8707,
+            117.2601,
+            115.2673,
+            118.4702,
+            117.163,
+            115.9795,
+            127.7653
+          ],
+          "phasesMeanMs": {
+            "uploadMs": 8.51555,
+            "submitReadbackMs": 107.90398999999998,
+            "consumeMs": 0.28627,
+            "hostWallMs": 117.04628,
+            "pointUploadMs": 4.68782,
+            "indexBuildAndSyncMs": 1.04563,
+            "queryUploadMs": 3.82773,
+            "querySubmitReadbackMs": 106.85835999999998,
+            "aggregationAndClockRemainderMs": 0.3404700000000105
+          },
+          "processReceipt": "Artifacts/optimization-20260910-sphere-reuse/runs/r04-new/process.process.json"
+        },
+        "old": {
+          "meanMs": 789.92902,
+          "minMaxMs": [
+            783.5973,
+            802.0286
+          ],
+          "measuredMs": [
+            790.6568,
+            784.5333,
+            783.5973,
+            788.5732,
+            793.7597,
+            802.0286,
+            791.6089,
+            791.1843,
+            785.9161,
+            787.432
+          ],
+          "phasesMeanMs": {
+            "uploadMs": 620.5428,
+            "submitReadbackMs": 168.78347000000002,
+            "consumeMs": 0.26872,
+            "hostWallMs": 789.92902,
+            "aggregationAndClockRemainderMs": 0.3340299999999843
+          },
+          "processReceipt": "Artifacts/optimization-20260910-sphere-reuse/runs/r04-old/process.process.json"
+        },
+        "native": {
+          "meanMs": 42.74297,
+          "minMaxMs": [
+            42.136,
+            43.8495
+          ],
+          "measuredMs": [
+            42.291,
+            42.4297,
+            43.8495,
+            42.136,
+            42.3042,
+            42.6589,
+            43.347,
+            42.8019,
+            42.697,
+            42.9145
+          ],
+          "phasesMeanMs": {
+            "inputCopyMs": 0.06476,
+            "indexQueryMs": 42.31884,
+            "outputConsumeMs": 0.35936999999999997,
+            "hostWallMs": 42.74297
+          },
+          "processReceipt": "Artifacts/optimization-20260910-sphere-reuse/runs/r04-native/process.process.json"
+        }
+      }
+    ],
+    "grandMeanMs": {
+      "native": 43.74841,
+      "old": 784.168375,
+      "new": 135.980685
+    },
+    "oldOverNew": {
+      "numerator": "old",
+      "denominator": "new",
+      "perRound": [
+        4.393238019893457,
+        6.3288275339664235,
+        6.2634869093431575,
+        6.748860536191326
+      ],
+      "geometricMean": 5.855158493693211,
+      "nominalLogStudentT95CI": [
+        4.2977978426323515,
+        7.976848200302946
+      ],
+      "df": 3
+    },
+    "nativeOverNew": {
+      "numerator": "native",
+      "denominator": "new",
+      "perRound": [
+        0.2523467166340955,
+        0.34670517926770167,
+        0.3559985901007691,
+        0.36518008090474985
+      ],
+      "geometricMean": 0.32657154176050474,
+      "nominalLogStudentT95CI": [
+        0.2479064622212645,
+        0.4301984342491461
+      ],
+      "df": 3
+    }
+  },
+  "phasesGrandMeanMs": {
+    "native": {
+      "inputCopyMs": 0.0551575,
+      "indexQueryMs": 43.3026125,
+      "outputConsumeMs": 0.39064,
+      "hostWallMs": 43.74841
+    },
+    "old": {
+      "uploadMs": 615.1267475,
+      "submitReadbackMs": 168.4550375,
+      "consumeMs": 0.2689775,
+      "hostWallMs": 784.168375,
+      "aggregationAndClockRemainderMs": 0.31761249999999563
+    },
+    "new": {
+      "uploadMs": 8.4435825,
+      "submitReadbackMs": 126.9074775,
+      "consumeMs": 0.28653,
+      "hostWallMs": 135.980685,
+      "pointUploadMs": 4.66985,
+      "indexBuildAndSyncMs": 1.0875925,
+      "queryUploadMs": 3.7737324999999995,
+      "querySubmitReadbackMs": 125.819885,
+      "aggregationAndClockRemainderMs": 0.34309500000000526
+    }
+  },
+  "baselinePreservation": {
+    "status": "completed",
+    "checkedUtc": "2026-09-10T09:47:15.5101219Z",
+    "originalFileCount": 93447,
+    "originalBytes": 1614579077.0,
+    "fileSetUnchanged": true,
+    "allFileSha256Unchanged": true,
+    "inventorySha256": "4bd9d36a267430ce1bbdf3be757882d403ffd92a17ddc8cecb6cfd8aa2744a48",
+    "oldPlayerCopied": false,
+    "originalEvidenceDeleted": false
+  },
+  "execution": {
+    "unexpectedGpuCorrectnessFailures": 0,
+    "failedPreflights": [
+      "stages/03-api-r1.stage.json"
+    ],
+    "intentionalPause": "User requested Forest conversation/related work completion before GPU validation; parent clearance precedes all GPU tests",
+    "resourcesReleased": true,
+    "ownedProcessesExited": 16,
+    "optimizationGiBAtProbe": 0.3063814966008067,
+    "freeGiBAtProbe": 24.99712371826172
+  },
+  "rawEvidenceRoot": "Artifacts/optimization-20260910-sphere-reuse",
+  "rawEvidenceFileCount": 364,
+  "evidenceHashes": {
+    "evidence-inventory.json": "f056514c396e300a63fa648a2140002cd884dc7e176d92496b04eb07b8da399d",
+    "frozen-run.json": "778bebadc377e89fd312ab11591dc069eb04d6c3662527f2eaf40bc1311f7fb3",
+    "analysis/comparisons.json": "2525b47770224d85c528fa60f9c3a076743a1a7addb0cdb9329421110ceb3aee",
+    "analysis/full-csr-audit.json": "2caf5b6cb404ff55c9b6b681f0943d4fdd6fde0df9248c9ed5515836a7b0dd22",
+    "baseline-files.json": "4bd9d36a267430ce1bbdf3be757882d403ffd92a17ddc8cecb6cfd8aa2744a48",
+    "baseline-preservation.json": "fe5b3ab5b00834f6faebafe01864efec741bde0efd6ce3bf0db31f189d075dbf",
+    "player-staging-01.json": "6c45fb598a3715831182f1dd426998e161b4dca5a8c8f6616775f7eaabeda948",
+    "correctness-audit-r1.json": "76b7c527d53976ca885198fc75731acac407ee954c6ab81b3a2686443df78505",
+    "after-forest-clearance.json": "3586c62153476f1c7a5d06bfe48abb9940f149d59d5d1991aa0ed044cf962cb4",
+    "resume-identity.json": "938656910f36071f61fa1da8c1df0c1ad066a456733136c4c326c14fa890cf89",
+    "environment-before-freeze.json": "28a6d44a393f26868a1a1daa195cb04275aa9ae30147106db2904c833793114f",
+    "resources-released.json": "2595c08c5cfe75444b6540befa0f9d710d4947d0b67da6513d298688cc6797ae"
+  },
+  "unchangedSourceLocks": [
+    {
+      "path": "PublicBenchmarks/External/sources.lock.json",
+      "sha256": "3fb0055a550693b089bc443cf52542d17727c4bbc3c4e9ef0c8aed7b6d9ac861"
+    }
+  ],
+  "unmeasuredScopes": [
+    "Same-device native GPU comparison",
+    "GPU timestamps/kernel/PCIe-only attribution",
+    "ArborX kNN/callback tasks",
+    "Cabana neighbor traversal/permutation performance",
+    "Boids/Megacity/Forest application/frame performance"
+  ]
+}

@@ -22,10 +22,19 @@ compilation and deterministic CPU functionality; default/profile eligibility
 remains **Unmeasured** and opt-in. [External source contracts](PublicBenchmarks/External/README.md).
 
 The [September 10 actual external comparison](Docs/EXTERNAL_ACTUAL_RESULTS_2026-09-10.md)
-now validates complete GPU CSR against native Cabana/ArborX results. In all five
-frozen cases, the current SUMMIT upload/rebuild/readback/consume path costs more
+validates complete GPU CSR against native Cabana/ArborX results. In all five
+baseline cases, that SUMMIT upload/rebuild/readback/consume path costs more
 than native Serial replay. These are cross-backend task observations with fixed
 inputs, distinct from the canonical native benchmark timers and historical results.
+
+The subsequent [sphere reuse implementation and actual comparison](Docs/SPHERE_REUSE_RESULTS_2026-09-10.md)
+prepares points and builds the index once for all 157 query batches inside each
+complete task. Four same-round native/old/new processes per arm measured
+43.75/784.17/135.98 ms respectively. The geometric old/new ratio was 5.86
+(nominal 95% CI 4.30–7.98); the new path still costs more than native Serial.
+Every original query and full GPU CSR was verified. The
+[public API guide](PublicBenchmarks/External/Adapters/SPHERE_REUSE.md) covers reuse,
+point/domain invalidation and output ownership; these results do not promote defaults.
 
 ## Historical NYCGIS results
 
