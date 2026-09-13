@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems><CheckForOverflowUnderflow>true</CheckForOverflowUnderflow>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="RecordingStubs.cs" />
+    <Compile Include="../../Packages/com.summit.gpu-timestamps/Runtime/ObservationContract.cs" />
+    <Compile Include="../../Packages/com.summit.gpu-timestamps/Runtime/ObservationCsv.cs" />
+    <Compile Include="../../Packages/com.summit.gpu-timestamps/Runtime/AllocationCounterCapability.cs" />
+    <Compile Include="../../Packages/com.summit.gpu-sensor-pipeline/Runtime/GpuSensorContracts.cs" />
+    <Compile Include="../../PublicBenchmarks/External/Adapters/SphereWorkloadContract.cs" />
+    <Compile Include="../../PublicBenchmarks/External/Adapters/ConsumerEpoch.cs" />
+    <Compile Include="../../PublicBenchmarks/External/Adapters/LinkedCellWorkloadContract.cs" />
+    <Compile Include="../../PublicBenchmarks/External/Adapters/ArborXSnapshot.cs" />
+    <Compile Include="../../Packages/com.summit.gpu-primitives/Runtime/HlslScanArtifact.cs" />
+    <Compile Include="../../Packages/com.summit.gpu-primitives/Runtime/GpuHlslScanConsumer.cs" />
+    <Compile Include="../../Packages/com.summit.gpu-primitives/Runtime/GpuHlslStructuredScanBridge.cs" />
+  </ItemGroup>
+</Project>

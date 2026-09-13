@@ -1,12 +1,42 @@
 # SUMMIT GPU Systems
 
-**Keep simulation data on the GPU and reduce the work between generation and use.**
+**Choose GPU data representations by the cost of the complete producer-to-consumer task.**
 
 Large real-time scenes spend GPU time moving and rebuilding data as well as
 rendering it. I built reusable Unity packages for resident sensor data, spatial
 indexing, scheduling and native timing, extracted from my personal SUMMIT project.
 
-## Results
+Start with the [complete-task engineering case](Docs/WHOLE_TASK_DECISIONS.md):
+an incremental index saved maintenance time but made its query consumer slower.
+The implemented response combines spatial pruning, compact consumer views and
+explicit maintenance/conversion/query planning. A [CPU-only application example](Tools/Examples/IndexQueryPlanning/README.md)
+shows the actual planner, unavailable costs and capacity recovery. The planner's
+complete-task benefit remains **Unmeasured**; its structural score is not a
+measured speedup or automatic runtime winner.
+
+The [September 8 implementation update](Docs/RemediationIntegration20260908.md)
+adds spatially pruned CellSpans queries, an optional compact index view, complete
+Cabana/ArborX workload adapters, a real ECS Boids consumer, verified HLSL scan
+consumption and scope-preserving observation exports. That update validated
+compilation and deterministic CPU functionality; default/profile eligibility
+remains **Unmeasured** and opt-in. [External source contracts](PublicBenchmarks/External/README.md).
+
+The [September 10 actual external comparison](Docs/EXTERNAL_ACTUAL_RESULTS_2026-09-10.md)
+validates complete GPU CSR against native Cabana/ArborX results. In all five
+baseline cases, that SUMMIT upload/rebuild/readback/consume path costs more
+than native Serial replay. These are cross-backend task observations with fixed
+inputs, distinct from the canonical native benchmark timers and historical results.
+
+The subsequent [sphere reuse implementation and actual comparison](Docs/SPHERE_REUSE_RESULTS_2026-09-10.md)
+prepares points and builds the index once for all 157 query batches inside each
+complete task. Four same-round native/old/new processes per arm measured
+43.75/784.17/135.98 ms respectively. The geometric old/new ratio was 5.86
+(nominal 95% CI 4.30–7.98); the new path still costs more than native Serial.
+Every original query and full GPU CSR was verified. The
+[public API guide](PublicBenchmarks/External/Adapters/SPHERE_REUSE.md) covers reuse,
+point/domain invalidation and output ownership; these results do not promote defaults.
+
+## Historical NYCGIS results
 
 - **Logical visible output: approximately 385.7 MB → 8.04 MB** by replacing copied
   visible indices with compact tile descriptors in the NYCGIS integration.
@@ -17,6 +47,9 @@ Recorded on AMD Radeon AI PRO R9700, D3D12 and Unity 6000.5.2f1. These numbers
 describe the dedicated NYCGIS comparison; the standalone procedural benchmarks
 provide separate, asset-independent reproduction paths.
 [Results index and source reports](Docs/GPU_PERFORMANCE_ENGINEERING_PORTFOLIO_INDEX_2026-07-31.md).
+The 52.5% result belongs to the historical `codex/gpu-no-copy-visible-tiles`
+experiment identified in that report. It is not a measurement of the new
+integration source; the retained report snapshot is pinned in the implementation update.
 
 [Competitive baseline and transport consumer](PublicBenchmarks/UnityGpuIntegration/RESULTS-query-boundary-2026-09-08.md):
 index-free parallel scan, six query workloads, and GPU-driven route decisions.
@@ -54,7 +87,9 @@ the procedural benchmarks are the asset-independent reproduction entry points.
 
 [![Engineering overview and evidence](Docs/portfolio/overview.svg)](Docs/portfolio/overview.png)
 
-The before/after flow explains the change in representation, with the reported logical output sizes shown on a zero-based scale. [Sources and reproduction](Docs/portfolio/README.md).
+This historical NYCGIS figure explains one representation change, with logical
+output sizes on a zero-based scale. It does not measure the current planner or
+an entire engine frame. [Sources and reproduction](Docs/portfolio/README.md).
 
 ## Engineering challenges
 
@@ -80,13 +115,15 @@ results and follow-up investigations into complete-frame performance.
 
 | Project | Engineering focus | Review entry point |
 | --- | --- | --- |
-| **SUMMIT GPU Systems** | Unity runtime composition: resident data, spatial queries, scheduling, residency and native instrumentation. | Packages below and the [procedural integration benchmark](PublicBenchmarks/UnityGpuIntegration/README.md). |
+| **SUMMIT GPU Systems** | Data representation and complete producer/maintenance/conversion/query/consumer cost in a Unity runtime. | [Complete-task decisions and adoption example](Docs/WHOLE_TASK_DECISIONS.md), then the packages and scoped evidence below. |
 | [HLSL Kernel Pipeline](https://github.com/Yanagisawa2002/hlsl-kernel-pipeline) | Engine-neutral kernel execution, correctness, autotuning and device-specific profile emission. Unity is a profile consumer. | Its SDK, execution ABI and paired measurement reports. |
 
 Both contain GPU primitives, but their system boundaries and measurements differ.
-They are complementary portfolio projects, not evidence of an automatically
-connected pipeline. A kernel-level speedup must not be substituted for a SUMMIT
-scene-level or full-engine frame-time improvement.
+The [optional verified scan bridge](Integrations/HlslKernelPipeline/README.md)
+now maps an exact HLSL source artifact and validated profile selection to real
+Unity buffer bindings and dispatch recording, including explicit Raw/Structured
+conversion. A kernel-level speedup does not establish a SUMMIT scene-level or
+full-engine frame-time improvement.
 
 ## What is here
 
@@ -108,6 +145,8 @@ scene-level or full-engine frame-time improvement.
 
 ## Requirements
 
+For the Unity host and native instrumentation:
+
 - Windows x64
 - Unity `6000.5.2f1`
 - Direct3D 12 for native timestamp measurements
@@ -116,17 +155,23 @@ scene-level or full-engine frame-time improvement.
 
 ## Quick start
 
-1. Clone the repository and open its root as a Unity project.
-2. Let Unity resolve the embedded packages and compile the benchmark assemblies.
-3. Run the repository checks:
+1. With .NET 10 installed, inspect the pure decision API from the repository root:
 
    ```powershell
-   .\Tools\Test-RepositoryLayout.ps1
-   .\Tools\Run-UnityEditModeTests.ps1
-   .\Tools\Run-UnityEditModeTests.ps1 -UseGraphics -ForceDirect3D12
+   dotnet run --project Tools/Examples/IndexQueryPlanning/IndexQueryPlanning.csproj -c Release
    ```
 
-4. Run a benchmark, for example:
+   The four synthetic examples construct plans only; Unity is not required.
+2. With PowerShell 7 and Python also available, run the explicit CPU functional checks:
+
+   ```powershell
+   .\Tools\Run-FunctionalChecks.ps1
+   ```
+
+3. To integrate the GPU packages, open the root as a Unity project and let Unity
+   resolve the embedded packages and compile the benchmark assemblies.
+4. For a separately selected performance run, existing benchmark commands remain
+   available. They were not run for the Unmeasured implementation update:
 
    ```powershell
    .\Tools\Run-GpuPrimitiveBenchmark.ps1

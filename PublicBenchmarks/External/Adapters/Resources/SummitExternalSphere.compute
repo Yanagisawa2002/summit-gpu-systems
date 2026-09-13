@@ -1,0 +1,66 @@
+#pragma kernel CountMatches
+#pragma kernel FinishOffsets
+#pragma kernel ScatterMatches
+#pragma target 5.0
+// Unity's FXC path fails CountMatches with "flattened side effect". Compile
+// the unchanged precise predicate/CSR traversal with its supported DXC path.
+#pragma use_dxc
+
+// SUMMIT adapter for the pinned ArborX float point/sphere predicate. Original
+// floats and IDs survive broad phase. Output is complete CSR, not a count digest.
+struct SourcePoint { float3 position; uint id; };
+struct CandidateCells { uint3 lo; uint empty; uint3 hi; uint reserved; };
+StructuredBuffer<SourcePoint> _Points;
+StructuredBuffer<float4> _Spheres;
+StructuredBuffer<CandidateCells> _Cells;
+StructuredBuffer<uint> _BinOffsets;
+StructuredBuffer<uint> _BinnedIds;
+RWStructuredBuffer<uint> _Counts;
+RWStructuredBuffer<uint> _Offsets;
+RWStructuredBuffer<uint> _Ids;
+uint _PointCount, _QueryCount;
+
+bool Exact(SourcePoint p, float4 sphere)
+{
+    precise float3 d = p.position - sphere.xyz;
+    precise float xx = d.x*d.x;
+    precise float yy = d.y*d.y;
+    precise float zz = d.z*d.z;
+    precise float sum = xx;
+    sum = sum + yy;
+    sum = sum + zz;
+    precise float distance = sqrt(sum);
+    return distance <= sphere.w;
+}
+uint Visit(uint q, bool scatter)
+{
+    CandidateCells c = _Cells[q];
+    if (c.empty != 0) return 0;
+    uint count = 0;
+    for (uint z = c.lo.z; z <= c.hi.z; ++z)
+    for (uint y = c.lo.y; y <= c.hi.y; ++y)
+    {
+        uint baseCell = (z << 12) | (y << 6);
+        uint begin = _BinOffsets[baseCell + c.lo.x];
+        uint end = _BinOffsets[baseCell + c.hi.x + 1];
+        for (uint at = begin; at < end; ++at)
+        {
+            uint slot = _BinnedIds[at];
+            if (slot < _PointCount && Exact(_Points[slot], _Spheres[q]))
+            {
+                if (scatter) _Ids[_Offsets[q] + count] = _Points[slot].id;
+                ++count;
+            }
+        }
+    }
+    return count;
+}
+[numthreads(64,1,1)]
+void CountMatches(uint3 id : SV_DispatchThreadID)
+{ if (id.x < _QueryCount) _Counts[id.x] = Visit(id.x, false); }
+[numthreads(1,1,1)]
+void FinishOffsets(uint3 id : SV_DispatchThreadID)
+{ _Offsets[_QueryCount] = _QueryCount == 0 ? 0 : _Offsets[_QueryCount-1] + _Counts[_QueryCount-1]; }
+[numthreads(64,1,1)]
+void ScatterMatches(uint3 id : SV_DispatchThreadID)
+{ if (id.x < _QueryCount) Visit(id.x, true); }

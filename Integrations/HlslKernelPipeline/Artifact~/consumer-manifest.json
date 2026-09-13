@@ -1,0 +1,62 @@
+{
+  "schema": "hlslperf.unity-scan-consumer.v1",
+  "performanceStatus": "Unmeasured",
+  "variantId": "hlslperf.scan-wave-tiled.u32.wave32.g256.b4096.v1",
+  "sourceCommit": "274e5077455e6c08959a274a84379dfc4e1345dd",
+  "assetSha256": "117f226d4f83c9a19155d03f2d6179e55db676e19fc58c76ccb1aaef836b6f16",
+  "files": [
+    {
+      "path": "LICENSE.md",
+      "sha256": "48830d9a8f6050f4fd485ed3b9898c879beda125e3233625c010928c4d6e2215"
+    },
+    {
+      "path": "kernels/consumer/ScanWaveTiled.compute",
+      "sha256": "9534c8287fa1afac0a961c70271ee2a7f8e49be573c4a97b24f799dbb1df3691"
+    },
+    {
+      "path": "kernels/include/hlslperf/scan_wave_tiled_u32.hlsli",
+      "sha256": "d37710947770c523e04e6fd61cd94c56971d177e3c0128b940ed849bdd73e32e"
+    }
+  ],
+  "identityAlgorithm": "SHA256(UTF8(concat sorted path + NUL + lowercase file SHA256 + LF))",
+  "semantic": "exclusive-u32-sum-modulo-2^32",
+  "kernelAbi": "hlslperf.raw-buffer.v1",
+  "shader": "kernels/consumer/ScanWaveTiled.compute",
+  "requiredBackend": "D3D12",
+  "requiredShaderModel": "6_6",
+  "requiredWaveSize": 32,
+  "inputTarget": "Raw",
+  "outputTarget": "Raw",
+  "scratchTarget": "Raw",
+  "elementStrideBytes": 4,
+  "maximumConsumerCount": 16776960,
+  "minimumBufferBytes": 4,
+  "elementsPerBlock": 4096,
+  "scratchBytes": "8 + 12 * ceil(capacity / 4096)",
+  "constants": [
+    "ElementCount",
+    "ElementsPerBlock",
+    "LogicalBlockCount"
+  ],
+  "passes": [
+    {
+      "entry": "ResetWaveTiledState",
+      "groups": "1",
+      "bindings": {
+        "Output0": "scratch"
+      }
+    },
+    {
+      "entry": "SinglePassScanWaveTiled",
+      "groups": "min(ceil(count / 4096), 256)",
+      "bindings": {
+        "Input0": "input",
+        "Output0": "output",
+        "Output1": "scratch"
+      }
+    }
+  ],
+  "empty": "Host skips both dispatches; input/output sentinel bytes are unchanged.",
+  "ownership": "Caller preallocates distinct buffers; resets each invocation; same queue, ordered UAV dependencies; disposal after completion.",
+  "verification": "DXC compilation and CPU model only; Unity import and GPU correctness/performance unvalidated."
+}

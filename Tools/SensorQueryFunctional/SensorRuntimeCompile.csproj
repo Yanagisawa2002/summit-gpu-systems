@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Compile-only library. Never starts Unity, loads a scene, or runs a Player. -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <LangVersion>9.0</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <Target Name="RequireUnityManagedPath" BeforeTargets="ResolveReferences" Condition="!Exists('$(UnityManagedPath)/UnityEngine.CoreModule.dll')">
+    <Error Text="Pass -p:UnityManagedPath pointing to Unity Editor/Data/Managed/UnityEngine. This target only compiles." />
+  </Target>
+  <ItemGroup>
+    <Compile Include="../../Packages/com.summit.gpu-sensor-pipeline/Runtime/*.cs" />
+    <Compile Include="../../Packages/com.summit.gpu-direct-binning/Runtime/*.cs" />
+    <Compile Include="../../Packages/com.summit.gpu-primitives/Runtime/*.cs" />
+    <Reference Include="$(UnityManagedPath)/UnityEngine*.dll" />
+  </ItemGroup>
+</Project>

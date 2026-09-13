@@ -97,6 +97,7 @@ namespace Summit.GpuSensorPipeline
 
         private readonly GpuSensorChunkedRangeQuery chunkedQuery;
         private readonly GpuSensorBatchedRangeQuery batchedQuery;
+        private readonly GpuSensorCellSpanQuery cellSpanQuery;
         private readonly ComputeShader shader;
         private readonly int produceKernel;
         private readonly int rangeQueryKernel;
@@ -192,6 +193,8 @@ namespace Summit.GpuSensorPipeline
             {
                 if (queryBackend == GpuSensorQueryBackend.BatchedPointScanWave)
                     batchedQuery = new GpuSensorBatchedRangeQuery(elementCapacity, queryIndexEntryCapacity);
+                else if (queryBackend == GpuSensorQueryBackend.CellSpans || queryBackend == GpuSensorQueryBackend.CellSpansWave)
+                    cellSpanQuery = new GpuSensorCellSpanQuery(elementCapacity, queryBackend, queryIndexEntryCapacity);
                 else if (queryBackend != GpuSensorQueryBackend.CellSerial)
                     chunkedQuery = new GpuSensorChunkedRangeQuery(elementCapacity, queryBackend, queryIndexEntryCapacity);
                 selectedSamples = CreateBuffer(
@@ -257,6 +260,7 @@ namespace Summit.GpuSensorPipeline
             {
                 chunkedQuery?.Dispose();
                 batchedQuery?.Dispose();
+                cellSpanQuery?.Dispose();
                 selectedBinner?.Dispose();
                 selectedPrimitives?.Dispose();
                 DisposeBuffer(selectedSamples);
@@ -314,7 +318,7 @@ namespace Summit.GpuSensorPipeline
         public GpuPrimitiveBackend Backend { get; }
 
         public GpuSensorQueryBackend QueryBackend { get; }
-        public long QueryScratchBytes => chunkedQuery?.ScratchBytes ?? 0;
+        public long QueryScratchBytes => cellSpanQuery?.ScratchBytes ?? chunkedQuery?.ScratchBytes ?? 0;
 
         public bool EmitsProfilerMarkers => emitProfilerMarkers;
 
@@ -844,6 +848,7 @@ namespace Summit.GpuSensorPipeline
             disposed = true;
             chunkedQuery?.Dispose();
             batchedQuery?.Dispose();
+            cellSpanQuery?.Dispose();
             binner.Dispose();
             primitives.Dispose();
             Samples.Dispose();
@@ -988,6 +993,8 @@ namespace Summit.GpuSensorPipeline
                 throw new ArgumentException("External CSR exceeds preallocated query capacity.", nameof(binnedIds));
             if (batchedQuery != null && binnedIds.count > batchedQuery.IndexEntryCapacity)
                 throw new ArgumentException("External CSR exceeds configured query capacity.", nameof(binnedIds));
+            if (cellSpanQuery != null && binnedIds.count > cellSpanQuery.IndexEntryCapacity)
+                throw new ArgumentException("External CSR exceeds configured query capacity.", nameof(binnedIds));
             if (samples == QueryDigests || samples == FrameDigest ||
                 binOffsets == QueryDigests || binOffsets == FrameDigest ||
                 binnedIds == QueryDigests || binnedIds == FrameDigest ||
@@ -1033,6 +1040,14 @@ namespace Summit.GpuSensorPipeline
             GraphicsBuffer externalIds = null)
         {
             BeginSample(commands, QuerySample);
+            if (cellSpanQuery != null)
+            {
+                cellSpanQuery.Record(commands, externalSamples ?? Samples,
+                    externalOffsets ?? BinOffsets, externalIds ?? BinnedIds, Queries,
+                    QueryDigests, elementCount, queryStart, queryCount, quantizeIntensity);
+                EndSample(commands, QuerySample);
+                return;
+            }
             if (batchedQuery != null)
             {
                 batchedQuery.Record(commands, externalSamples ?? Samples,

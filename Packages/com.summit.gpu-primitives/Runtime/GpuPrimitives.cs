@@ -108,6 +108,12 @@ namespace Summit.GpuPrimitives
         private GraphicsBuffer radixGroupOffsets;
         private readonly bool emitProfilerMarkers;
         private readonly GpuPrimitiveCandidateRunner candidateRunner;
+        // Optional caller-owned bridge. Only explicit injection can route public
+        // Auto exclusive scans into the verified external shader. Other operations
+        // and explicit Portable/WaveOps retain their own implementations.
+        private readonly GpuHlslStructuredScanBridge externalScan;
+        public string ExternalScanVariantId=>externalScan!=null?HlslScanArtifact.Variant:null;
+        public long ExternalScanScratchBytes=>externalScan?.ScratchBytes??0;
         /// <summary>Opt-in identity used by Auto for scan, stable-compaction scan,
         /// and radix. Null preserves legacy backend resolution. Explicit Portable
         /// and WaveOps always retain the legacy implementation.</summary>
@@ -126,7 +132,8 @@ namespace Summit.GpuPrimitives
             ComputeShader portableShader = null,
             ComputeShader waveShader = null,
             bool emitProfilerMarkers = true,
-            string candidateId = null)
+            string candidateId = null,
+            GpuHlslStructuredScanBridge externalScan = null)
         {
             if (capacity < 1 || capacity > MaxElementCount)
             {
@@ -134,6 +141,9 @@ namespace Summit.GpuPrimitives
                     nameof(capacity),
                     $"Capacity must be in [1, {MaxElementCount}].");
             }
+            if(externalScan!=null && (candidateId!=null||externalScan.Capacity<capacity))
+                throw new ArgumentException("External scan must cover capacity and cannot compete with another explicit Auto candidate.");
+            this.externalScan=externalScan;
 
             // Reject unsupported opt-in identities before touching legacy shader
             // kernels or allocating resources, including on Unity's Null Device.
@@ -291,6 +301,8 @@ namespace Summit.GpuPrimitives
                     nameof(capacity),
                     $"Capacity cannot exceed {MaxElementCount}.");
             }
+            if(externalScan!=null&&capacity>externalScan.Capacity)
+                throw new ArgumentException("Recreate the caller-owned external scan bridge before growing this instance.");
 
             candidateRunner?.Allocate(capacity);
             ReleaseScratch();
@@ -316,6 +328,12 @@ namespace Summit.GpuPrimitives
             BeginSample(commands, "Summit.GpuPrimitives/ExclusiveScan");
             if (count > 0)
             {
+                if(externalScan!=null&&backend==GpuPrimitiveBackend.Auto)
+                {
+                    externalScan.RecordExclusiveScan(commands,input,output,count);
+                    EndSample(commands,"Summit.GpuPrimitives/ExclusiveScan");
+                    return;
+                }
                 RecordExclusiveScanInternal(
                     commands,
                     input,

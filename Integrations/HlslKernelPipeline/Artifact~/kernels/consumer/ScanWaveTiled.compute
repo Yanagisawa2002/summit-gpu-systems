@@ -1,0 +1,34 @@
+// Opt-in Unity D3D12/DXC consumer of the actual wave-tiled scan implementation.
+// Requires SM6.6 and wave32 support; DXC validation is not Unity import validation.
+// No dispatch/benchmark is performed by this asset. See SCAN_WAVE_TILED.md.
+#pragma kernel ResetWaveTiledState
+#pragma kernel SinglePassScanWaveTiled
+#pragma use_dxc
+#pragma target 5.0
+#pragma multi_compile UNITY_DEVICE_SUPPORTS_WAVE_32
+
+// Unity binds these names per kernel. All are Raw buffers with a uint32 stride.
+// Reset: Output0 = scratch. Scan: Input0 = input, Output0 = result, Output1 = scratch.
+ByteAddressBuffer Input0;
+RWByteAddressBuffer Output0;
+globallycoherent RWByteAddressBuffer Output1;
+
+uint ElementCount;
+uint ElementsPerBlock; // Must be 4096, including tail/empty operations.
+uint LogicalBlockCount; // ceil(ElementCount / 4096).
+
+#define HLSLPERF_SCAN_WAVE_TILED 1
+#define HLSLPERF_SCAN_BACKEND 3
+#define HLSLPERF_SCAN_OPERATOR 1
+#define HLSLPERF_GROUP_SIZE 256
+#define HLSLPERF_ELEMENTS_PER_THREAD 4
+#define HLSLPERF_SINGLE_PASS_ITEMS_SCALE 4
+#define HLSLPERF_SINGLE_PASS_ITEMS_PER_THREAD 16
+#define HLSLPERF_VECTOR_WIDTH 4
+#define HLSLPERF_WAVE_SIZE 32
+#define HLSLPERF_WAVE_ATTRIBUTE [WaveSize(32)]
+#define HLSLPERF_WAVE_TILED_MAX_POLLS 4
+#define HLSLPERF_SCAN_LOGICAL_BLOCK_COUNT LogicalBlockCount
+#define HLSLPERF_WAVE_TILED_ROOT_ATTRIBUTE
+
+#include "../include/hlslperf/scan_wave_tiled_u32.hlsli"

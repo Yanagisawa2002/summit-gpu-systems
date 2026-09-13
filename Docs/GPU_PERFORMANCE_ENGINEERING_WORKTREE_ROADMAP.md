@@ -1,5 +1,15 @@
 # GPU Performance Engineering Worktree Roadmap
 
+## Current priority — September 10, 2026
+
+The stage list below records the original development sequence. The next
+evidence milestone is the [complete producer-to-consumer task](WHOLE_TASK_DECISIONS.md),
+using the implemented spatial queries, compact view and explicit cost planner.
+Their current-source performance is Unmeasured. Reproduce equivalent complete
+outputs against the pinned external workload before adding another subsystem or
+promoting a candidate. Keep maintenance, conversion, consumer, memory and
+application-frame observations separate until the complete task is measured.
+
 ## Purpose
 
 The city project is a realistic workload provider, not the boundary of the

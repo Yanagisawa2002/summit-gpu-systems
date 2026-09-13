@@ -47,7 +47,8 @@ namespace Summit.GpuSensorPipeline
 
         public GpuSensorIncrementalIndex(int capacity, int staticSlotCount = 0,
             int churnPermille = 200, int fragmentationPermille = 250,
-            GpuSensorIndexExecutionMode executionMode = GpuSensorIndexExecutionMode.Original)
+            GpuSensorIndexExecutionMode executionMode = GpuSensorIndexExecutionMode.Original,
+            bool maintainLiveCounts = false)
         {
             // Three membership words per slot must fit a 65535-group dispatch.
             if (capacity < 1 || capacity > 256 * 65535 / 3)
@@ -62,6 +63,7 @@ namespace Summit.GpuSensorPipeline
             if (executionMode != GpuSensorIndexExecutionMode.Original && executionMode != GpuSensorIndexExecutionMode.GpuDriven)
                 throw new ArgumentOutOfRangeException(nameof(executionMode));
             ExecutionMode = executionMode;
+            MaintainLiveCounts = maintainLiveCounts;
             StaticSlotCount = staticSlotCount;
             ChurnThreshold = (int)((long)capacity * churnPermille / 1000);
             FragmentationThreshold = (int)((long)capacity * fragmentationPermille / 1000);
@@ -116,6 +118,10 @@ namespace Summit.GpuSensorPipeline
 
         public int Capacity { get; }
         public GpuSensorIndexExecutionMode ExecutionMode { get; }
+        /// <summary>Explicit Unmeasured compact-view support; adds live-count atomics on membership changes.</summary>
+        public bool MaintainLiveCounts { get; }
+        internal GraphicsBuffer CurrentKeys => previousKeys;
+        internal GraphicsBuffer LiveCounts => counts;
         public int StaticSlotCount { get; }
         public int ChurnThreshold { get; }
         public int FragmentationThreshold { get; }
@@ -155,6 +161,7 @@ namespace Summit.GpuSensorPipeline
             commands.SetComputeIntParam(shader, "_Force", forceRebuild ? 1 : 0);
             commands.SetComputeIntParam(shader, "_ChurnThreshold", ChurnThreshold);
             commands.SetComputeIntParam(shader, "_FragmentationThreshold", FragmentationThreshold);
+            commands.SetComputeIntParam(shader, "_MaintainLiveCounts", MaintainLiveCounts ? 1 : 0);
             commands.BeginSample("Summit.SensorIndex/DirtyDetection");
             Dispatch(commands, begin, 1);
             commands.SetComputeBufferParam(shader, detect, "_InputSamples", inputSamples);
@@ -227,6 +234,14 @@ namespace Summit.GpuSensorPipeline
             if ((buffer.target & GraphicsBuffer.Target.Structured) == 0 ||
                 buffer.stride != stride || buffer.count < Capacity)
                 throw new ArgumentException("Snapshot buffer has wrong shape/capacity.", name);
+        }
+
+        internal void ValidateCompactView(int capacity)
+        {
+            if (disposed) throw new ObjectDisposedException(nameof(GpuSensorIncrementalIndex));
+            if (!MaintainLiveCounts)
+                throw new InvalidOperationException("Construct the index with maintainLiveCounts: true before recording a compact view.");
+            if (capacity != Capacity) throw new ArgumentException("Compact view and index capacities must match.");
         }
 
         public void Dispose()

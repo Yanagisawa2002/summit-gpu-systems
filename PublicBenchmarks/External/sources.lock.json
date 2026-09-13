@@ -1,0 +1,1096 @@
+{
+  "schemaVersion": 1,
+  "performanceStatus": "Unmeasured",
+  "defaultAction": "prepare-only",
+  "sources": [
+    {
+      "id": "cabana",
+      "repository": "https://github.com/ECP-copa/Cabana.git",
+      "commit": "dd6bd7ccbb28974f81c365ff6b1fd1f3a080b802",
+      "classification": "external-library-native-benchmark",
+      "license": "BSD-3-Clause",
+      "files": [
+        {
+          "path": "LICENSE",
+          "url": "https://raw.githubusercontent.com/ECP-copa/Cabana/dd6bd7ccbb28974f81c365ff6b1fd1f3a080b802/LICENSE",
+          "sha256": "088c7271eb3dfd48e97a985ebdc5d2c94a96c487542d1d5d754a9c5ce1345b43",
+          "gitBlob": "22b971a157b1ab60010c80f7af9c88bbb12fe821",
+          "bytes": 2348
+        },
+        {
+          "path": "CMakeLists.txt",
+          "url": "https://raw.githubusercontent.com/ECP-copa/Cabana/dd6bd7ccbb28974f81c365ff6b1fd1f3a080b802/CMakeLists.txt",
+          "sha256": "b98f317b69117a36feb1d38ff4be50908244bbb6e72bfffef915fe784daaa056",
+          "gitBlob": "6cd47276f6b4977ed809f0856d629cc0c91b80d4",
+          "bytes": 12705
+        },
+        {
+          "path": "benchmark/CMakeLists.txt",
+          "url": "https://raw.githubusercontent.com/ECP-copa/Cabana/dd6bd7ccbb28974f81c365ff6b1fd1f3a080b802/benchmark/CMakeLists.txt",
+          "sha256": "d52ee8dcfd7a133a5ecdd95d0706780082bde7062e64012fdbb02f5bf1561a6f",
+          "gitBlob": "1ec98bc7c35b2df1030f9703d4bda24d5154dc29",
+          "bytes": 851
+        },
+        {
+          "path": "benchmark/core/CMakeLists.txt",
+          "url": "https://raw.githubusercontent.com/ECP-copa/Cabana/dd6bd7ccbb28974f81c365ff6b1fd1f3a080b802/benchmark/core/CMakeLists.txt",
+          "sha256": "46132c1f642e906e55d55c7761d7904aa062b4ff92f0cc2008fc87212c2a815d",
+          "gitBlob": "6bb604402113224bdd950b8fc74f85ef9c68d0bb",
+          "bytes": 2265
+        },
+        {
+          "path": "benchmark/Cabana_BenchmarkUtils.hpp",
+          "url": "https://raw.githubusercontent.com/ECP-copa/Cabana/dd6bd7ccbb28974f81c365ff6b1fd1f3a080b802/benchmark/Cabana_BenchmarkUtils.hpp",
+          "sha256": "c551e5dd3421f533f09f375b3be50161518eed56aadb0dd18fb194fa4ac32080",
+          "gitBlob": "b274f0134e5311a7a4d07776fb4284a37249a4db",
+          "bytes": 6553
+        },
+        {
+          "path": "benchmark/core/Cabana_LinkedCellPerformance.cpp",
+          "url": "https://raw.githubusercontent.com/ECP-copa/Cabana/dd6bd7ccbb28974f81c365ff6b1fd1f3a080b802/benchmark/core/Cabana_LinkedCellPerformance.cpp",
+          "sha256": "5dbc8b60886eda274517db84555a942e0262e9d5cb2db62dbbb3f6082c1a6413",
+          "gitBlob": "81f1de4fe70066f066bed7267890c9679bf447de",
+          "bytes": 9061
+        },
+        {
+          "path": "core/src/impl/Cabana_CartesianGrid.hpp",
+          "url": "https://raw.githubusercontent.com/ECP-copa/Cabana/dd6bd7ccbb28974f81c365ff6b1fd1f3a080b802/core/src/impl/Cabana_CartesianGrid.hpp",
+          "sha256": "7c7ba91d5b03e1739b58d15b63638fd8b422a27725a53de3d64b5e6bcbd629a6",
+          "gitBlob": "9c34d0920bd95ba4bf23e2b9d1f0d50dceba5c80",
+          "bytes": 10004
+        },
+        {
+          "path": "core/src/Cabana_LinkedCellList.hpp",
+          "url": "https://raw.githubusercontent.com/ECP-copa/Cabana/dd6bd7ccbb28974f81c365ff6b1fd1f3a080b802/core/src/Cabana_LinkedCellList.hpp",
+          "sha256": "dba95c81076a612a14f0bf7251f786f42fdac6f28cb88fa4aa54bce02133fb14",
+          "gitBlob": "d4c759157a3cc1f5cb7bd30c817bb6fe2dba0c88",
+          "bytes": 48165
+        }
+      ],
+      "tree": [
+        {
+          "path": "benchmark/CMakeLists.txt",
+          "gitBlob": "1ec98bc7c35b2df1030f9703d4bda24d5154dc29",
+          "bytes": 851
+        },
+        {
+          "path": "benchmark/Cabana_BenchmarkUtils.hpp",
+          "gitBlob": "b274f0134e5311a7a4d07776fb4284a37249a4db",
+          "bytes": 6553
+        },
+        {
+          "path": "benchmark/core/CMakeLists.txt",
+          "gitBlob": "6bb604402113224bdd950b8fc74f85ef9c68d0bb",
+          "bytes": 2265
+        },
+        {
+          "path": "benchmark/core/Cabana_BinSortPerformance.cpp",
+          "gitBlob": "b508f0728ca7065d38b2e9f3bd0a3b73575f1516",
+          "bytes": 9236
+        },
+        {
+          "path": "benchmark/core/Cabana_CommPerformance.cpp",
+          "gitBlob": "739424729ff11fa79183b0cb04c45eacaeef3286",
+          "bytes": 24437
+        },
+        {
+          "path": "benchmark/core/Cabana_LinkedCellPerformance.cpp",
+          "gitBlob": "81f1de4fe70066f066bed7267890c9679bf447de",
+          "bytes": 9061
+        },
+        {
+          "path": "benchmark/core/Cabana_NeighborArborXPerformance.cpp",
+          "gitBlob": "6de607a8c6a554aeed0defb6d516711c43f94c65",
+          "bytes": 10282
+        },
+        {
+          "path": "benchmark/core/Cabana_NeighborVerletPerformance.cpp",
+          "gitBlob": "04460a294caf0f759206ffe5739d106e3e2b95a3",
+          "bytes": 11138
+        },
+        {
+          "path": "benchmark/grid/CMakeLists.txt",
+          "gitBlob": "72206f32a6739063081f6037fde859c8977fc739",
+          "bytes": 2448
+        },
+        {
+          "path": "benchmark/grid/Cabana_Grid_FastFourierTransformPerformance.cpp",
+          "gitBlob": "51b91c5c66f73299548b9e2e2daead3f37f4b678",
+          "bytes": 8519
+        },
+        {
+          "path": "benchmark/grid/Cabana_Grid_HaloPerformance.cpp",
+          "gitBlob": "fb8a862eead12ac6fff19e891d0d2a37c1b33421",
+          "bytes": 8603
+        },
+        {
+          "path": "benchmark/grid/Cabana_Grid_InterpolationPerformance.cpp",
+          "gitBlob": "2a5fe3abd8edeb1d693fc7f00db2ef289316ca7e",
+          "bytes": 28423
+        },
+        {
+          "path": "benchmark/grid/Cabana_Grid_SparseMapPerformance.cpp",
+          "gitBlob": "701afc9269701ac63eb9b597b67b69ef45afb9ad",
+          "bytes": 10543
+        },
+        {
+          "path": "benchmark/grid/Cabana_Grid_SparsePartitionerPerformance.cpp",
+          "gitBlob": "31ce979e7f0191d2c96c50c1bc3e41d0bd58af3c",
+          "bytes": 18493
+        },
+        {
+          "path": "benchmark/plot/Cabana_BenchmarkPlotUtils.py",
+          "gitBlob": "caec0aeea7d92a497a7449a2d7e1eb967ec3e46a",
+          "bytes": 12843
+        },
+        {
+          "path": "benchmark/plot/Cabana_PlotBenchmark.py",
+          "gitBlob": "5e50aefe31cd3e377f058384b51ea89338050dc4",
+          "bytes": 5571
+        }
+      ]
+    },
+    {
+      "id": "arborx",
+      "repository": "https://github.com/arborx/ArborX.git",
+      "commit": "375875dfb6b2e7631b1ba599cd26ee5c1e68ab90",
+      "classification": "external-library-native-benchmark",
+      "license": "BSD-3-Clause",
+      "files": [
+        {
+          "path": "LICENSE",
+          "url": "https://raw.githubusercontent.com/arborx/ArborX/375875dfb6b2e7631b1ba599cd26ee5c1e68ab90/LICENSE",
+          "sha256": "03a2c9bcfcf9b19f1f5370a9a8735316cec65c0f02b3a5964bcbe042f9218fb4",
+          "gitBlob": "0ba4713cd429050027cfb73e9ed597a9f465eb09",
+          "bytes": 1512
+        },
+        {
+          "path": "CMakeLists.txt",
+          "url": "https://raw.githubusercontent.com/arborx/ArborX/375875dfb6b2e7631b1ba599cd26ee5c1e68ab90/CMakeLists.txt",
+          "sha256": "ae3d6cc22b8ccfe9d5e31e324246062d03a58b65b705f0935d2d8685f4cb4095",
+          "gitBlob": "e34352e7307883a04ac3063ecfc1fa4b669b7deb",
+          "bytes": 9203
+        },
+        {
+          "path": "benchmarks/CMakeLists.txt",
+          "url": "https://raw.githubusercontent.com/arborx/ArborX/375875dfb6b2e7631b1ba599cd26ee5c1e68ab90/benchmarks/CMakeLists.txt",
+          "sha256": "8e2b2f387dacaabf4c129973be566efd6630082d3093f0c9b151189375103656",
+          "gitBlob": "c852d6670f5bfbe1b2123a191a9eec932aa83dee",
+          "bytes": 2454
+        },
+        {
+          "path": "benchmarks/bvh_driver/CMakeLists.txt",
+          "url": "https://raw.githubusercontent.com/arborx/ArborX/375875dfb6b2e7631b1ba599cd26ee5c1e68ab90/benchmarks/bvh_driver/CMakeLists.txt",
+          "sha256": "a4ff7e5ec10621260fe2dc9fce194e365983e4b1e1e027d7216a62323d51dd1e",
+          "gitBlob": "0fc7072115cacc4d7fd7d03d0cec6a17573556e9",
+          "bytes": 624
+        },
+        {
+          "path": "benchmarks/bvh_driver/bvh_driver.cpp",
+          "url": "https://raw.githubusercontent.com/arborx/ArborX/375875dfb6b2e7631b1ba599cd26ee5c1e68ab90/benchmarks/bvh_driver/bvh_driver.cpp",
+          "sha256": "53654ab223fe8be698d928119c849fe8e43013629bcdce9f0fe66396b960e58e",
+          "gitBlob": "a1ba34347c55095038d5b9330ac0b825a1b82763",
+          "bytes": 9358
+        },
+        {
+          "path": "benchmarks/bvh_driver/benchmark_registration.hpp",
+          "url": "https://raw.githubusercontent.com/arborx/ArborX/375875dfb6b2e7631b1ba599cd26ee5c1e68ab90/benchmarks/bvh_driver/benchmark_registration.hpp",
+          "sha256": "fda45b644ce50c6d66904cce934364c325e85734d7bac0eebf1fb221477a44e4",
+          "gitBlob": "092737162b6fe96b75815c3fc2f7f8dd4936d964",
+          "bytes": 16563
+        },
+        {
+          "path": "benchmarks/utils/ArborXBenchmark_PointClouds.hpp",
+          "url": "https://raw.githubusercontent.com/arborx/ArborX/375875dfb6b2e7631b1ba599cd26ee5c1e68ab90/benchmarks/utils/ArborXBenchmark_PointClouds.hpp",
+          "sha256": "e004e4ce9310f9c77d4ef914864c97a0e2250139a6aaa3499203a5945ad101e8",
+          "gitBlob": "2825ca0511a0d5443541db89b318c80a23f8d322",
+          "bytes": 6473
+        },
+        {
+          "path": "src/geometry/algorithms/ArborX_Intersects.hpp",
+          "url": "https://raw.githubusercontent.com/arborx/ArborX/375875dfb6b2e7631b1ba599cd26ee5c1e68ab90/src/geometry/algorithms/ArborX_Intersects.hpp",
+          "sha256": "2f8ed4ebe95276a7d952325872e22f51c472dc3aa4319811595ba5209a28fdd5",
+          "gitBlob": "825add2afd69da030923df0c00b584a5f02f0cb0",
+          "bytes": 24162
+        },
+        {
+          "path": "src/geometry/algorithms/ArborX_Distance.hpp",
+          "url": "https://raw.githubusercontent.com/arborx/ArborX/375875dfb6b2e7631b1ba599cd26ee5c1e68ab90/src/geometry/algorithms/ArborX_Distance.hpp",
+          "sha256": "4d63b94633a3e613445cf0f443e271206805001c22a44980d85209c7783a01c9",
+          "gitBlob": "2bca424e3da2709a9f1a4825391f30b4d8d84f13",
+          "bytes": 7573
+        },
+        {
+          "path": "src/geometry/ArborX_Sphere.hpp",
+          "url": "https://raw.githubusercontent.com/arborx/ArborX/375875dfb6b2e7631b1ba599cd26ee5c1e68ab90/src/geometry/ArborX_Sphere.hpp",
+          "sha256": "5f4b2e3fc2a327baeff8fa988c1b070a80edfd4ec4c6bcb6670e86b252cb3c33",
+          "gitBlob": "673fcda6f53c0698cda90de085de04b292c97f94",
+          "bytes": 2106
+        },
+        {
+          "path": "src/spatial/detail/ArborX_Predicates.hpp",
+          "url": "https://raw.githubusercontent.com/arborx/ArborX/375875dfb6b2e7631b1ba599cd26ee5c1e68ab90/src/spatial/detail/ArborX_Predicates.hpp",
+          "sha256": "eb4deb74192f454449975ae85f23fc42ecc09f6121c07ca6613243c39da529ad",
+          "gitBlob": "f5900688802206294fd0ef0037207751b5bea370",
+          "bytes": 6976
+        },
+        {
+          "path": "src/spatial/detail/ArborX_PredicateHelpers.hpp",
+          "url": "https://raw.githubusercontent.com/arborx/ArborX/375875dfb6b2e7631b1ba599cd26ee5c1e68ab90/src/spatial/detail/ArborX_PredicateHelpers.hpp",
+          "sha256": "8c8a8e29231045886fb5ea7a8a129119faf732137065e9bd67dbbeee563ee69e",
+          "gitBlob": "2b4f176743bc0c74f6e182c5e8adb2350456c9b4",
+          "bytes": 5845
+        }
+      ],
+      "tree": [
+        {
+          "path": "benchmarks/bvh_driver/CMakeLists.txt",
+          "gitBlob": "0fc7072115cacc4d7fd7d03d0cec6a17573556e9",
+          "bytes": 624
+        },
+        {
+          "path": "benchmarks/bvh_driver/benchmark_registration.hpp",
+          "gitBlob": "092737162b6fe96b75815c3fc2f7f8dd4936d964",
+          "bytes": 16563
+        },
+        {
+          "path": "benchmarks/bvh_driver/bvh_driver.cpp",
+          "gitBlob": "a1ba34347c55095038d5b9330ac0b825a1b82763",
+          "bytes": 9358
+        }
+      ]
+    },
+    {
+      "id": "entities-boids",
+      "repository": "https://github.com/Unity-Technologies/EntityComponentSystemSamples.git",
+      "commit": "6786a741ee1f118ed14cecfa02beae8e926937b0",
+      "classification": "external-official-application-sample",
+      "license": "Unity-Companion-License",
+      "files": [
+        {
+          "path": "LICENSE.md",
+          "url": "https://raw.githubusercontent.com/Unity-Technologies/EntityComponentSystemSamples/6786a741ee1f118ed14cecfa02beae8e926937b0/LICENSE.md",
+          "sha256": "0ff5d530e5930935eb2f7c5fc2086660d77ec9c398b27ea132b6bc14c7861bc4",
+          "gitBlob": "0341335da1d7b72abed2020822724faf6f11a0a0",
+          "bytes": 486
+        },
+        {
+          "path": "EntitiesSamples/ProjectSettings/ProjectVersion.txt",
+          "url": "https://raw.githubusercontent.com/Unity-Technologies/EntityComponentSystemSamples/6786a741ee1f118ed14cecfa02beae8e926937b0/EntitiesSamples/ProjectSettings/ProjectVersion.txt",
+          "sha256": "0de907caaf85bef32e6a7c9fe6d3d977df36938bb558e794fdb17d32e06f1412",
+          "gitBlob": "1ddb36df4987790272cfb3cd0aaa94a4f2011882",
+          "bytes": 85
+        },
+        {
+          "path": "EntitiesSamples/Packages/manifest.json",
+          "url": "https://raw.githubusercontent.com/Unity-Technologies/EntityComponentSystemSamples/6786a741ee1f118ed14cecfa02beae8e926937b0/EntitiesSamples/Packages/manifest.json",
+          "sha256": "7baf954748cb636de460d43390d9b9dc2f4ccb19e8f644f27ec2b1e0529cc6b8",
+          "gitBlob": "0efabfb22cd766ff826249835940eab5d0c3026b",
+          "bytes": 1366
+        },
+        {
+          "path": "EntitiesSamples/Packages/packages-lock.json",
+          "url": "https://raw.githubusercontent.com/Unity-Technologies/EntityComponentSystemSamples/6786a741ee1f118ed14cecfa02beae8e926937b0/EntitiesSamples/Packages/packages-lock.json",
+          "sha256": "39f69e50e63b1665dc68b62edf2672896daaae6110060ed8968bd0c754d268cd",
+          "gitBlob": "11c4b919db60addfcce9612deef71ce90a928dde",
+          "bytes": 12271
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/Scripts/BoidAuthoring.cs",
+          "url": "https://raw.githubusercontent.com/Unity-Technologies/EntityComponentSystemSamples/6786a741ee1f118ed14cecfa02beae8e926937b0/EntitiesSamples/Assets/Boids/Scripts/BoidAuthoring.cs",
+          "sha256": "9489021f8523f85dd918363fa26ac1368941bc30c21f2fe5cf984cda5908302f",
+          "gitBlob": "2b1609fa9470c58fb6d568344cea37dbd6fc266a",
+          "bytes": 1436
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/Scripts/BoidTargetAuthoring.cs",
+          "url": "https://raw.githubusercontent.com/Unity-Technologies/EntityComponentSystemSamples/6786a741ee1f118ed14cecfa02beae8e926937b0/EntitiesSamples/Assets/Boids/Scripts/BoidTargetAuthoring.cs",
+          "sha256": "4327707c2ae34a2396621e19faac6fb0f20577f1aeeb63cdd82f0b5b5e3ce3b6",
+          "gitBlob": "b5e99f13fc7ed72179832a81ec4bd3195c327ac4",
+          "bytes": 472
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/Scripts/BoidSchoolAuthoring.cs",
+          "url": "https://raw.githubusercontent.com/Unity-Technologies/EntityComponentSystemSamples/6786a741ee1f118ed14cecfa02beae8e926937b0/EntitiesSamples/Assets/Boids/Scripts/BoidSchoolAuthoring.cs",
+          "sha256": "5e878030d0306e5add6c36d29a4686b43c2a0822c364d4f2d0e2999620e14b28",
+          "gitBlob": "af60bb72a940d61ecffdcca995e2c7363bc0985f",
+          "bytes": 929
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/Scripts/BoidSystem.cs",
+          "url": "https://raw.githubusercontent.com/Unity-Technologies/EntityComponentSystemSamples/6786a741ee1f118ed14cecfa02beae8e926937b0/EntitiesSamples/Assets/Boids/Scripts/BoidSystem.cs",
+          "sha256": "c22fa39e9180c809ce02471114509336b25591750685b31365a3c4b43fcb8de6",
+          "gitBlob": "3ed555fd9e39c8cf7e48f7352bd28ce3d8066dd9",
+          "bytes": 21460
+        }
+      ],
+      "tree": [
+        {
+          "path": "EntitiesSamples/Assets/Boids/Boids.unity",
+          "gitBlob": "0cdc1b3f9d41301619df838a8bdf97f9eb7467e7",
+          "bytes": 15764
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/Boids.unity.meta",
+          "gitBlob": "0f0ef04d7e82b849adef1c4e6a97403f1c04cebf",
+          "bytes": 155
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/BoidsSettings.lighting",
+          "gitBlob": "24c11ab1a4778398ad583b83b2a21a676fd7b088",
+          "bytes": 1753
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/BoidsSettings.lighting.meta",
+          "gitBlob": "698815ae2ec300807a150b7222cd1a28dd5eb545",
+          "bytes": 182
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/PostProcessing.meta",
+          "gitBlob": "623492c19b3c20c472cb6d93275b6c9d431c4bb1",
+          "bytes": 172
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/PostProcessing/UnderWater.asset",
+          "gitBlob": "56478cb54dd9272e7102001a9094a2158955fff8",
+          "bytes": 7807
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/PostProcessing/UnderWater.asset.meta",
+          "gitBlob": "adc066dbeb2862a306a0a98e8abab5d27cb711ac",
+          "bytes": 182
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/README.md",
+          "gitBlob": "5dca1225e339112f3d6d73ccb8aee630b2e9c212",
+          "bytes": 193
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/README.md.meta",
+          "gitBlob": "c3b142e433194c1dc8b702c4a664e0863f64bf67",
+          "bytes": 158
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets.meta",
+          "gitBlob": "707b54462c2583a46e533c912ac020b9d3aba94a",
+          "bytes": 172
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Animation.meta",
+          "gitBlob": "9cdf8c834c0c24ae1592f272b00c4d73b76571ec",
+          "bytes": 172
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Animation/SharkAnimation.anim",
+          "gitBlob": "0585f9b1555bfe70be2a20d24f384b35d0f0a4cd",
+          "bytes": 32092
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Animation/SharkAnimation.anim.meta",
+          "gitBlob": "37f47b6c07e4b774874f32d94a29f41288880c2a",
+          "bytes": 182
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Animation/SharkAnimationController.controller",
+          "gitBlob": "1e050e9091e3d7b3ac871c4a6def79be5b9738a6",
+          "bytes": 2420
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Animation/SharkAnimationController.controller.meta",
+          "gitBlob": "4ba17a84c87193b0016e17e7d36a6f00ba025d5f",
+          "bytes": 182
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Animation/Target01Animation.anim",
+          "gitBlob": "9d8ce8d12048d0d7915c267a8c54734c2b1c0bc9",
+          "bytes": 36045
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Animation/Target01Animation.anim.meta",
+          "gitBlob": "e0c85523eca73f84cc702de920f93b73116314f7",
+          "bytes": 182
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Animation/Target01AnimationController.controller",
+          "gitBlob": "dba4acc722201a90947a728a383fa528f46b6bcc",
+          "bytes": 2051
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Animation/Target01AnimationController.controller.meta",
+          "gitBlob": "57a38cf54fc0473f876c81bbc60ff78359a1802f",
+          "bytes": 182
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Animation/Target02Animation.anim",
+          "gitBlob": "d1b7cbbe375e36c17b68aba1341e0fe9aaeeddf4",
+          "bytes": 41361
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Animation/Target02Animation.anim.meta",
+          "gitBlob": "a5805b1f6e6718f4e591d77dcc1b63a57e120efa",
+          "bytes": 182
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Animation/Target02AnimationController.controller",
+          "gitBlob": "c20d6c6ea1749b9c125c8e3fac147d511a992e28",
+          "bytes": 2065
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Animation/Target02AnimationController.controller.meta",
+          "gitBlob": "3ed1e2bb2cdea0ad2e235d3d22e7812b0846ea1b",
+          "bytes": 182
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Materials.meta",
+          "gitBlob": "c799705dabe78e71e614a678108cd192bef1fc84",
+          "bytes": 191
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Materials/Fish.mat",
+          "gitBlob": "d9bf613fa22cdd4609000c8deb0ec45329fc4713",
+          "bytes": 5923
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Materials/Fish.mat.meta",
+          "gitBlob": "bf5adf400fa697dce8150a2216a0d188983c1ade",
+          "bytes": 179
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Materials/OuterWall2.mat",
+          "gitBlob": "e86c9984e29614686bfbd07e3b8b5b335d40d13d",
+          "bytes": 4112
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Materials/OuterWall2.mat.meta",
+          "gitBlob": "1c3390cc17f4547f4c3a96f613a1336361b085ca",
+          "bytes": 188
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Materials/RedFish.mat",
+          "gitBlob": "213a6b4d9aab6065dfcc62cf452a9b840d15a65e",
+          "bytes": 5179
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Materials/RedFish.mat.meta",
+          "gitBlob": "7c2e9349e8b93407390715cb3c0e950ce7d7ac1c",
+          "bytes": 179
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Materials/Rock.mat",
+          "gitBlob": "c9ee9845b26ec2329abe861c02454d0c57e8594b",
+          "bytes": 4175
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Materials/Rock.mat.meta",
+          "gitBlob": "7dd04260058289bbf9eb73f2a6c77ab322ead480",
+          "bytes": 179
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Materials/Seaweed.mat",
+          "gitBlob": "c2957f6382fa833c2ece00e29a5641899ec3739d",
+          "bytes": 4151
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Materials/Seaweed.mat.meta",
+          "gitBlob": "6cdcc5a883347dacc1b881d4f97bb7e9d73d55b9",
+          "bytes": 179
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Materials/Shark.mat",
+          "gitBlob": "293dfe9d1d5a6ad9054fdccb1a5e91a90ca29a7f",
+          "bytes": 4344
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Materials/Shark.mat.meta",
+          "gitBlob": "468bcaf8eaa2fd7b04e38a9919e8b8368623d528",
+          "bytes": 179
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Materials/Surface.mat",
+          "gitBlob": "fe3af828afb887b36a2da04e07d8d13dae90ed4d",
+          "bytes": 3914
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Materials/Surface.mat.meta",
+          "gitBlob": "9c7e592a7d69cfb04e9c86dff033dbc8817ff8cc",
+          "bytes": 179
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Models.meta",
+          "gitBlob": "ca61e86282edbb5dbeba249fa718df29153e158d",
+          "bytes": 191
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Models/Fish.FBX",
+          "gitBlob": "46a504b289712659339244910059b0dc90b5717a",
+          "bytes": 34928
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Models/Fish.FBX.meta",
+          "gitBlob": "71116d9797991700e8246f73d30c0635c191a38b",
+          "bytes": 3163
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Models/Rock.FBX",
+          "gitBlob": "45c9573e08fdb9d1202ef9c1d211bb960e2273c2",
+          "bytes": 24864
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Models/Rock.FBX.meta",
+          "gitBlob": "0030f2737b8f4a2956280bbda960b4fdfe3bf337",
+          "bytes": 3108
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Models/RocksScatter.FBX",
+          "gitBlob": "df4c4db7fc44d17edef21478628f831a2dd77ea5",
+          "bytes": 281232
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Models/RocksScatter.FBX.meta",
+          "gitBlob": "11077dafcc47e3b0e369581e45f30d4ee866f1af",
+          "bytes": 3108
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Models/Seaweed.FBX",
+          "gitBlob": "6ed197297f0b18523c435d34316045671294f478",
+          "bytes": 29440
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Models/Seaweed.FBX.meta",
+          "gitBlob": "b69c23817426ab6d7f912c5ff4265a7a1df2d162",
+          "bytes": 3213
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Models/Shark.fbx",
+          "gitBlob": "89fde990be59e43aaf48f748c9126d34890a5b3d",
+          "bytes": 139472
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Models/Shark.fbx.meta",
+          "gitBlob": "cbcf02552a7663d7d1fb856316a5ac1928c3bc2a",
+          "bytes": 3163
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Shaders.meta",
+          "gitBlob": "3c70969dd33a6eff821d163a6b21d2105c9ddefa",
+          "bytes": 172
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Shaders/Wiggle.shadergraph",
+          "gitBlob": "cc8d73676534bcd628a259e71352eca5a933f086",
+          "bytes": 116507
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Shaders/Wiggle.shadergraph.meta",
+          "gitBlob": "3eb72706f63d9c78480e08a5b2e280867b3e772c",
+          "bytes": 285
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/TestBoidFish 1.prefab",
+          "gitBlob": "dcee679ef1c6985a29f8871040a887dc7dae98f9",
+          "bytes": 2808
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/TestBoidFish 1.prefab.meta",
+          "gitBlob": "bb5f32aef613b1cb2856d6a18374f33ed0c20bd6",
+          "bytes": 154
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/TestBoidFish.prefab",
+          "gitBlob": "5fcc12643353ae0731e0ffb4655190237b004084",
+          "bytes": 2806
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/TestBoidFish.prefab.meta",
+          "gitBlob": "a86f9f14afe054eea0a46fc65a33f0b7f7327e5d",
+          "bytes": 190
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Textures.meta",
+          "gitBlob": "696bcf05d3d030a5ba70efa8b2cc60631406c1cd",
+          "bytes": 191
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Textures/RockAlbedo.tif",
+          "gitBlob": "fe20cee8c612362571e11f7a0d7f78793a3a4b9f",
+          "bytes": 3339442
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Textures/RockAlbedo.tif.meta",
+          "gitBlob": "1d7b62257862eefb19a25c8351ae871449fd602b",
+          "bytes": 1474
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Textures/RockNormal.tif",
+          "gitBlob": "9c1fc2fb39a19dee971de171fd79f5ce25abc4b3",
+          "bytes": 5478036
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Textures/RockNormal.tif.meta",
+          "gitBlob": "08fec3796af6096ea38ff60457a8b9c9978b1433",
+          "bytes": 1474
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Textures/RockSpecularGloss.tif",
+          "gitBlob": "7b531682a999aca90ef25976cbfa1572a49aded1",
+          "bytes": 1159348
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Textures/RockSpecularGloss.tif.meta",
+          "gitBlob": "b2c3c8050906622e0a16a4e1f71c972599bd56f7",
+          "bytes": 1474
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Textures/SandAlbedo.tif",
+          "gitBlob": "0f73eb63bce07b31130e29e7b3ba51292f87bcc0",
+          "bytes": 1571572
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Textures/SandAlbedo.tif.meta",
+          "gitBlob": "eda5b259805b4184f05f4115c9d72f9e9d0b68b7",
+          "bytes": 3179
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Textures/SandNormals.tif",
+          "gitBlob": "6ecc543f6ec30566deb67f2acf280ef036d69ddd",
+          "bytes": 1573180
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Textures/SandNormals.tif.meta",
+          "gitBlob": "5f6ef8e51e75f6d43ac1fb813c4c4268022a4213",
+          "bytes": 1675
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Textures/SharkAlbedo.tga",
+          "gitBlob": "b42f600fc6e1638e56b4acd44906f36a68f1fc55",
+          "bytes": 12582956
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Textures/SharkAlbedo.tga.meta",
+          "gitBlob": "48408b018890a4f860fb932b80c76fb19b213938",
+          "bytes": 1474
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Textures/SharkMetallicGloss.tga",
+          "gitBlob": "e16b3062080d15cc1f6cb91e01cb8aeee54b912f",
+          "bytes": 16777260
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Textures/SharkMetallicGloss.tga.meta",
+          "gitBlob": "8ecac9fc542e926d3a7528875031f246fffcefd8",
+          "bytes": 1474
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Textures/caustics.meta",
+          "gitBlob": "c3d2e14b3060842e24ed2f417fcffb05b758ff9d",
+          "bytes": 191
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Textures/caustics/CausticsRender_001.tif",
+          "gitBlob": "fba977df86874680d9cb62434231f36695d724cc",
+          "bytes": 742532
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Textures/caustics/CausticsRender_001.tif.meta",
+          "gitBlob": "7ddc9e38143f9203ce6daee0d1e5000a30202779",
+          "bytes": 1673
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Textures/fishAlbedo.tga",
+          "gitBlob": "15858e3192f67f4ece6627b2493348b8edd0ca10",
+          "bytes": 3145772
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Textures/fishAlbedo.tga.meta",
+          "gitBlob": "44b64c04eefd77683a9c2fa1f4cc349701364e31",
+          "bytes": 1474
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Textures/fishAlbedo2.tif",
+          "gitBlob": "33ead576507b358a8193db4017594e018c57ea7f",
+          "bytes": 1722228
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Textures/fishAlbedo2.tif.meta",
+          "gitBlob": "fa31820fd5674dcce9adf86cbf4b5d59df0397fe",
+          "bytes": 1474
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Textures/fishMetallicGloss.tga",
+          "gitBlob": "5a1a5c9c7704359d27b6617beb2ecd4f2c64fdd6",
+          "bytes": 4194348
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Textures/fishMetallicGloss.tga.meta",
+          "gitBlob": "e9e8a1e831c0818358296e1e044ccfc7e65c6b74",
+          "bytes": 1474
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Textures/fishNormals.tga",
+          "gitBlob": "eb10b30256260bc3c4346f33c2a3d74ea57cea17",
+          "bytes": 3145772
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Textures/fishNormals.tga.meta",
+          "gitBlob": "d8b9fc0e1ceed57b970288899ef9ab3f66183c42",
+          "bytes": 1474
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Textures/fishRedAlbedo.tga",
+          "gitBlob": "473ed4e1802cd26a93aef46f66a15835fa19bc42",
+          "bytes": 3145772
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Textures/fishRedAlbedo.tga.meta",
+          "gitBlob": "3af4d0a06dbdf96b428a9f08d0a8034e1524e84b",
+          "bytes": 1474
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Textures/fishYellowAlbedo.tga",
+          "gitBlob": "d1c3e32c5136fa8bfadbae34a830825f47d9761e",
+          "bytes": 3145772
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Textures/fishYellowAlbedo.tga.meta",
+          "gitBlob": "1916f62877e10cb6321dfd520072efab1710f8cf",
+          "bytes": 1474
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Textures/tints.tif",
+          "gitBlob": "2486dcd1d3419b8ea6e44c59741c9f4da2319110",
+          "bytes": 71148
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/SampleAssets/Textures/tints.tif.meta",
+          "gitBlob": "a5d32240c86cc33f9b046069b502e0b300f3ae54",
+          "bytes": 1474
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/Scripts.meta",
+          "gitBlob": "30a4ddfeffb852d2ba327c44cd1573ea3a6daa12",
+          "bytes": 172
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/Scripts/BoidAuthoring.cs",
+          "gitBlob": "2b1609fa9470c58fb6d568344cea37dbd6fc266a",
+          "bytes": 1436
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/Scripts/BoidAuthoring.cs.meta",
+          "gitBlob": "aa22c0a292479c72419edfe1291f7db88e89f4ab",
+          "bytes": 86
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/Scripts/BoidObstacleAuthoring.cs",
+          "gitBlob": "8652b1558643c75f31c1ec7085d121d5d8520948",
+          "bytes": 485
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/Scripts/BoidObstacleAuthoring.cs.meta",
+          "gitBlob": "b2e39aba99caba61136fc4b82471d24d56729de5",
+          "bytes": 86
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/Scripts/BoidSchoolAuthoring.cs",
+          "gitBlob": "af60bb72a940d61ecffdcca995e2c7363bc0985f",
+          "bytes": 929
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/Scripts/BoidSchoolAuthoring.cs.meta",
+          "gitBlob": "9af24b727d5d9370707be62f8fd1912d5a06b72d",
+          "bytes": 86
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/Scripts/BoidSchoolSpawnSystem.cs",
+          "gitBlob": "4be25829bf067ccfb85fa520c6f7ee93e88af5a3",
+          "bytes": 3137
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/Scripts/BoidSchoolSpawnSystem.cs.meta",
+          "gitBlob": "c10fe056c15864d459a0f2041d079bfcc46e045a",
+          "bytes": 86
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/Scripts/BoidSystem.cs",
+          "gitBlob": "3ed555fd9e39c8cf7e48f7352bd28ce3d8066dd9",
+          "bytes": 21460
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/Scripts/BoidSystem.cs.meta",
+          "gitBlob": "3d341e9f06ef3f2e738d06443a37fc6fd822a665",
+          "bytes": 86
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/Scripts/BoidTargetAuthoring.cs",
+          "gitBlob": "b5e99f13fc7ed72179832a81ec4bd3195c327ac4",
+          "bytes": 472
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/Scripts/BoidTargetAuthoring.cs.meta",
+          "gitBlob": "d4736cc6f8be55eec08a17c984957b2ee46ff7a4",
+          "bytes": 86
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/Scripts/MMCWIF.cs",
+          "gitBlob": "7e2e331bf349b850cd700eb988ba6536e1b4073f",
+          "bytes": 1232
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/Scripts/MMCWIF.cs.meta",
+          "gitBlob": "0c4df3c233d6cca8a03107689d3340b9f889f2a2",
+          "bytes": 243
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/Scripts/MergeSharedKeyIndicesJob.cs",
+          "gitBlob": "251085ff551f0c1f29ae60b1fcfb621faa98abc1",
+          "bytes": 7709
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/Scripts/MergeSharedKeyIndicesJob.cs.meta",
+          "gitBlob": "9c181660bb7830bd01ff549f70dd32d1b1a0f9cb",
+          "bytes": 243
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/Scripts/SampledAnimationClip.cs",
+          "gitBlob": "73d784b719e9b14dd822081ed2e788e3f7c6337e",
+          "bytes": 555
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/Scripts/SampledAnimationClip.cs.meta",
+          "gitBlob": "d7d2c08224535faef99c276de8a73f123a68c2b9",
+          "bytes": 86
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/Scripts/SampledAnimationClipPlaybackSystem.cs",
+          "gitBlob": "31f39db360074169ff53785fd3b2d83eccfcb63f",
+          "bytes": 2864
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/Scripts/SampledAnimationClipPlaybackSystem.cs.meta",
+          "gitBlob": "16aba38934395d3f51cafc60eca9900e1ce02b79",
+          "bytes": 86
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/Scripts/Samples.Boids.asmdef",
+          "gitBlob": "156e4fa4378aaac9f7147212573fe491c06c2e79",
+          "bytes": 674
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/Scripts/Samples.Boids.asmdef.meta",
+          "gitBlob": "4d7c623966fd90d7a51728312c9447f7bd07eb56",
+          "bytes": 166
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/Scripts/TransformRecorderAuthoring.cs",
+          "gitBlob": "2f0ba806d9f49b668cf99f5b7e08cd63d613938d",
+          "bytes": 2584
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/Scripts/TransformRecorderAuthoring.cs.meta",
+          "gitBlob": "d04575efbd2abde28c302ca41dac41f08f38b9ad",
+          "bytes": 86
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/Subscenes.meta",
+          "gitBlob": "a37f92cf755de21cdaed70a2c992b5f7be02b03f",
+          "bytes": 172
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/Subscenes/Environment.unity",
+          "gitBlob": "99e2f818fe944d6de3e6e9ccb3fc958b3420b707",
+          "bytes": 214197
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/Subscenes/Environment.unity.meta",
+          "gitBlob": "fedc35ebdb4e3e5aedc49fad2f0565c8bf1213ae",
+          "bytes": 155
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/Subscenes/Simulation.unity",
+          "gitBlob": "14785b485052c4a4409e740b700c5446765bb1e9",
+          "bytes": 18641
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/Subscenes/Simulation.unity.meta",
+          "gitBlob": "677a0c85fd34ad55a246c1e1d7b5a1154c474d76",
+          "bytes": 155
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/Subscenes/SimulationSettings.lighting",
+          "gitBlob": "e013c311adbcbd2fbcd3bb8ad565700ab9c82168",
+          "bytes": 1758
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/Subscenes/SimulationSettings.lighting.meta",
+          "gitBlob": "c6e445178e30b7a6092bbed9fa29ded2761f6772",
+          "bytes": 182
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/boids.jpg",
+          "gitBlob": "11f4a349f6c51bd1c91fffaed40fe92021ce1168",
+          "bytes": 246822
+        },
+        {
+          "path": "EntitiesSamples/Assets/Boids/boids.jpg.meta",
+          "gitBlob": "9277c9b8d15ae953f9ea6a11994aa634a60a7101",
+          "bytes": 2860
+        },
+        {
+          "path": "EntitiesSamples/Packages/manifest.json",
+          "gitBlob": "0efabfb22cd766ff826249835940eab5d0c3026b",
+          "bytes": 1366
+        },
+        {
+          "path": "EntitiesSamples/Packages/packages-lock.json",
+          "gitBlob": "11c4b919db60addfcce9612deef71ce90a928dde",
+          "bytes": 12271
+        },
+        {
+          "path": "EntitiesSamples/ProjectSettings/AudioManager.asset",
+          "gitBlob": "27287fec5f4e4b712cbdd5b3a6383cbfd900b940",
+          "bytes": 413
+        },
+        {
+          "path": "EntitiesSamples/ProjectSettings/BurstAotSettings_StandaloneWindows.json",
+          "gitBlob": "2144f6dc76343a147a9d72a0fee4f88f6006e111",
+          "bytes": 373
+        },
+        {
+          "path": "EntitiesSamples/ProjectSettings/ClusterInputManager.asset",
+          "gitBlob": "e7886b266a005f4d9d80f2fef8d1649dcfd3ed2b",
+          "bytes": 114
+        },
+        {
+          "path": "EntitiesSamples/ProjectSettings/CommonBurstAotSettings.json",
+          "gitBlob": "3dffdba7e14ef8e960ff64af9ccc0a8d97ecebf8",
+          "bytes": 74
+        },
+        {
+          "path": "EntitiesSamples/ProjectSettings/DynamicsManager.asset",
+          "gitBlob": "1596c4230ee36d910e3583d8d0ce465fa1824f1f",
+          "bytes": 1254
+        },
+        {
+          "path": "EntitiesSamples/ProjectSettings/EditorBuildSettings.asset",
+          "gitBlob": "4ec291810a5d47bf5f71460924b87c5fefedee14",
+          "bytes": 284
+        },
+        {
+          "path": "EntitiesSamples/ProjectSettings/EditorSettings.asset",
+          "gitBlob": "9e6ab81aa206040983eea184086fc52e1d74d5cd",
+          "bytes": 1484
+        },
+        {
+          "path": "EntitiesSamples/ProjectSettings/EntitiesClientSettings.asset",
+          "gitBlob": "b42fbc73c3dfb64f26b39b75be731d4e4746c250",
+          "bytes": 440
+        },
+        {
+          "path": "EntitiesSamples/ProjectSettings/GraphicsSettings.asset",
+          "gitBlob": "0316bf2dd543827eabc7905b24c5b648125109c4",
+          "bytes": 2568
+        },
+        {
+          "path": "EntitiesSamples/ProjectSettings/InputManager.asset",
+          "gitBlob": "b16147e954fd861c2e2db769449894d310aa7b26",
+          "bytes": 9731
+        },
+        {
+          "path": "EntitiesSamples/ProjectSettings/MemorySettings.asset",
+          "gitBlob": "5b5facecace9276319b6e497953ab0429de65b61",
+          "bytes": 1192
+        },
+        {
+          "path": "EntitiesSamples/ProjectSettings/MultiplayerManager.asset",
+          "gitBlob": "2a936644e0d87339f17484efc93de6f0de5774b1",
+          "bytes": 157
+        },
+        {
+          "path": "EntitiesSamples/ProjectSettings/NavMeshAreas.asset",
+          "gitBlob": "3b0b7c3d183abdd300112f56965916ef11667f54",
+          "bytes": 1308
+        },
+        {
+          "path": "EntitiesSamples/ProjectSettings/PackageManagerSettings.asset",
+          "gitBlob": "94a75fbcc2415336ce864ef916d9fe9ecd5d4506",
+          "bytes": 952
+        },
+        {
+          "path": "EntitiesSamples/ProjectSettings/Packages/com.unity.testtools.codecoverage/Settings.json",
+          "gitBlob": "3c7b4c18bb0d72369422dce1472bb7d54e7024f2",
+          "bytes": 64
+        },
+        {
+          "path": "EntitiesSamples/ProjectSettings/Physics2DSettings.asset",
+          "gitBlob": "6c5cf8a004ac48f27cb36f7cdea139eb4d3e812f",
+          "bytes": 2028
+        },
+        {
+          "path": "EntitiesSamples/ProjectSettings/PresetManager.asset",
+          "gitBlob": "67a94daefe2e6bce3ec73546ad7cda94f702ad22",
+          "bytes": 146
+        },
+        {
+          "path": "EntitiesSamples/ProjectSettings/ProjectSettings.asset",
+          "gitBlob": "1f094fa5602484bbcb3dbdf6bae55b010cd7b9f0",
+          "bytes": 25276
+        },
+        {
+          "path": "EntitiesSamples/ProjectSettings/ProjectVersion.txt",
+          "gitBlob": "1ddb36df4987790272cfb3cd0aaa94a4f2011882",
+          "bytes": 85
+        },
+        {
+          "path": "EntitiesSamples/ProjectSettings/QualitySettings.asset",
+          "gitBlob": "6238eb73793d2a7dfae8ce87c1428716276e5e82",
+          "bytes": 3795
+        },
+        {
+          "path": "EntitiesSamples/ProjectSettings/SceneTemplateSettings.json",
+          "gitBlob": "6ed312ae2fd23bd858b9845953f0669a4da5488e",
+          "bytes": 3680
+        },
+        {
+          "path": "EntitiesSamples/ProjectSettings/ShaderGraphSettings.asset",
+          "gitBlob": "ce8c2432884fcc0d627b3cef54a6ea51d4f766e4",
+          "bytes": 556
+        },
+        {
+          "path": "EntitiesSamples/ProjectSettings/TagManager.asset",
+          "gitBlob": "b00eabb3f8d4216cbdb20335af5e3f965d4117d3",
+          "bytes": 537
+        },
+        {
+          "path": "EntitiesSamples/ProjectSettings/TimeManager.asset",
+          "gitBlob": "558a017e1f50b2db73414a1abad3c033922774f8",
+          "bytes": 202
+        },
+        {
+          "path": "EntitiesSamples/ProjectSettings/URPProjectSettings.asset",
+          "gitBlob": "64a8674a2a7b5c363c37efe03addc03dfe601ce9",
+          "bytes": 411
+        },
+        {
+          "path": "EntitiesSamples/ProjectSettings/UnityConnectSettings.asset",
+          "gitBlob": "6125b308af4d7e7649a33ce7facf541ff7e3ec47",
+          "bytes": 901
+        },
+        {
+          "path": "EntitiesSamples/ProjectSettings/VFXManager.asset",
+          "gitBlob": "3a95c98bec50cf72538061fd26eee95398f72128",
+          "bytes": 308
+        },
+        {
+          "path": "EntitiesSamples/ProjectSettings/VersionControlSettings.asset",
+          "gitBlob": "dca288142fc043d5a749e9058fe625505008834f",
+          "bytes": 188
+        },
+        {
+          "path": "EntitiesSamples/ProjectSettings/XRSettings.asset",
+          "gitBlob": "482590c196f7a82116679f58176b9d1aff21d7f9",
+          "bytes": 158
+        }
+      ]
+    }
+  ]
+}
