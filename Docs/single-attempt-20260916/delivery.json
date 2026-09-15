@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "run_id": "summit-single-attempt-20260916-181608Z",
+  "created_utc": "2026-09-15T18:27:09.770733+00:00",
+  "base_sha": "58ef769503d7bfe843d562155c9022fa31ef46ee",
+  "frozen_candidate_sha": "8a6d862f30f6f00acf39b67fa041b911eaea5651",
+  "branch": "codex/single-attempt-20260916-summit-gpu-systems",
+  "outcome": "SKIPPED",
+  "acceptance": "GPU consumer implementation and device acceptance incomplete",
+  "validation_status": "PASSED",
+  "validation_command": "python -B Docs/single-attempt-20260916/verify_evidence.py",
+  "validation_exit": 0,
+  "validation_runs": 1,
+  "scope": "Documentation and immutable evidence only; no new runtime implementation or GPU test",
+  "runtime_candidates": 0,
+  "gpu_experiment_runs": 0,
+  "read_only_remote_sessions": 3,
+  "remote_added_bytes": 0,
+  "owned_processes_remaining": 0,
+  "lock_released": true,
+  "pr_state": "DRAFT",
+  "frozen_archive": {
+    "path": "frozen-evidence.zip",
+    "sha256": "3cd399c91236d5ff9726923975b7d202b345605d1e5956b6900302445424c4d8",
+    "entries": 17,
+    "purpose": "Preserve exact pre-commit working-file bytes, including line endings, independently of Git text normalization.",
+    "reproduction": "Check out the frozen candidate commit, extract this archive over that checkout, then run the validation command once. The archive contains no validation.json and does not replace a prior validation receipt."
+  },
+  "evidence_files": [
+    {
+      "path": "DECISION.md",
+      "sha256": "4a962cc347ac8486ab6e465a7f5b50f785353188209895c8e61a5d8aa74a0944",
+      "bytes": 11764
+    },
+    {
+      "path": "frozen-evidence.json",
+      "sha256": "40c0320639fefcc12a7218bed109c72e4979526228f13ae88eddca8b12e012a7",
+      "bytes": 1857
+    },
+    {
+      "path": "frozen-evidence.zip",
+      "sha256": "3cd399c91236d5ff9726923975b7d202b345605d1e5956b6900302445424c4d8",
+      "bytes": 44778
+    },
+    {
+      "path": "local-inventory.json",
+      "sha256": "ad6f74b7d9b6706ae1e62d228818ea26541f2e747713d61a2a00e076d0d5874c",
+      "bytes": 696
+    },
+    {
+      "path": "preflight.json",
+      "sha256": "b304eecf4eec06530d96bb8ffa76ab55c299cbd63b67457038792702cd350b51",
+      "bytes": 3688
+    },
+    {
+      "path": "remote-closeout-incomplete.txt",
+      "sha256": "cbdda110f6181a58c27da0bf85fe88aafed8bab3ecc5a3058562f6407e72b53d",
+      "bytes": 151
+    },
+    {
+      "path": "remote-closeout.txt",
+      "sha256": "dda947b3e3d73cd0ae0d49e4c446c968df2b061501094208c5ad0331f1736de2",
+      "bytes": 277
+    },
+    {
+      "path": "remote-preflight.txt",
+      "sha256": "c101bd8934fb4f9b7a7a79435a6f86e1e501b756393490d72c0ca4ec8eb1d48d",
+      "bytes": 1125
+    },
+    {
+      "path": "source-map.json",
+      "sha256": "d50bdd2996ad6d9bd4691eca3ead3d9776ea6b31415c1c50c2e5bf4da4aa8b41",
+      "bytes": 37164
+    },
+    {
+      "path": "validation-process.txt",
+      "sha256": "84bcf293b384ffe0f8067d6740ae4d6c64ee5413d03355b6696a41f40b55c57f",
+      "bytes": 1105
+    },
+    {
+      "path": "validation.json",
+      "sha256": "84bcf293b384ffe0f8067d6740ae4d6c64ee5413d03355b6696a41f40b55c57f",
+      "bytes": 1105
+    },
+    {
+      "path": "verify_evidence.py",
+      "sha256": "cf04a875f618178372a0f23b481289873c62e8b4ae919bd5ce68f400b01e7c2c",
+      "bytes": 4750
+    }
+  ],
+  "closing_note": "The final delivery commit adds receipts/archive only. Its head and new PR URL are recorded by the coordinator; no self-referential head hash is claimed here."
+}
