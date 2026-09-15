@@ -1,0 +1,37 @@
+test_ambiguous_anchor_rejected (test_extraction.ExtractionTests.test_ambiguous_anchor_rejected) ... ok
+test_exact_force_and_update_blocks_and_no_overwrite (test_extraction.ExtractionTests.test_exact_force_and_update_blocks_and_no_overwrite) ... ok
+test_actual_backend_workers_and_cuda_identity_are_checked (test_gpu_acceptance.GpuAcceptanceTests.test_actual_backend_workers_and_cuda_identity_are_checked) ... ok
+test_capacity_count_device_and_pid_are_required (test_gpu_acceptance.GpuAcceptanceTests.test_capacity_count_device_and_pid_are_required) ... ok
+test_missing_or_rejected_numerical_receipts_cannot_pass (test_gpu_acceptance.GpuAcceptanceTests.test_missing_or_rejected_numerical_receipts_cannot_pass) ... ok
+test_counter_resets_gaps_and_zero_ticks_rejected (test_linux_telemetry.LinuxTelemetryTests.test_counter_resets_gaps_and_zero_ticks_rejected) ... ok
+test_first_observation_interference_is_not_dropped (test_linux_telemetry.LinuxTelemetryTests.test_first_observation_interference_is_not_dropped) ... ok
+test_foreign_unknown_pid_and_unattributed_gpu (test_linux_telemetry.LinuxTelemetryTests.test_foreign_unknown_pid_and_unattributed_gpu) ... ok
+test_missing_and_uninterpretable_observations (test_linux_telemetry.LinuxTelemetryTests.test_missing_and_uninterpretable_observations) ... ok
+test_owned_accounting_and_quota_denominator (test_linux_telemetry.LinuxTelemetryTests.test_owned_accounting_and_quota_denominator) ... ok
+test_proc_comm_and_guest_cpu_fields (test_linux_telemetry.LinuxTelemetryTests.test_proc_comm_and_guest_cpu_fields) ... ok
+test_quiet_window_starts_after_retained_calibration_preparation (test_linux_telemetry.LinuxTelemetryTests.test_quiet_window_starts_after_retained_calibration_preparation) ... ok
+test_quota_cpuset_and_namespace_mount (test_linux_telemetry.LinuxTelemetryTests.test_quota_cpuset_and_namespace_mount) ... ok
+test_reaped_child_cpu_is_not_replaced_with_zero (test_linux_telemetry.LinuxTelemetryTests.test_reaped_child_cpu_is_not_replaced_with_zero) ... ok
+test_throttle_memory_and_identity_changes (test_linux_telemetry.LinuxTelemetryTests.test_throttle_memory_and_identity_changes) ... ok
+test_offline_or_failed_process_does_not_calibrate (test_monitor_calibration.CalibrationTests.test_offline_or_failed_process_does_not_calibrate) ... ok
+test_parser_failure_cannot_be_reclassified_as_bootstrap (test_monitor_calibration.CalibrationTests.test_parser_failure_cannot_be_reclassified_as_bootstrap) ... ok
+test_synthetic_coverage_device_mapping_and_accounting (test_monitor_calibration.CalibrationTests.test_synthetic_coverage_device_mapping_and_accounting) ... ok
+test_build_identity_and_mutation_rejected (test_provenance.ProvenanceTests.test_build_identity_and_mutation_rejected) ... ok
+test_changed_and_added_source_rejected (test_provenance.ProvenanceTests.test_changed_and_added_source_rejected) ... ok
+test_changed_build_source_rejected (test_provenance.ProvenanceTests.test_changed_build_source_rejected) ... ok
+test_containment_rejected (test_provenance.ProvenanceTests.test_containment_rejected) ... ok
+test_freeze_cannot_accept_absent_inputs (test_provenance.ProvenanceTests.test_freeze_cannot_accept_absent_inputs) ... ok
+test_missing_and_empty_trees_rejected (test_provenance.ProvenanceTests.test_missing_and_empty_trees_rejected) ... ok
+test_missing_golden_and_nonfinite_state_rejected (test_provenance.ProvenanceTests.test_missing_golden_and_nonfinite_state_rejected) ... ok
+test_required_binary_missing_rejected (test_provenance.ProvenanceTests.test_required_binary_missing_rejected) ... ok
+test_stale_staged_source_rejected (test_provenance.ProvenanceTests.test_stale_staged_source_rejected) ... ok
+test_unmapped_staged_code_rejected (test_provenance.ProvenanceTests.test_unmapped_staged_code_rejected) ... ok
+test_complete_file_receipt_binds_multiple_actual_outputs (test_scalar_oracle.ScalarOracleTests.test_complete_file_receipt_binds_multiple_actual_outputs) ... ok
+test_empty_neighbours_preserve_velocity_and_still_update_position (test_scalar_oracle.ScalarOracleTests.test_empty_neighbours_preserve_velocity_and_still_update_position) ... ok
+test_inclusive_float_boundary_and_duplicate_identity (test_scalar_oracle.ScalarOracleTests.test_inclusive_float_boundary_and_duplicate_identity) ... ok
+test_known_two_particle_force_and_all_components (test_scalar_oracle.ScalarOracleTests.test_known_two_particle_force_and_all_components) ... ok
+
+----------------------------------------------------------------------
+Ran 32 tests in 0.149s
+
+OK

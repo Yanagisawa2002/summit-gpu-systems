@@ -1,0 +1,23 @@
+{
+  "offlineVerifierAttempts": [
+    {
+      "attempt": "r1",
+      "status": "aborted",
+      "ownedPid": 15332,
+      "reason": "Initial compressed-archive reader sought blobs in hash-set order, repeatedly decompressing xz. Stopped only the observed verifier PID/start identity before numerical completion. Replaced by sequential physical archive reads. No benchmark or remote workload rerun."
+    },
+    {
+      "attempt": "r2",
+      "status": "passed",
+      "receipt": "Artifacts/whole-task-md-20260915/portable-evidence-verification-r2.json"
+    },
+    {
+      "attempt": "final",
+      "status": "passed",
+      "scope": "Additional explicit scalar actual-state set and overflow canonical-case identity assertions, then full evidence replay.",
+      "receipt": "verification.json"
+    }
+  ],
+  "pushTransient": "First push of9932ec8 returned GitHub500; next push and ls-remote succeeded at9932ec879798345e69cea79f65615a68d7115b33.",
+  "postReplayManifestBindingCheck": "Added a pure constructor check binding the serialized full original manifest to its recorded SHA256; checked against the actual archive index. Current-head CI repeats the complete verifier."
+}

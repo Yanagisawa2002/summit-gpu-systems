@@ -19,5 +19,11 @@ jobs:
       - name: CPU planner adoption example
         shell: pwsh
         run: dotnet run --project Tools/Examples/IndexQueryPlanning -c Release
+      - name: Molecular dynamics validation contracts
+        shell: pwsh
+        run: python -B -m unittest discover -s PublicBenchmarks/WholeTaskMolecularDynamics/Scripts -p "test_*.py" -v
+      - name: Recheck complete recorded molecular dynamics evidence
+        shell: pwsh
+        run: python -B PublicBenchmarks/WholeTaskMolecularDynamics/Scripts/verify_evidence.py Docs/evidence/whole-task-md-linux-20260915/evidence.tar.xz --output "${{ runner.temp }}/molecular-evidence-recheck.json"
       # No Unity/Player, GPU dispatch, profiling, allocation counters, performance
       # framework, benchmark enumeration, autotuning, or upstream executable runs.

@@ -1,0 +1,1899 @@
+{
+  "status": "verified",
+  "logicalFiles": 11453,
+  "uniqueContents": 3541,
+  "buildInputProductManifests": 3,
+  "matrixProcesses": 56,
+  "matrixRepetitions": 112,
+  "matrixFullStateRepetitions": 98,
+  "matrixMembershipOnlyRepetitions": 14,
+  "bootstrapRepetitions": 400,
+  "fullSavedCsrFiles": 114,
+  "fullSavedStateFiles": 100,
+  "scalarRecomputedCases": [
+    {
+      "case": "discovery-8",
+      "components": 18432,
+      "actualStates": 4,
+      "maxAbs": [
+        6.984919309616089e-10,
+        2.384185791015625e-07,
+        2.288818359375e-05
+      ]
+    },
+    {
+      "case": "small-6",
+      "components": 7776,
+      "actualStates": 4,
+      "maxAbs": [
+        6.984919309616089e-10,
+        2.384185791015625e-07,
+        2.288818359375e-05
+      ]
+    },
+    {
+      "case": "original-10",
+      "components": 36000,
+      "actualStates": 4,
+      "maxAbs": [
+        1.1920928955078125e-07,
+        2.384185791015625e-07,
+        3.0517578125e-05
+      ]
+    },
+    {
+      "case": "large-20",
+      "components": 288000,
+      "actualStates": 4,
+      "maxAbs": [
+        9.5367431640625e-07,
+        2.384185791015625e-07,
+        3.814697265625e-05
+      ]
+    },
+    {
+      "case": "perturbed-10",
+      "components": 36000,
+      "actualStates": 4,
+      "maxAbs": [
+        1.9073486328125e-06,
+        9.1552734375e-05,
+        0.015625
+      ]
+    },
+    {
+      "case": "isolated-3",
+      "components": 27,
+      "actualStates": 4,
+      "maxAbs": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "case": "tail-129",
+      "components": 1161,
+      "actualStates": 4,
+      "maxAbs": [
+        4.3655745685100555e-11,
+        2.9802322387695312e-08,
+        3.814697265625e-06
+      ]
+    }
+  ],
+  "capacityRejections": [
+    128,
+    256
+  ],
+  "calibration": "rejected-reproduced",
+  "calibrationFailedIntervals": [
+    {
+      "index": 0,
+      "seconds": 1.2631052173674107,
+      "ownedCpuSeconds": 0.16401300000000008,
+      "cgroupCpuSeconds": 0.36963,
+      "cgroupBackgroundCores": 0.16278691368922618,
+      "affinityBackgroundCores": 0.3530877664566496,
+      "backgroundPercentOfCapacity": 4.4135970807081195,
+      "capacityCores": 8.0,
+      "gpuPercent": 0.0,
+      "foreignGpuProcesses": [],
+      "passed": false,
+      "reasons": [
+        "background CPU exceeds frozen limits"
+      ]
+    },
+    {
+      "index": 1,
+      "seconds": 1.46560487896204,
+      "ownedCpuSeconds": 0.20967800000000003,
+      "cgroupCpuSeconds": 0.431569,
+      "cgroupBackgroundCores": 0.15139892285098422,
+      "affinityBackgroundCores": 0.3891376237802301,
+      "backgroundPercentOfCapacity": 4.864220297252876,
+      "capacityCores": 8.0,
+      "gpuPercent": 0.0,
+      "foreignGpuProcesses": [],
+      "passed": false,
+      "reasons": [
+        "background CPU exceeds frozen limits"
+      ]
+    },
+    {
+      "index": 2,
+      "seconds": 1.2424166463315487,
+      "ownedCpuSeconds": 0.15753499999999976,
+      "cgroupCpuSeconds": 0.339606,
+      "cgroupBackgroundCores": 0.14654584719030975,
+      "affinityBackgroundCores": 0.26759541654698604,
+      "backgroundPercentOfCapacity": 3.3449427068373256,
+      "capacityCores": 8.0,
+      "gpuPercent": 0.0,
+      "foreignGpuProcesses": [],
+      "passed": false,
+      "reasons": [
+        "background CPU exceeds frozen limits"
+      ]
+    }
+  ],
+  "performanceEligible": false,
+  "limits": "Recomputed every saved complete CSR/state and scalar state; retained remote all-pairs membership receipt. External tool binaries were hashed on the host; this offline check does not execute or freshly validate that toolchain.",
+  "processes": [
+    {
+      "arm": "arborx-cuda",
+      "case": "boundary-membership",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 8,
+            "ids": 28
+          }
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 8,
+            "ids": 28
+          }
+        }
+      ]
+    },
+    {
+      "arm": "tiled128",
+      "case": "boundary-membership",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 8,
+            "ids": 28
+          }
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 8,
+            "ids": 28
+          }
+        }
+      ]
+    },
+    {
+      "arm": "tiled256",
+      "case": "boundary-membership",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 8,
+            "ids": 28
+          }
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 8,
+            "ids": 28
+          }
+        }
+      ]
+    },
+    {
+      "arm": "arborx-cuda",
+      "case": "discovery-8",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 2048,
+            "ids": 148136
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 2048,
+            "ids": 148136
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "tiled128",
+      "case": "discovery-8",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 2048,
+            "ids": 148136
+          },
+          "stateMaxAbs": [
+            6.984919309616089e-10,
+            2.384185791015625e-07,
+            2.288818359375e-05
+          ]
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 2048,
+            "ids": 148136
+          },
+          "stateMaxAbs": [
+            6.984919309616089e-10,
+            2.384185791015625e-07,
+            2.288818359375e-05
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "tiled256",
+      "case": "discovery-8",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 2048,
+            "ids": 148136
+          },
+          "stateMaxAbs": [
+            6.984919309616089e-10,
+            2.384185791015625e-07,
+            2.288818359375e-05
+          ]
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 2048,
+            "ids": 148136
+          },
+          "stateMaxAbs": [
+            6.984919309616089e-10,
+            2.384185791015625e-07,
+            2.288818359375e-05
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "arborx-cuda",
+      "case": "isolated-3",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 3,
+            "ids": 0
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 3,
+            "ids": 0
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "tiled128",
+      "case": "isolated-3",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 3,
+            "ids": 0
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 3,
+            "ids": 0
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "tiled256",
+      "case": "isolated-3",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 3,
+            "ids": 0
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 3,
+            "ids": 0
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "arborx-cuda",
+      "case": "large-20",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 32000,
+            "ids": 2682104
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 32000,
+            "ids": 2682104
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "tiled128",
+      "case": "large-20",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 32000,
+            "ids": 2682104
+          },
+          "stateMaxAbs": [
+            9.5367431640625e-07,
+            2.384185791015625e-07,
+            3.814697265625e-05
+          ]
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 32000,
+            "ids": 2682104
+          },
+          "stateMaxAbs": [
+            9.5367431640625e-07,
+            2.384185791015625e-07,
+            3.814697265625e-05
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "tiled256",
+      "case": "large-20",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 32000,
+            "ids": 2682104
+          },
+          "stateMaxAbs": [
+            9.5367431640625e-07,
+            2.384185791015625e-07,
+            3.814697265625e-05
+          ]
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 32000,
+            "ids": 2682104
+          },
+          "stateMaxAbs": [
+            9.5367431640625e-07,
+            2.384185791015625e-07,
+            3.814697265625e-05
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "arborx-cuda",
+      "case": "original-10",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 4000,
+            "ids": 304224
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 4000,
+            "ids": 304224
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "tiled128",
+      "case": "original-10",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 4000,
+            "ids": 304224
+          },
+          "stateMaxAbs": [
+            1.1920928955078125e-07,
+            2.384185791015625e-07,
+            3.0517578125e-05
+          ]
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 4000,
+            "ids": 304224
+          },
+          "stateMaxAbs": [
+            1.1920928955078125e-07,
+            2.384185791015625e-07,
+            3.0517578125e-05
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "tiled256",
+      "case": "original-10",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 4000,
+            "ids": 304224
+          },
+          "stateMaxAbs": [
+            1.1920928955078125e-07,
+            2.384185791015625e-07,
+            3.0517578125e-05
+          ]
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 4000,
+            "ids": 304224
+          },
+          "stateMaxAbs": [
+            1.1920928955078125e-07,
+            2.384185791015625e-07,
+            3.0517578125e-05
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "arborx-cuda",
+      "case": "perturbed-10",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 4000,
+            "ids": 300684
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 4000,
+            "ids": 300684
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "tiled128",
+      "case": "perturbed-10",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 4000,
+            "ids": 300684
+          },
+          "stateMaxAbs": [
+            1.9073486328125e-06,
+            9.1552734375e-05,
+            0.015625
+          ]
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 4000,
+            "ids": 300684
+          },
+          "stateMaxAbs": [
+            1.9073486328125e-06,
+            9.1552734375e-05,
+            0.015625
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "tiled256",
+      "case": "perturbed-10",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 4000,
+            "ids": 300684
+          },
+          "stateMaxAbs": [
+            1.9073486328125e-06,
+            9.1552734375e-05,
+            0.015625
+          ]
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 4000,
+            "ids": 300684
+          },
+          "stateMaxAbs": [
+            1.9073486328125e-06,
+            9.1552734375e-05,
+            0.015625
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "arborx-cuda",
+      "case": "small-6",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 864,
+            "ids": 57328
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 864,
+            "ids": 57328
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "tiled128",
+      "case": "small-6",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 864,
+            "ids": 57328
+          },
+          "stateMaxAbs": [
+            6.984919309616089e-10,
+            2.384185791015625e-07,
+            2.288818359375e-05
+          ]
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 864,
+            "ids": 57328
+          },
+          "stateMaxAbs": [
+            6.984919309616089e-10,
+            2.384185791015625e-07,
+            2.288818359375e-05
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "tiled256",
+      "case": "small-6",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 864,
+            "ids": 57328
+          },
+          "stateMaxAbs": [
+            6.984919309616089e-10,
+            2.384185791015625e-07,
+            2.288818359375e-05
+          ]
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 864,
+            "ids": 57328
+          },
+          "stateMaxAbs": [
+            6.984919309616089e-10,
+            2.384185791015625e-07,
+            2.288818359375e-05
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "arborx-cuda",
+      "case": "tail-129",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 129,
+            "ids": 1012
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 129,
+            "ids": 1012
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "tiled128",
+      "case": "tail-129",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 129,
+            "ids": 1012
+          },
+          "stateMaxAbs": [
+            4.3655745685100555e-11,
+            2.9802322387695312e-08,
+            3.814697265625e-06
+          ]
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 129,
+            "ids": 1012
+          },
+          "stateMaxAbs": [
+            4.3655745685100555e-11,
+            2.9802322387695312e-08,
+            3.814697265625e-06
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "tiled256",
+      "case": "tail-129",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 129,
+            "ids": 1012
+          },
+          "stateMaxAbs": [
+            4.3655745685100555e-11,
+            2.9802322387695312e-08,
+            3.814697265625e-06
+          ]
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 129,
+            "ids": 1012
+          },
+          "stateMaxAbs": [
+            4.3655745685100555e-11,
+            2.9802322387695312e-08,
+            3.814697265625e-06
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "tiled128",
+      "case": "original-10",
+      "bootstrap": true,
+      "repetitions": 400,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 4000,
+            "ids": 304224
+          },
+          "stateMaxAbs": [
+            1.1920928955078125e-07,
+            2.384185791015625e-07,
+            3.0517578125e-05
+          ]
+        },
+        {
+          "step": 399,
+          "csr": {
+            "rows": 4000,
+            "ids": 304224
+          },
+          "stateMaxAbs": [
+            1.1920928955078125e-07,
+            2.384185791015625e-07,
+            3.0517578125e-05
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "arborx",
+      "case": "boundary-membership",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 8,
+            "ids": 28
+          }
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 8,
+            "ids": 28
+          }
+        }
+      ]
+    },
+    {
+      "arm": "grid",
+      "case": "boundary-membership",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 8,
+            "ids": 28
+          }
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 8,
+            "ids": 28
+          }
+        }
+      ]
+    },
+    {
+      "arm": "arborx",
+      "case": "discovery-8",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 2048,
+            "ids": 148136
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 2048,
+            "ids": 148136
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "grid",
+      "case": "discovery-8",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 2048,
+            "ids": 148136
+          },
+          "stateMaxAbs": [
+            5.960464477539063e-08,
+            2.384185791015625e-07,
+            3.0517578125e-05
+          ]
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 2048,
+            "ids": 148136
+          },
+          "stateMaxAbs": [
+            5.960464477539063e-08,
+            2.384185791015625e-07,
+            3.0517578125e-05
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "arborx",
+      "case": "isolated-3",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 3,
+            "ids": 0
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 3,
+            "ids": 0
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "grid",
+      "case": "isolated-3",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 3,
+            "ids": 0
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 3,
+            "ids": 0
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "arborx",
+      "case": "large-20",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 32000,
+            "ids": 2682104
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 32000,
+            "ids": 2682104
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "grid",
+      "case": "large-20",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 32000,
+            "ids": 2682104
+          },
+          "stateMaxAbs": [
+            1.9073486328125e-06,
+            2.384185791015625e-07,
+            3.814697265625e-05
+          ]
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 32000,
+            "ids": 2682104
+          },
+          "stateMaxAbs": [
+            1.9073486328125e-06,
+            2.384185791015625e-07,
+            3.814697265625e-05
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "arborx",
+      "case": "original-10",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 4000,
+            "ids": 304224
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 4000,
+            "ids": 304224
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "grid",
+      "case": "original-10",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 4000,
+            "ids": 304224
+          },
+          "stateMaxAbs": [
+            9.5367431640625e-07,
+            2.384185791015625e-07,
+            3.814697265625e-05
+          ]
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 4000,
+            "ids": 304224
+          },
+          "stateMaxAbs": [
+            9.5367431640625e-07,
+            2.384185791015625e-07,
+            3.814697265625e-05
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "arborx",
+      "case": "perturbed-10",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 4000,
+            "ids": 300684
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 4000,
+            "ids": 300684
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "grid",
+      "case": "perturbed-10",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 4000,
+            "ids": 300684
+          },
+          "stateMaxAbs": [
+            1.9073486328125e-06,
+            9.1552734375e-05,
+            0.01953125
+          ]
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 4000,
+            "ids": 300684
+          },
+          "stateMaxAbs": [
+            1.9073486328125e-06,
+            9.1552734375e-05,
+            0.01953125
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "arborx",
+      "case": "small-6",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 864,
+            "ids": 57328
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 864,
+            "ids": 57328
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "grid",
+      "case": "small-6",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 864,
+            "ids": 57328
+          },
+          "stateMaxAbs": [
+            4.76837158203125e-07,
+            1.1920928955078125e-07,
+            2.288818359375e-05
+          ]
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 864,
+            "ids": 57328
+          },
+          "stateMaxAbs": [
+            4.76837158203125e-07,
+            1.1920928955078125e-07,
+            2.288818359375e-05
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "arborx",
+      "case": "tail-129",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 129,
+            "ids": 1012
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 129,
+            "ids": 1012
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "grid",
+      "case": "tail-129",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 129,
+            "ids": 1012
+          },
+          "stateMaxAbs": [
+            4.3655745685100555e-11,
+            2.9802322387695312e-08,
+            3.814697265625e-06
+          ]
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 129,
+            "ids": 1012
+          },
+          "stateMaxAbs": [
+            4.3655745685100555e-11,
+            2.9802322387695312e-08,
+            3.814697265625e-06
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "arborx-openmp",
+      "case": "boundary-membership",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 8,
+            "ids": 28
+          }
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 8,
+            "ids": 28
+          }
+        }
+      ]
+    },
+    {
+      "arm": "grid-openmp",
+      "case": "boundary-membership",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 8,
+            "ids": 28
+          }
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 8,
+            "ids": 28
+          }
+        }
+      ]
+    },
+    {
+      "arm": "arborx-openmp",
+      "case": "discovery-8",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 2048,
+            "ids": 148136
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 2048,
+            "ids": 148136
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "grid-openmp",
+      "case": "discovery-8",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 2048,
+            "ids": 148136
+          },
+          "stateMaxAbs": [
+            5.960464477539063e-08,
+            2.384185791015625e-07,
+            3.0517578125e-05
+          ]
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 2048,
+            "ids": 148136
+          },
+          "stateMaxAbs": [
+            5.960464477539063e-08,
+            2.384185791015625e-07,
+            3.0517578125e-05
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "arborx-openmp",
+      "case": "isolated-3",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 3,
+            "ids": 0
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 3,
+            "ids": 0
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "grid-openmp",
+      "case": "isolated-3",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 3,
+            "ids": 0
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 3,
+            "ids": 0
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "arborx-openmp",
+      "case": "large-20",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 32000,
+            "ids": 2682104
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 32000,
+            "ids": 2682104
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "grid-openmp",
+      "case": "large-20",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 32000,
+            "ids": 2682104
+          },
+          "stateMaxAbs": [
+            1.9073486328125e-06,
+            2.384185791015625e-07,
+            3.814697265625e-05
+          ]
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 32000,
+            "ids": 2682104
+          },
+          "stateMaxAbs": [
+            1.9073486328125e-06,
+            2.384185791015625e-07,
+            3.814697265625e-05
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "arborx-openmp",
+      "case": "original-10",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 4000,
+            "ids": 304224
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 4000,
+            "ids": 304224
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "grid-openmp",
+      "case": "original-10",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 4000,
+            "ids": 304224
+          },
+          "stateMaxAbs": [
+            9.5367431640625e-07,
+            2.384185791015625e-07,
+            3.814697265625e-05
+          ]
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 4000,
+            "ids": 304224
+          },
+          "stateMaxAbs": [
+            9.5367431640625e-07,
+            2.384185791015625e-07,
+            3.814697265625e-05
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "arborx-openmp",
+      "case": "perturbed-10",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 4000,
+            "ids": 300684
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 4000,
+            "ids": 300684
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "grid-openmp",
+      "case": "perturbed-10",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 4000,
+            "ids": 300684
+          },
+          "stateMaxAbs": [
+            1.9073486328125e-06,
+            9.1552734375e-05,
+            0.01953125
+          ]
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 4000,
+            "ids": 300684
+          },
+          "stateMaxAbs": [
+            1.9073486328125e-06,
+            9.1552734375e-05,
+            0.01953125
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "arborx-openmp",
+      "case": "small-6",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 864,
+            "ids": 57328
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 864,
+            "ids": 57328
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "grid-openmp",
+      "case": "small-6",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 864,
+            "ids": 57328
+          },
+          "stateMaxAbs": [
+            4.76837158203125e-07,
+            1.1920928955078125e-07,
+            2.288818359375e-05
+          ]
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 864,
+            "ids": 57328
+          },
+          "stateMaxAbs": [
+            4.76837158203125e-07,
+            1.1920928955078125e-07,
+            2.288818359375e-05
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "arborx-openmp",
+      "case": "tail-129",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 129,
+            "ids": 1012
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 129,
+            "ids": 1012
+          },
+          "stateMaxAbs": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "arm": "grid-openmp",
+      "case": "tail-129",
+      "bootstrap": false,
+      "repetitions": 2,
+      "audits": [
+        {
+          "step": 0,
+          "csr": {
+            "rows": 129,
+            "ids": 1012
+          },
+          "stateMaxAbs": [
+            4.3655745685100555e-11,
+            2.9802322387695312e-08,
+            3.814697265625e-06
+          ]
+        },
+        {
+          "step": 1,
+          "csr": {
+            "rows": 129,
+            "ids": 1012
+          },
+          "stateMaxAbs": [
+            4.3655745685100555e-11,
+            2.9802322387695312e-08,
+            3.814697265625e-06
+          ]
+        }
+      ]
+    }
+  ],
+  "archiveSha256": "9485945c0cc56dcd30217c68ac588fce1a6a45860bebef664b3cc2f62fd866de"
+}

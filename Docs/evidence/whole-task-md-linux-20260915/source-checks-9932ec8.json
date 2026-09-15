@@ -1,0 +1,9 @@
+{
+  "sourceCommit": "9932ec879798345e69cea79f65615a68d7115b33",
+  "previousCheckSourceCommit": "7ceaaeb94f81db5d1f2a8136632a5a386db758ce",
+  "previousChecksSha256": "541f6739c4f545a015086c7853a13dd94c3d96e8e93b25de12ae8abaed1e73e3",
+  "pythonContentUnchanged": true,
+  "pythonFiles": 21,
+  "gitDiffCheckExit": 0,
+  "scope": "Two CUDA-only C++ compatibility changes; current native CUDA compile and actual full matrix are the required validation. No repeated Python unit run."
+}

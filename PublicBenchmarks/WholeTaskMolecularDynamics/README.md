@@ -1,12 +1,15 @@
 # Molecular dynamics query consumer: complete-task investigation
 
-**Current status: source preparation only.** No native/Unity build, numerical
-experiment, or performance run has been completed. The second 2026-09-15 source
-pass adds Linux cgroup/GPU monitoring, a live-calibration gate, and the ordinary
-tiled CUDA control. All C++/CUDA remains uncompiled; actual host calibration and
-the SUMMIT GPU consumer remain open. See the
-[source preparation report](../../Docs/whole-task-md-20260915/LINUX_TILED_SOURCE_PREPARATION.md)
-and [next capability/correctness commands](../../Docs/whole-task-md-20260915/NEXT_LINUX_STAGE_COMMANDS.md).
+**Current status: native CPU/CUDA numerical matrices passed; formal performance
+remains NO-GO.** On Linux/RTX 5090, Serial and eight-worker OpenMP passed at
+`8032841`; ArborX CUDA and both ordinary tiled controls passed at `9932ec8`.
+There are 112 checked repetitions across seven arms and eight cases: 98 full
+force/velocity/position checks and 14 singular-boundary membership-only checks.
+Both tiled controls also passed the actual one-ID capacity rejection fixture.
+The SUMMIT GPU consumer and Unity Linux backend remain unimplemented/unvalidated.
+These correctness results do not establish a performance winner. See the
+[execution report](../../Docs/whole-task-md-20260915/LINUX_5090_NUMERICAL_RESULTS.md)
+for independent scalar acceptance, monitor calibration, failures and raw evidence.
 
 This harness follows the **force-to-position/velocity dependency slice** of the
 [pinned ArborX public single-step example](https://github.com/arborx/ArborX/blob/375875dfb6b2e7631b1ba599cd26ee5c1e68ab90/examples/molecular_dynamics/example_molecular_dynamics.cpp).
@@ -147,7 +150,8 @@ replaced to make a favorable result survive. Periodic counters cannot rule out
 unsampled bursts; nominal confidence intervals must be interpreted accordingly.
 Those provisional thresholds require discovery review.
 
-Linux qualification is implemented in source but **has not observed this host**.
+Linux telemetry has observed this host during the native validation campaign.
+Its separate live-calibration result is recorded in the execution report.
 It reads effective cgroup-v2 quotas/cpusets and visible ancestors, parent affinity
 and SMT-sibling CPU counters, live/reaped owned CPU time, throttling and memory
 events/headroom. Capacity uses the actual quota/affinity, not the visible CPU
@@ -197,9 +201,10 @@ evidence is changed. Actual final tools/hardware/results come from the receipts.
 
 Linux hardware access requires a separate coordinator admission; the Windows
 mutex/handoff does not grant access to the Linux 5090. SUMMIT received generation
-2 for staged CPU capability/correctness work after Data Layout's verified release.
-The source checkpoint below precedes execution; actual results require receipts.
-The reviewable next grant covers capabilities and numerical correctness only:
+2 for staged capability/correctness work after Data Layout's verified release;
+scope revision 2 also admitted CUDA, independent scalar acceptance and one fixed
+live-calibration attempt. Formal performance was not authorized by that grant.
+The earlier source checkpoint and stage budgets are retained here:
 [commands, pinned identities, budgets and stop points](../../Docs/whole-task-md-20260915/NEXT_LINUX_STAGE_COMMANDS.md).
 
 After admission, `prepare_hardware.py --native-only` prepares pinned source

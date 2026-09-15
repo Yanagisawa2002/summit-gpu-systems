@@ -1,0 +1,19 @@
+CUDA stage supervisor upload hash verified
+{
+  "stage": "cuda",
+  "status": "failed",
+  "error": "[Errno 2] No such file or directory: '/root/autodl-tmp/codex-whole-task-20260915/summit/gen2-cuda-r2/records/capability-r1/result.json'",
+  "elapsedSeconds": 0.0005698278546333313,
+  "ownedSurvivors": []
+}
+Traceback (most recent call last):
+  File "/root/autodl-tmp/codex-whole-task-20260915/summit/gen2-cuda-r2/control/stage_scope2.py", line 173, in <module>
+    capability=json.loads((BASE/'records/capability-r1/result.json').read_text())
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/autodl-tmp/codex-whole-task-20260915/data-layout/env/python/lib/python3.12/pathlib.py", line 1027, in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/autodl-tmp/codex-whole-task-20260915/data-layout/env/python/lib/python3.12/pathlib.py", line 1013, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/root/autodl-tmp/codex-whole-task-20260915/summit/gen2-cuda-r2/records/capability-r1/result.json'
