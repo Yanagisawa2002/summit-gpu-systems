@@ -1,0 +1,39 @@
+UTC=2026-09-15T18:18:02Z
+IDENTITY_MATCH=true
+LOCK_ACQUIRED=true
+Linux 5.15.0-94-generic x86_64
+PRETTY_NAME="Ubuntu 22.04.5 LTS"
+NAME="Ubuntu"
+VERSION_ID="22.04"
+VERSION="22.04.5 LTS (Jammy Jellyfish)"
+VERSION_CODENAME=jammy
+ID=ubuntu
+ID_LIKE=debian
+HOME_URL="https://www.ubuntu.com/"
+SUPPORT_URL="https://help.ubuntu.com/"
+BUG_REPORT_URL="https://bugs.launchpad.net/ubuntu/"
+PRIVACY_POLICY_URL="https://www.ubuntu.com/legal/terms-and-policies/privacy-policy"
+UBUNTU_CODENAME=jammy
+name, driver_version, memory.total [MiB], memory.used [MiB], utilization.gpu [%]
+NVIDIA GeForce RTX 5090, 595.58.03, 32607 MiB, 2 MiB, 0 %
+pid, process_name, used_gpu_memory [MiB]
+
+RESOURCE_LIMITS
+Filesystem        1B-blocks        Used    Available Use% Mounted on
+/dev/md0       375809638400 29320806400 346488832000   8% /root/autodl-tmp
+/sys/fs/cgroup/cpu.max=2500000 100000
+/sys/fs/cgroup/memory.max=96636764160
+/sys/fs/cgroup/memory.current=1454493696
+
+UNITY_COMMANDS
+
+UNITY_INSTALL_CANDIDATES
+
+PLAYER_CANDIDATES
+
+VULKAN_ICD_FILES
+/etc/vulkan/icd.d/nvidia_icd.json
+
+PROJECT_PROCESSES
+
+PREFLIGHT_END

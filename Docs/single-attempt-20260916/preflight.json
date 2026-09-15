@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "run_id": "summit-single-attempt-20260916-181608Z",
+  "base_sha": "58ef769503d7bfe843d562155c9022fa31ef46ee",
+  "branch": "codex/single-attempt-20260916-summit-gpu-systems",
+  "started_utc": "2026-09-15T18:16:08Z",
+  "platform_decision_utc": "2026-09-15T18:19:54Z",
+  "deadline_utc": "2026-09-15T19:46:08Z",
+  "status": "SKIPPED",
+  "reason": "No discovered existing Unity/Linux execution entry point; installed pinned local editor has Windows-only playback support; current molecular build and consumer do not provide the requested Linux GPU state chain.",
+  "scope": "Read-only platform preflight, source audit, documentation and evidence integrity validation.",
+  "attempt_consumed": true,
+  "runtime_candidates": 0,
+  "gpu_experiment_runs": 0,
+  "read_only_remote_sessions": 3,
+  "remote_added_bytes": 0,
+  "owned_processes_remaining": 0,
+  "lock_released_and_reacquired": true,
+  "remote_commands": [
+    {
+      "purpose": "inventory",
+      "invocation": "remote_campaign_ssh.py --profile <queue profile> run --command-file <remote-preflight.sh> --timeout 90 --lock",
+      "private_command_sha256": "38adbf0f3e9e11aef4b4508774372b614f49fe291f10fea4d9d446eb51fda387",
+      "exit": 0,
+      "raw_output": "remote-preflight.txt"
+    },
+    {
+      "purpose": "closeout tooling failure",
+      "invocation": "remote_campaign_ssh.py --profile <queue profile> run --command-file <remote-closeout.sh> --timeout 90",
+      "private_command_sha256": "b0f2b412edabe501a181d32a58cafd96223d69b592fa01562a7d3b58183dc988",
+      "exit": 127,
+      "raw_output": "remote-closeout-incomplete.txt",
+      "error": "python3 command not found; bash exited and its lock descriptor closed. No experiment was running."
+    },
+    {
+      "purpose": "necessary safety closeout using shell",
+      "invocation": "remote_campaign_ssh.py --profile <queue profile> run --command-file <remote-closeout-shell.sh> --timeout 90",
+      "private_command_sha256": "bf2920fa187f78bb3ba9650004496aacf23f90b54155cc1a90d97a6fdbfe8c74",
+      "exit": 0,
+      "raw_output": "remote-closeout.txt",
+      "lock_protocol": "acquire fd 9 with flock -n, inspect, release fd 9, reacquire with flock -n <lock> true"
+    }
+  ],
+  "inventory_search": {
+    "commands": [
+      "Unity",
+      "unity",
+      "unity-editor",
+      "UnityHub",
+      "unityhub",
+      "vulkaninfo",
+      "Xvfb"
+    ],
+    "directory_existence_checks": [
+      "/opt/unity",
+      "/opt/Unity",
+      "/opt/unityhub",
+      "/opt/UnityHub",
+      "/root/Unity",
+      "/root/UnityHub",
+      "/usr/local/Unity",
+      "/usr/local/unity",
+      "/root/.local/share/unity3d",
+      "/root/.local/share/UnityHub",
+      "/root/Unity/Hub/Editor"
+    ],
+    "player_search": "find <campaign root> -maxdepth 5 -type f: Unity, UnityPlayer.so, *.x86_64",
+    "vulkan_search": "/usr/share/vulkan/icd.d and /etc/vulkan/icd.d, maxdepth 1",
+    "limitation": "Bounded known-location search, not proof of absence from the entire host. No graphics context or compute dispatch tested."
+  },
+  "metrics": {
+    "correctness": null,
+    "task_wall_ms": null,
+    "gpu_ms": null,
+    "peak_vram_bytes": null,
+    "speedup": null,
+    "noise_calibration": null
+  },
+  "metric_status": "unavailable; no SUMMIT GPU physics experiment executed",
+  "historical_scope": "Native numerical passes and earlier formal performance NO-GO unchanged; earlier same-round native Serial advantage unchanged.",
+  "infrastructure_policy": "Public logs contain anonymous hardware only. Exact local helper scripts remain in queue evidence; their hashes are recorded above."
+}
