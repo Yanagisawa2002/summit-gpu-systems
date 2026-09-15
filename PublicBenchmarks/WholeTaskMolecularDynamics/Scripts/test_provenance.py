@@ -13,7 +13,7 @@ from provenance import capture, file_record, sha, tool_records, verify_build, ve
 class ProvenanceTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="summit-md-provenance-")
-        self.root = Path(self.temp.name)
+        self.root = Path(self.temp.name).resolve()
         self.addCleanup(self.temp.cleanup)
 
     def put(self, relative, data=b"fixture"):

@@ -43,7 +43,7 @@ class ScalarOracleTests(unittest.TestCase):
     def test_complete_file_receipt_binds_multiple_actual_outputs(self):
         # A two-particle synthetic file fixture, unrelated to the real case set.
         with tempfile.TemporaryDirectory(prefix="summit-scalar-fixture-") as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             run = root / "run"
             inputs = run / "inputs"
             inputs.mkdir(parents=True)
