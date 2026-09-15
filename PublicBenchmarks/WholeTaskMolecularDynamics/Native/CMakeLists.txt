@@ -27,8 +27,9 @@ foreach(target SummitMolecularNative UpstreamMolecularOriginal)
   if(MSVC)
     target_compile_options(${target} PRIVATE /O2 /fp:strict)
   elseif(MD_BACKEND STREQUAL "cuda")
-    # nvcc_wrapper compiles CXX sources. No fast math or FMA contraction.
-    target_compile_options(${target} PRIVATE --fmad=false -Xcompiler=-ffp-contract=off)
+    # nvcc_wrapper adds -Xcompiler itself; pass the host flag directly.
+    # Keep device and host FMA contraction disabled.
+    target_compile_options(${target} PRIVATE --fmad=false -ffp-contract=off)
   else()
     target_compile_options(${target} PRIVATE -fno-fast-math -ffp-contract=off)
   endif()

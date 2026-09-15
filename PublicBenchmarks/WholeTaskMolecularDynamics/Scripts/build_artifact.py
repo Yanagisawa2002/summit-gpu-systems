@@ -83,7 +83,7 @@ def native(args):
                      "-DKokkos_ENABLE_TESTS=OFF", "-DKokkos_ENABLE_EXAMPLES=OFF"]
         if backend == "cuda":
             configure += ["-DKokkos_ARCH_BLACKWELL120=ON", "-DKokkos_ENABLE_CUDA_LAMBDA=ON",
-                          "-DCMAKE_CXX_FLAGS=--fmad=false -Xcompiler=-ffp-contract=off"]
+                          "-DCMAKE_CXX_FLAGS=--fmad=false -ffp-contract=off"]
         session.execute(configure, ROOT, logs / "01-kokkos-configure.log", env)
         session.execute([cmake, "--build", str(kb), "--target", "install", "--parallel", str(args.jobs)],
                         ROOT, logs / "02-kokkos-build.log", env)
