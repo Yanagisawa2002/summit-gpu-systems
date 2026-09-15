@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "scope": "Frozen documentation evidence; manifest and post-validation receipts excluded to avoid self-reference",
+  "files": [
+    {
+      "path": "Docs/single-attempt-20260916/DECISION.md",
+      "sha256": "4a962cc347ac8486ab6e465a7f5b50f785353188209895c8e61a5d8aa74a0944",
+      "bytes": 11764
+    },
+    {
+      "path": "Docs/single-attempt-20260916/local-inventory.json",
+      "sha256": "ad6f74b7d9b6706ae1e62d228818ea26541f2e747713d61a2a00e076d0d5874c",
+      "bytes": 696
+    },
+    {
+      "path": "Docs/single-attempt-20260916/preflight.json",
+      "sha256": "b304eecf4eec06530d96bb8ffa76ab55c299cbd63b67457038792702cd350b51",
+      "bytes": 3688
+    },
+    {
+      "path": "Docs/single-attempt-20260916/remote-closeout-incomplete.txt",
+      "sha256": "cbdda110f6181a58c27da0bf85fe88aafed8bab3ecc5a3058562f6407e72b53d",
+      "bytes": 151
+    },
+    {
+      "path": "Docs/single-attempt-20260916/remote-closeout.txt",
+      "sha256": "dda947b3e3d73cd0ae0d49e4c446c968df2b061501094208c5ad0331f1736de2",
+      "bytes": 277
+    },
+    {
+      "path": "Docs/single-attempt-20260916/remote-preflight.txt",
+      "sha256": "c101bd8934fb4f9b7a7a79435a6f86e1e501b756393490d72c0ca4ec8eb1d48d",
+      "bytes": 1125
+    },
+    {
+      "path": "Docs/single-attempt-20260916/source-map.json",
+      "sha256": "d50bdd2996ad6d9bd4691eca3ead3d9776ea6b31415c1c50c2e5bf4da4aa8b41",
+      "bytes": 37164
+    },
+    {
+      "path": "Docs/single-attempt-20260916/verify_evidence.py",
+      "sha256": "cf04a875f618178372a0f23b481289873c62e8b4ae919bd5ce68f400b01e7c2c",
+      "bytes": 4750
+    },
+    {
+      "path": "PublicBenchmarks/WholeTaskMolecularDynamics/README.md",
+      "sha256": "a93b8db4cd6283961f501b13a7b5e2c2882142786ddea70e0ba6164b1db962fa",
+      "bytes": 15370
+    }
+  ]
+}

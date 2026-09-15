@@ -1,0 +1,42 @@
+{
+  "started_utc": "2026-09-15T18:26:00.567785+00:00",
+  "scope": "Frozen documentation, source references and evidence integrity only",
+  "gpu_tests_run": 0,
+  "checks": [
+    {
+      "command": [
+        "git",
+        "diff",
+        "58ef769503d7bfe843d562155c9022fa31ef46ee",
+        "8a6d862f30f6f00acf39b67fa041b911eaea5651",
+        "--check"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "check": "base/candidate blobs, current file SHA256 and numbered source excerpts",
+      "sources": 7,
+      "exit": 0
+    },
+    {
+      "check": "frozen evidence SHA256",
+      "files": 9,
+      "exit": 0
+    },
+    {
+      "check": "relative documentation links",
+      "links": 14,
+      "exit": 0
+    },
+    {
+      "check": "skip/closeout consistency and public infrastructure identity scan",
+      "exit": 0
+    }
+  ],
+  "status": "PASSED",
+  "frozen_candidate_sha": "8a6d862f30f6f00acf39b67fa041b911eaea5651",
+  "base_sha": "58ef769503d7bfe843d562155c9022fa31ef46ee",
+  "ended_utc": "2026-09-15T18:26:01.153100+00:00"
+}

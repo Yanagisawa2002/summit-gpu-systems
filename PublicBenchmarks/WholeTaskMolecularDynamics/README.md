@@ -11,6 +11,14 @@ These correctness results do not establish a performance winner. See the
 [execution report](../../Docs/whole-task-md-20260915/LINUX_5090_NUMERICAL_RESULTS.md)
 for independent scalar acceptance, monitor calibration, failures and raw evidence.
 
+The [September 16 single-attempt platform gate](../../Docs/single-attempt-20260916/DECISION.md)
+ended **SKIPPED**: no available Unity/Linux execution entry point was discovered,
+the pinned local editor had only Windows build support, and the molecular Player
+still routes GPU query results into CPU force/state updates. The report records
+fresh platform evidence and the missing GPU consumer's interface/lifetime
+contract. No new consumer, device correctness result or performance claim was
+produced; the native results above retain their original scope.
+
 This harness follows the **force-to-position/velocity dependency slice** of the
 [pinned ArborX public single-step example](https://github.com/arborx/ArborX/blob/375875dfb6b2e7631b1ba599cd26ee5c1e68ab90/examples/molecular_dynamics/example_molecular_dynamics.cpp).
 It is not a production simulation or a library random-query replay. See the

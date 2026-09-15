@@ -1,0 +1,25 @@
+{
+  "observed_utc": "2026-09-15T18:19:53.1959686Z",
+  "os": "Microsoft Windows 10.0.26200",
+  "unity_version": "6000.5.2f1",
+  "unity_editor_present": true,
+  "installed_playback_engines": [
+    "windowsstandalonesupport"
+  ],
+  "video_controllers": [
+    {
+      "name": "Intel(R) Graphics",
+      "driver_version": "32.0.101.5869"
+    },
+    {
+      "name": "NVIDIA GeForce RTX 4090",
+      "driver_version": "32.0.15.9186"
+    }
+  ],
+  "unity_processes": [],
+  "dotnet_version": "10.0.201",
+  "source_worktree_status": [],
+  "base_sha": "58ef769503d7bfe843d562155c9022fa31ef46ee",
+  "ancestor_instruction_files_found": [],
+  "repository_instruction_files_found": []
+}
