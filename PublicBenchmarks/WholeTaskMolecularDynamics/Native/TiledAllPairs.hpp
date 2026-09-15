@@ -29,7 +29,9 @@ void visit(Points points,float radius,Vectors forces,Ints counts,Ints offsets,In
   if(n<1||n>MaxParticles||radius!=3.f)throw std::invalid_argument("Tiled control input/radius budget");
   ExecutionSpace exec;
   auto policy=Policy(exec,(n+Tile-1)/Tile,Tile,1).set_scratch_size(0,Kokkos::PerTeam(Scratch::shmem_size(Tile)));
-  Kokkos::parallel_for("OrdinaryGPU::tiled_neighbours",policy,KOKKOS_LAMBDA(Team const&team){
+  // NVCC requires explicit captures for views first used inside if constexpr.
+  Kokkos::parallel_for("OrdinaryGPU::tiled_neighbours",policy,
+    [points,radius,n,forces,counts,offsets,ids,errors] KOKKOS_FUNCTION(Team const&team){
     Scratch tile(team.team_scratch(0),Tile);
     int lane=team.team_rank(),q=team.league_rank()*Tile+lane;
     bool active=q<n;

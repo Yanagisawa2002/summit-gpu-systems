@@ -42,9 +42,10 @@ struct State { std::vector<float> p,v,f; };
 
 #if defined(SUMMIT_MD_CUDA)
 std::string actual_cuda_uuid(){
-  int device=0;cudaUUID_t uuid{};
-  if(cudaGetDevice(&device)!=cudaSuccess||cudaDeviceGetUuid(&uuid,device)!=cudaSuccess)
+  int device=0;cudaDeviceProp properties{};
+  if(cudaGetDevice(&device)!=cudaSuccess||cudaGetDeviceProperties(&properties,device)!=cudaSuccess)
     throw std::runtime_error("Actual CUDA device identity unavailable");
+  auto const&uuid=properties.uuid;
   std::ostringstream value;value<<"GPU-"<<std::hex<<std::setfill('0');
   for(int i=0;i<16;++i){if(i==4||i==6||i==8||i==10)value<<'-';value<<std::setw(2)<<unsigned(static_cast<unsigned char>(uuid.bytes[i]));}
   return value.str();
