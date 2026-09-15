@@ -1,0 +1,67 @@
+{
+  "maxAbsolute": [
+    {
+      "case": "perturbed-10",
+      "field": "position",
+      "component": 11001,
+      "actual": 16.96914291381836,
+      "expected": 16.969144821166992,
+      "error": 1.9073486328125e-06,
+      "allowed": 5.3938289642333986e-05,
+      "ratio": 0.03536168175632138
+    },
+    {
+      "case": "perturbed-10",
+      "field": "velocity",
+      "component": 2606,
+      "actual": 182.70199584960938,
+      "expected": 182.701904296875,
+      "error": 9.1552734375e-05,
+      "allowed": 0.0036740380859375003,
+      "ratio": 0.02491883106095744
+    },
+    {
+      "case": "perturbed-10",
+      "field": "force",
+      "component": 2606,
+      "actual": 36479.015625,
+      "expected": 36479.0,
+      "error": 0.015625,
+      "allowed": 0.73158,
+      "ratio": 0.02135788293829793
+    }
+  ],
+  "maxNormalized": [
+    {
+      "case": "perturbed-10",
+      "field": "position",
+      "component": 11601,
+      "actual": 16.902029037475586,
+      "expected": 16.90203094482422,
+      "error": 1.9073486328125e-06,
+      "allowed": 5.380406188964844e-05,
+      "ratio": 0.03544990035742007
+    },
+    {
+      "case": "perturbed-10",
+      "field": "velocity",
+      "component": 1298,
+      "actual": 0.6249802112579346,
+      "expected": 0.6249783039093018,
+      "error": 1.9073486328125e-06,
+      "allowed": 3.249956607818604e-05,
+      "ratio": 0.058688433815512614
+    },
+    {
+      "case": "perturbed-10",
+      "field": "force",
+      "component": 1298,
+      "actual": 25.49299430847168,
+      "expected": 25.492612838745117,
+      "error": 0.0003814697265625,
+      "allowed": 0.0025098522567749025,
+      "ratio": 0.15198891708975695
+    }
+  ],
+  "toleranceChanged": false
+}

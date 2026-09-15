@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "archive": "evidence.tar.xz",
+  "sha256": "9485945c0cc56dcd30217c68ac588fce1a6a45860bebef664b3cc2f62fd866de",
+  "archiveBytes": 19060020,
+  "logicalFiles": 11453,
+  "logicalBytes": 506793142,
+  "uniqueContents": 3541,
+  "originalArchiveSha256": "9df30f37df8e103e470f2d98446494979e04b88a77e1a64ef6f4e1985019eebb",
+  "elapsedSeconds": 33.80960680000135,
+  "scope": "All11453 original exported files retained as hash-addressed contents plus logical paths; only duplicate bytes deduplicated. No numerical rows, failures, logs, source or product files dropped."
+}

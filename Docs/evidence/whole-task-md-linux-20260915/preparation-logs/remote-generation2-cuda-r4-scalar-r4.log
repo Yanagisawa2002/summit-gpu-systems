@@ -1,0 +1,21 @@
+CUDA stage supervisor upload hash verified
+Started scalar-r4-isolated-3 pid=15425
+Finished scalar-r4-isolated-3 exit=0
+Started scalar-r4-tail-129 pid=15430
+Finished scalar-r4-tail-129 exit=0
+Started scalar-r4-small-6 pid=15435
+Finished scalar-r4-small-6 exit=0
+Started scalar-r4-discovery-8 pid=15440
+Finished scalar-r4-discovery-8 exit=0
+Started scalar-r4-original-10 pid=15449
+Finished scalar-r4-original-10 exit=0
+Started scalar-r4-perturbed-10 pid=15488
+Finished scalar-r4-perturbed-10 exit=0
+Started scalar-r4-large-20 pid=15505
+Finished scalar-r4-large-20 exit=0
+{
+  "stage": "scalar",
+  "status": "passed",
+  "elapsedSeconds": 79.939038913697,
+  "ownedSurvivors": []
+}

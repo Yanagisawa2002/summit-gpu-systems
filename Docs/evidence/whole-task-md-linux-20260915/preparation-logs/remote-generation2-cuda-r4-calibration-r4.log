@@ -1,0 +1,19 @@
+CUDA stage supervisor upload hash verified
+Started 01-fixed-400-bootstrap pid=15549
+Finished 01-fixed-400-bootstrap exit=0
+Started 02-monitor-calibration pid=15581
+Finished 02-monitor-calibration exit=1
+{
+  "stage": "calibration",
+  "status": "failed",
+  "error": "Command failed: 02-monitor-calibration",
+  "elapsedSeconds": 12.023718152195215,
+  "ownedSurvivors": []
+}
+Traceback (most recent call last):
+  File "/root/autodl-tmp/codex-whole-task-20260915/summit/gen2-cuda-r4/control/stage_scope2_r4.py", line 272, in <module>
+    execute([python,'-B',SCRIPTS/'monitor_calibration.py',run/'runs/monitor-bootstrap-r4','--output',run/'linux-monitor-calibration-r4.json'],'02-monitor-calibration')
+  File "/root/autodl-tmp/codex-whole-task-20260915/summit/gen2-cuda-r4/control/stage_scope2_r4.py", line 155, in execute
+    if child.returncode: raise RuntimeError('Command failed: '+label)
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: Command failed: 02-monitor-calibration

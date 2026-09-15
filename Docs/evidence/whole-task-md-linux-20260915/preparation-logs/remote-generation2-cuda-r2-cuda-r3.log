@@ -1,0 +1,23 @@
+CUDA stage supervisor upload hash verified
+Started 00-nvcc-version pid=10618
+Finished 00-nvcc-version exit=0
+Started 00-nvcc-targets pid=10619
+Finished 00-nvcc-targets exit=0
+Started 00-wrapper-flag-routing pid=10620
+Finished 00-wrapper-flag-routing exit=0
+Started 01-cuda-build pid=10623
+Finished 01-cuda-build exit=1
+{
+  "stage": "cuda",
+  "status": "failed",
+  "error": "Command failed: 01-cuda-build",
+  "elapsedSeconds": 81.94532294943929,
+  "ownedSurvivors": []
+}
+Traceback (most recent call last):
+  File "/root/autodl-tmp/codex-whole-task-20260915/summit/gen2-cuda-r2/control/stage_scope2_r3.py", line 247, in <module>
+    execute([python,'-B',SCRIPTS/'build_artifact.py','native','--backend','cuda','--cxx',cxx,'--cmake',cmake,'--nvcc',nvcc,'--jobs','4'],'01-cuda-build')
+  File "/root/autodl-tmp/codex-whole-task-20260915/summit/gen2-cuda-r2/control/stage_scope2_r3.py", line 155, in execute
+    if child.returncode: raise RuntimeError('Command failed: '+label)
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: Command failed: 01-cuda-build

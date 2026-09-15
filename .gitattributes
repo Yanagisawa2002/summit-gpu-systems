@@ -21,3 +21,5 @@ Integrations/HlslKernelPipeline/Artifact~/** -text
 Integrations/HlslKernelPipeline/Artifact~/consumer-manifest.json text eol=lf
 # Preserve upstream notice whitespace along with its exact reviewed byte hash.
 PublicBenchmarks/External/Notices/*.txt -text whitespace=-trailing-space
+# Keep observed receipts/logs and their recorded hashes byte-exact across hosts.
+Docs/evidence/whole-task-md-linux-20260915/** -text whitespace=-trailing-space,cr-at-eol

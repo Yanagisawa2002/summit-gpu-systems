@@ -1,0 +1,66 @@
+{
+  "status": "verified",
+  "sourceCommit": "7ceaaeb94f81db5d1f2a8136632a5a386db758ce",
+  "verifiedFiles": 449,
+  "inheritedLockFds": [
+    3
+  ],
+  "oldFailedFetchProcesses": [],
+  "remainingFailedFetchProcesses": [],
+  "metadataBundleSha256": "08a535b2af583d65ce829886772377f667127ab68be459ae1768a6c6990ce654",
+  "retainedFailedGitMetadata": "/root/autodl-tmp/codex-whole-task-20260915/summit/gen2-cuda-r2/records/git-fetch-timeout-r2",
+  "rawObjectEvidence": [
+    {
+      "path": "PublicBenchmarks/WholeTaskMolecularDynamics/Native/CMakeLists.txt",
+      "file": "base-0.blob",
+      "gitObjectId": "3de5251550e11e0401ae3d846766126f99836291",
+      "sha256": "31db50c4ffa7c763ed010fac6029d79ee328659dd5074bf8ebbb67b797df3824",
+      "bytes": 1799,
+      "rawCRLF": 0,
+      "uploadedSha256": "df1d81fafff53f7839efd082428173b0f4d26967d667804d9817b20fa7336eaf",
+      "uploadedBytes": 1834,
+      "uploadedCRLF": 35,
+      "uploadedEqualsBlobAfterCRLFNormalization": true
+    },
+    {
+      "path": "PublicBenchmarks/WholeTaskMolecularDynamics/Scripts/build_artifact.py",
+      "file": "base-1.blob",
+      "gitObjectId": "3a7e0be4eac1f5f26230b363ef1583bdbf78ebe8",
+      "sha256": "cec04578196adb612c4a576354ce3383a16bda5e8bd44498c1189b496aa5d625",
+      "bytes": 8790,
+      "rawCRLF": 0,
+      "uploadedSha256": "ae478e4e6f65084eec0e78c67e8d7fcc14116f13c00fc1eb8c7b26936437169a",
+      "uploadedBytes": 8947,
+      "uploadedCRLF": 157,
+      "uploadedEqualsBlobAfterCRLFNormalization": true
+    }
+  ]
+}
+{
+  "status": "passed",
+  "sourceCommit": "7ceaaeb94f81db5d1f2a8136632a5a386db758ce",
+  "assignedCpuIds": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+  ],
+  "dataFreeBytes": 51909574656,
+  "minimumMemoryHeadroomBytes": 94180954112,
+  "gpuProductName": "NVIDIA GeForce RTX 5090",
+  "gpuUuid": "GPU-27a668ff-c748-4395-c3e1-32c396c485a0",
+  "existingNvcc": [
+    {
+      "path": "/usr/local/cuda-12.8/bin/nvcc",
+      "versionExit": 0,
+      "version": "nvcc: NVIDIA (R) Cuda compiler driver\nCopyright (c) 2005-2025 NVIDIA Corporation\nBuilt on Fri_Feb_21_20:23:50_PST_2025\nCuda compilation tools, release 12.8, V12.8.93\nBuild cuda_12.8.r12.8/compiler.35583870_0\n",
+      "targetExit": 0,
+      "targets": "sm_50\nsm_52\nsm_53\nsm_60\nsm_61\nsm_62\nsm_70\nsm_72\nsm_75\nsm_80\nsm_86\nsm_87\nsm_89\nsm_90\nsm_100\nsm_101\nsm_120\n"
+    }
+  ]
+}
+Original canonical snapshot and fixed dependencies copied with complete hash checks

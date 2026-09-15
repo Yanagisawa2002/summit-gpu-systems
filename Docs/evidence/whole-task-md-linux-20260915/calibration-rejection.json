@@ -1,0 +1,189 @@
+{
+  "status": "rejected-reproduced",
+  "recordedError": "Live CPU/GPU accounting, background, memory or throttling failed qualification",
+  "actualPid": 15566,
+  "rows": 9,
+  "beforeRows": 5,
+  "duringRows": 3,
+  "actualGpuPidSamples": 3,
+  "taskOverlappingSamples": 3,
+  "checkedTaskRows": 400,
+  "allTaskRowsVerified": true,
+  "totalOwnedCpuSeconds": 5.667112,
+  "failedIntervals": [
+    {
+      "index": 0,
+      "seconds": 1.2631052173674107,
+      "ownedCpuSeconds": 0.16401300000000008,
+      "cgroupCpuSeconds": 0.36963,
+      "cgroupBackgroundCores": 0.16278691368922618,
+      "affinityBackgroundCores": 0.3530877664566496,
+      "backgroundPercentOfCapacity": 4.4135970807081195,
+      "capacityCores": 8.0,
+      "gpuPercent": 0.0,
+      "foreignGpuProcesses": [],
+      "passed": false,
+      "reasons": [
+        "background CPU exceeds frozen limits"
+      ]
+    },
+    {
+      "index": 1,
+      "seconds": 1.46560487896204,
+      "ownedCpuSeconds": 0.20967800000000003,
+      "cgroupCpuSeconds": 0.431569,
+      "cgroupBackgroundCores": 0.15139892285098422,
+      "affinityBackgroundCores": 0.3891376237802301,
+      "backgroundPercentOfCapacity": 4.864220297252876,
+      "capacityCores": 8.0,
+      "gpuPercent": 0.0,
+      "foreignGpuProcesses": [],
+      "passed": false,
+      "reasons": [
+        "background CPU exceeds frozen limits"
+      ]
+    },
+    {
+      "index": 2,
+      "seconds": 1.2424166463315487,
+      "ownedCpuSeconds": 0.15753499999999976,
+      "cgroupCpuSeconds": 0.339606,
+      "cgroupBackgroundCores": 0.14654584719030975,
+      "affinityBackgroundCores": 0.26759541654698604,
+      "backgroundPercentOfCapacity": 3.3449427068373256,
+      "capacityCores": 8.0,
+      "gpuPercent": 0.0,
+      "foreignGpuProcesses": [],
+      "passed": false,
+      "reasons": [
+        "background CPU exceeds frozen limits"
+      ]
+    }
+  ],
+  "intervals": [
+    {
+      "seconds": 1.2631052173674107,
+      "ownedCpuSeconds": 0.16401300000000008,
+      "cgroupCpuSeconds": 0.36963,
+      "cgroupBackgroundCores": 0.16278691368922618,
+      "affinityBackgroundCores": 0.3530877664566496,
+      "backgroundPercentOfCapacity": 4.4135970807081195,
+      "capacityCores": 8.0,
+      "gpuPercent": 0.0,
+      "foreignGpuProcesses": [],
+      "passed": false,
+      "reasons": [
+        "background CPU exceeds frozen limits"
+      ]
+    },
+    {
+      "seconds": 1.46560487896204,
+      "ownedCpuSeconds": 0.20967800000000003,
+      "cgroupCpuSeconds": 0.431569,
+      "cgroupBackgroundCores": 0.15139892285098422,
+      "affinityBackgroundCores": 0.3891376237802301,
+      "backgroundPercentOfCapacity": 4.864220297252876,
+      "capacityCores": 8.0,
+      "gpuPercent": 0.0,
+      "foreignGpuProcesses": [],
+      "passed": false,
+      "reasons": [
+        "background CPU exceeds frozen limits"
+      ]
+    },
+    {
+      "seconds": 1.2424166463315487,
+      "ownedCpuSeconds": 0.15753499999999976,
+      "cgroupCpuSeconds": 0.339606,
+      "cgroupBackgroundCores": 0.14654584719030975,
+      "affinityBackgroundCores": 0.26759541654698604,
+      "backgroundPercentOfCapacity": 3.3449427068373256,
+      "capacityCores": 8.0,
+      "gpuPercent": 0.0,
+      "foreignGpuProcesses": [],
+      "passed": false,
+      "reasons": [
+        "background CPU exceeds frozen limits"
+      ]
+    },
+    {
+      "seconds": 1.2198214530944824,
+      "ownedCpuSeconds": 0.16713000000000022,
+      "cgroupCpuSeconds": 0.383074,
+      "cgroupBackgroundCores": 0.17702918689631675,
+      "affinityBackgroundCores": 0.14171746165101262,
+      "backgroundPercentOfCapacity": 2.212864836203959,
+      "capacityCores": 8.0,
+      "gpuPercent": 0.0,
+      "foreignGpuProcesses": [],
+      "passed": true,
+      "reasons": []
+    },
+    {
+      "seconds": 1.184888742864132,
+      "ownedCpuSeconds": 1.2777319999999999,
+      "cgroupCpuSeconds": 1.498741,
+      "cgroupBackgroundCores": 0.1865229974805683,
+      "affinityBackgroundCores": 0.2129043773259369,
+      "backgroundPercentOfCapacity": 2.661304716574211,
+      "capacityCores": 8.0,
+      "gpuPercent": 9.0,
+      "foreignGpuProcesses": [],
+      "passed": true,
+      "reasons": []
+    },
+    {
+      "seconds": 1.30684719607234,
+      "ownedCpuSeconds": 1.4035520000000004,
+      "cgroupCpuSeconds": 1.616154,
+      "cgroupBackgroundCores": 0.16268313590063457,
+      "affinityBackgroundCores": 0.18093010469061072,
+      "backgroundPercentOfCapacity": 2.261626308632634,
+      "capacityCores": 8.0,
+      "gpuPercent": 7.0,
+      "foreignGpuProcesses": [],
+      "passed": true,
+      "reasons": []
+    },
+    {
+      "seconds": 1.1988664790987968,
+      "ownedCpuSeconds": 1.3327389999999992,
+      "cgroupCpuSeconds": 1.496889,
+      "cgroupBackgroundCores": 0.13692100234831348,
+      "affinityBackgroundCores": 0.18122201578554326,
+      "backgroundPercentOfCapacity": 2.2652751973192906,
+      "capacityCores": 8.0,
+      "gpuPercent": 8.0,
+      "foreignGpuProcesses": [],
+      "passed": true,
+      "reasons": []
+    },
+    {
+      "seconds": 1.170544434338808,
+      "ownedCpuSeconds": 0.9547330000000009,
+      "cgroupCpuSeconds": 1.127477,
+      "cgroupBackgroundCores": 0.1475757732320303,
+      "affinityBackgroundCores": 0.13264511405558307,
+      "backgroundPercentOfCapacity": 1.8446971654003788,
+      "capacityCores": 8.0,
+      "gpuPercent": 0.0,
+      "foreignGpuProcesses": [],
+      "passed": true,
+      "reasons": []
+    }
+  ],
+  "limits": {
+    "implementation": "linux-cgroupv2-nvidia-smi-v1",
+    "preflightSeconds": 5,
+    "samplePeriodSeconds": 1.0,
+    "maxCollectionSeconds": 0.5,
+    "maxSampleGapSeconds": 2.0,
+    "minimumDuringSamples": 2,
+    "backgroundCpuLimitCores": 0.25,
+    "backgroundCpuLimitPercentOfCapacity": 5.0,
+    "idleGpuLimitPercent": 3.0,
+    "minimumAvailableMemoryBytes": 8589934592,
+    "gpuProcessPolicy": "reject foreign or unresolved PID",
+    "throttlingPolicy": "reject any increase"
+  }
+}

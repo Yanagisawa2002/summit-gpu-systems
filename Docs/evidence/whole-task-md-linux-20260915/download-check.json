@@ -1,0 +1,11 @@
+{
+  "status": "verified",
+  "archiveSha256": "9df30f37df8e103e470f2d98446494979e04b88a77e1a64ef6f4e1985019eebb",
+  "manifestSha256": "6d1ac476b0784a2fb089a3ab441e13253e0223c9c2758ccf191d6bdcf5b8672c",
+  "allEntryHashesVerified": 11453,
+  "selectedFilesExtracted": 982,
+  "selectedBytes": 347310657,
+  "reviewDirectory": "D:\\CodexWork\\summit-md-evidence-g2-20260915",
+  "elapsedSeconds": 4.324389499990502,
+  "extraction": "Complete archive hashes checked; numeric inputs/outputs, stage/build receipts/logs and harness sources extracted. Compiled products and dependency/build trees remain in the verified full archive."
+}
