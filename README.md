@@ -1,225 +1,103 @@
 # SUMMIT GPU Systems
 
-**Choose GPU data representations by the cost of the complete producer-to-consumer task.**
+**GPU data representation for real-time rendering and simulation.**
 
-Large real-time scenes spend GPU time moving and rebuilding data as well as
-rendering it. I built reusable Unity packages for resident sensor data, spatial
-indexing, scheduling and native timing, extracted from my personal SUMMIT project.
+I build Unity/HLSL systems that reduce redundant data movement between producers and consumers, then measure the cost of the resulting task. The focus is not just a faster kernel: it is avoiding intermediate work that the application never needed.
 
-Start with the [complete-task engineering case](Docs/WHOLE_TASK_DECISIONS.md):
-an incremental index saved maintenance time but made its query consumer slower.
-The implemented response combines spatial pruning, compact consumer views and
-explicit maintenance/conversion/query planning. A [CPU-only application example](Tools/Examples/IndexQueryPlanning/README.md)
-shows the actual planner, unavailable costs and capacity recovery. The planner's
-complete-task benefit remains **Unmeasured**; its structural score is not a
-measured speedup or automatic runtime winner.
+[Rendering case study](Docs/NO_COPY_VISIBLE_TILES.md) · [Run or inspect](Docs/RUNNING.md) · [Evidence index](Evidence/README.md)
 
-The [September 8 implementation update](Docs/RemediationIntegration20260908.md)
-adds spatially pruned CellSpans queries, an optional compact index view, complete
-Cabana/ArborX workload adapters, a real ECS Boids consumer, verified HLSL scan
-consumption and scope-preserving observation exports. That update validated
-compilation and deterministic CPU functionality; default/profile eligibility
-remains **Unmeasured** and opt-in. [External source contracts](PublicBenchmarks/External/README.md).
+## Featured case: stop copying the visible index list
 
-The [September 10 actual external comparison](Docs/EXTERNAL_ACTUAL_RESULTS_2026-09-10.md)
-validates complete GPU CSR against native Cabana/ArborX results. In all five
-baseline cases, that SUMMIT upload/rebuild/readback/consume path costs more
-than native Serial replay. These are cross-backend task observations with fixed
-inputs, distinct from the canonical native benchmark timers and historical results.
+The NYCGIS renderer replaces a copied list of visible indices with compact tile descriptors. The draw-side shader follows those descriptors into the original index buffer: both the producer and the consumer change.
 
-The subsequent [sphere reuse implementation and actual comparison](Docs/SPHERE_REUSE_RESULTS_2026-09-10.md)
-prepares points and builds the index once for all 157 query batches inside each
-complete task. Four same-round native/old/new processes per arm measured
-43.75/784.17/135.98 ms respectively. The geometric old/new ratio was 5.86
-(nominal 95% CI 4.30–7.98); the new path still costs more than native Serial.
-Every original query and full GPU CSR was verified. The
-[public API guide](PublicBenchmarks/External/Adapters/SPHERE_REUSE.md) covers reuse,
-point/domain invalidation and output ownership; these results do not promote defaults.
+| Historical NYCGIS observation | Exact scope |
+| --- | --- |
+| **385.7 MB → 8.04 MB** | Approximate logical visible-output payload: copied indices versus descriptors, not total VRAM or measured DRAM traffic. |
+| **52.5% lower GPU average time** | Dedicated single-camera comparison against WaveCompact on AMD Radeon AI PRO R9700 / D3D12 / Unity 6000.5.2f1. |
 
-## Historical NYCGIS results
+**These are retained historical results, not measurements of the current checkout.** The NYCGIS source is a host-dependent integration snapshot; the standalone query demo below does not reproduce this renderer. [Mechanism, source map, tradeoffs and report identity](Docs/NO_COPY_VISIBLE_TILES.md).
 
-- **Logical visible output: approximately 385.7 MB → 8.04 MB** by replacing copied
-  visible indices with compact tile descriptors in the NYCGIS integration.
-- **52.5% lower GPU average time** in the dedicated single-camera comparison
-  against WaveCompact using that no-copy path.
+[![Historical NYCGIS representation change and logical-output comparison](Docs/portfolio/overview.svg)](Docs/NO_COPY_VISIBLE_TILES.md)
 
-Recorded on AMD Radeon AI PRO R9700, D3D12 and Unity 6000.5.2f1. These numbers
-describe the dedicated NYCGIS comparison; the standalone procedural benchmarks
-provide separate, asset-independent reproduction paths.
-[Results index and source reports](Docs/GPU_PERFORMANCE_ENGINEERING_PORTFOLIO_INDEX_2026-07-31.md).
-The 52.5% result belongs to the historical `codex/gpu-no-copy-visible-tiles`
-experiment identified in that report. It is not a measurement of the new
-integration source; the retained report snapshot is pinned in the implementation update.
+## Three ways to review the work
 
-[Competitive baseline and transport consumer](PublicBenchmarks/UnityGpuIntegration/RESULTS-query-boundary-2026-09-08.md):
-index-free parallel scan, six query workloads, and GPU-driven route decisions.
-All 45 runs passed correctness; extra user-facing benefit from the batch candidate
-over parallel scan remains unproven.
-[Runnable Windows demo and evidence](https://github.com/Yanagisawa2002/summit-gpu-systems/releases/tag/r9700-query-boundary-2026-09-08).
+**Rendering and engine integration.** Start with [no-copy visible tiles](Docs/NO_COPY_VISIBLE_TILES.md), then inspect the compute producer, vertex consumer and buffer bindings. This is the central representation-change case.
 
-[Watch: legacy CellSerial comparison — 50-second English video](https://github.com/Yanagisawa2002/summit-gpu-systems/releases/download/r9700-task-delivery-video-2026-09-08/gpu-task-delivery-english.mp4).
-Real verified completion and queue latency, recorded separately at original speed.
-This diagnostic comparison does not establish stable speedup or smoother frames;
-see the [full report](PublicBenchmarks/UnityGpuIntegration/RESULTS-queue-latency-2026-09-08.md).
+**Complete-task performance engineering.** The [sphere reuse comparison](Docs/SPHERE_REUSE_RESULTS_2026-09-10.md) reduced repeated point preparation/index construction from 157 batches to one preparation/build per complete task. Old/new SUMMIT host-wall means were **784.17/135.98 ms**; the paired geometric old/new ratio was **5.86** (nominal 95% CI 4.30–7.98). Native Serial remained faster at **43.75 ms**. These are cross-backend task observations, not a same-device kernel victory.
 
-## System architecture
+**Decisions that did not earn adoption.** [Incremental index maintenance](Docs/WHOLE_TASK_DECISIONS.md) could save update work while increasing consumer cost. Its new planner is implemented but its complete-task benefit remains **Unmeasured**. The [competitive scan comparison](PublicBenchmarks/UnityGpuIntegration/RESULTS-query-boundary-2026-09-08.md) also found no demonstrated extra user-facing benefit from the batch candidate over the stronger parallel-scan baseline.
 
-```mermaid
-flowchart TD
-    Host["Procedural Unity benchmark host"] --> Sensor["GPU-resident sensor data"]
-    Sensor --> Index["Spatial index: direct or radix backend"]
-    Primitives["Scan / histogram / compaction / sort"] --> Index
-    Index --> Consumers["Range-query and simulation consumers"]
-    Calibration["Device calibration and backend profiles"] --> Index
-    Residency["Map and point-cloud residency"] --> Consumers
-    Schedule["Copy / compute / graphics scheduling"] --> Consumers
-    Host --> Measure["Native D3D12 timestamps and A/B harnesses"]
-    Consumers --> Measure
-    Measure --> Evidence["Correctness checks, samples and engineering reports"]
-    Integration["Separate NYCGIS integration snapshot"] -.-> Consumers
+## Run an existing consumer
+
+The [Windows query/transport demo and evidence](https://github.com/Yanagisawa2002/summit-gpu-systems/releases/tag/r9700-query-boundary-2026-09-08) runs without Unity Editor. It requires Windows x64, PowerShell 7 and D3D12 wave support; the tested device was AMD Radeon AI PRO R9700.
+
+After extracting `query-transport-windows.zip`, run from its root:
+
+```powershell
+pwsh -File Scripts/Launch-DispatchDemo.ps1 -Arm scan -Distribution hotspot
 ```
 
-The diagram groups responsibilities; it does not imply every package is enabled
-in every benchmark. The NYCGIS snapshot requires its separate host contracts;
-the procedural benchmarks are the asset-independent reproduction entry points.
+This is a procedural query-to-route consumer, **not the historical no-copy city renderer**. All 45 formal processes passed correctness; stable superiority over the competitive scan baseline was not established. [Full comparison](PublicBenchmarks/UnityGpuIntegration/RESULTS-query-boundary-2026-09-08.md).
 
-## Visual walkthrough
+The [50-second legacy CellSerial video](https://github.com/Yanagisawa2002/summit-gpu-systems/releases/download/r9700-task-delivery-video-2026-09-08/gpu-task-delivery-english.mp4) is a separate diagnostic recording, not proof of a stable speedup or smoother frames. [Recording scope](PublicBenchmarks/UnityGpuIntegration/RESULTS-queue-latency-2026-09-08.md).
 
-[![Engineering overview and evidence](Docs/portfolio/overview.svg)](Docs/portfolio/overview.png)
+## Evidence status
 
-This historical NYCGIS figure explains one representation change, with logical
-output sizes on a zero-based scale. It does not measure the current planner or
-an entire engine frame. [Sources and reproduction](Docs/portfolio/README.md).
+| Area | What is supported | What is not established |
+| --- | --- | --- |
+| NYCGIS no-copy rendering | Historical AMD measurements and inspectable integration source | Independent reproduction from the root project; current-source performance certification |
+| Sphere point/index reuse | Complete-output checks and scoped old/new task measurements | Beating native Serial; GPU-kernel-only or whole-engine speedup |
+| CellSpans, compact view and planner | Implementation and CPU/compile contracts | Measured complete-task planner benefit or a new default winner |
+| Linux / RTX 5090 molecular dynamics | Native Serial/OpenMP/CUDA numerical validation | Formal performance acceptance; SUMMIT GPU force/state consumer; Unity/HLSL NVIDIA validation |
 
-## Engineering challenges
+[All report links and measurement boundaries](Evidence/README.md). The [Linux numerical report](Docs/whole-task-md-20260915/LINUX_5090_NUMERICAL_RESULTS.md) retains its **NO-GO** performance status; numerical correctness is not a speedup claim. Neither this presentation nor a merged implementation promotes runtime defaults.
 
-1. **Avoid paying for intermediate data repeatedly.** Producers, spatial indices
-   and consumers need compatible GPU-resident representations and access patterns.
-2. **Measure useful system work.** Native timestamps and controlled scene runs
-   must distinguish algorithm time, synchronization and complete frame behavior.
+## System map
+
+The reusable packages support the case studies; they are not eight simultaneous features of every benchmark.
+
+| Responsibility | Package |
+| --- | --- |
+| Scan, histogram, compaction and radix sort | [gpu-primitives](Packages/com.summit.gpu-primitives) |
+| Count → scan → scatter spatial index | [gpu-direct-binning](Packages/com.summit.gpu-direct-binning) |
+| Direct/radix backend selection | [gpu-adaptive-binning](Packages/com.summit.gpu-adaptive-binning) |
+| Device fingerprints and calibration profiles | [gpu-autotuning](Packages/com.summit.gpu-autotuning) |
+| Resident sensor data and query consumers | [gpu-sensor-pipeline](Packages/com.summit.gpu-sensor-pipeline) |
+| Deadline-aware queue planning | [gpu-deadline-scheduler](Packages/com.summit.gpu-deadline-scheduler) |
+| Virtual-page/physical-slot residency | [gpu-residency-manager](Packages/com.summit.gpu-residency-manager) |
+| Native D3D12 timestamps and observation contracts | [gpu-timestamps](Packages/com.summit.gpu-timestamps) |
+
+`Assets/Gpu*Benchmark` contains procedural package benchmarks. [PublicBenchmarks/UnityGpuIntegration](PublicBenchmarks/UnityGpuIntegration/README.md) is a separate standalone host. [Integrations/NYCGIS](Integrations/NYCGIS/README.md) preserves the city-rendering integration outside root `Assets`, because its host types and datasets are not included.
 
 ## My contribution
 
-I implemented the reusable GPU packages, native D3D12 timestamp integration,
-deterministic A/B harnesses and benchmark automation, together with the isolated
-NYCGIS integration snapshot. The package map below shows each subsystem's role.
-
-## Evidence and reproduction
-
-[Evidence index](Evidence/README.md) ·
-[Procedural integration benchmark](PublicBenchmarks/UnityGpuIntegration/README.md) ·
-[Quick start](#quick-start). The evaluation section retains the broader workload
-results and follow-up investigations into complete-frame performance.
-
-## Relationship to HLSL Kernel Pipeline
-
-| Project | Engineering focus | Review entry point |
-| --- | --- | --- |
-| **SUMMIT GPU Systems** | Data representation and complete producer/maintenance/conversion/query/consumer cost in a Unity runtime. | [Complete-task decisions and adoption example](Docs/WHOLE_TASK_DECISIONS.md), then the packages and scoped evidence below. |
-| [HLSL Kernel Pipeline](https://github.com/Yanagisawa2002/hlsl-kernel-pipeline) | Engine-neutral kernel execution, correctness, autotuning and device-specific profile emission. Unity is a profile consumer. | Its SDK, execution ABI and paired measurement reports. |
-
-Both contain GPU primitives, but their system boundaries and measurements differ.
-The [optional verified scan bridge](Integrations/HlslKernelPipeline/README.md)
-now maps an exact HLSL source artifact and validated profile selection to real
-Unity buffer bindings and dispatch recording, including explicit Raw/Structured
-conversion. A kernel-level speedup does not establish a SUMMIT scene-level or
-full-engine frame-time improvement.
-
-## What is here
-
-
-| Area | Package | Purpose |
-| --- | --- | --- |
-| GPU primitives | `com.summit.gpu-primitives` | CommandBuffer-first scan, histogram, stable compaction, and radix sort with portable and WaveOps backends. |
-| Spatial binning | `com.summit.gpu-direct-binning` | Count → exclusive scan → scatter into a CSR spatial index. |
-| Adaptive backend | `com.summit.gpu-adaptive-binning` | Device/workload-aware selection between direct and radix spatial backends. |
-| Autotuning | `com.summit.gpu-autotuning` | Device fingerprints, calibration profiles, persistence, and backend resolution. |
-| Sensor pipeline | `com.summit.gpu-sensor-pipeline` | GPU-resident sensor generation, packed SoA data, shared indexing, and range-query consumers. |
-| Scheduling | `com.summit.gpu-deadline-scheduler` | Slack-aware copy/compute/graphics planning with a deterministic GPU workload. |
-| Residency | `com.summit.gpu-residency-manager` | Virtual-page-to-physical-slot residency for large maps and point clouds. |
-| Instrumentation | `com.summit.gpu-timestamps` | Nonblocking native D3D12 timestamp scopes integrated with Unity CommandBuffers. |
-
-`Assets/Gpu*Benchmark` contains procedural, asset-free player builders and deterministic benchmark controllers for the packages. The benchmark scenes are generated temporarily during a build and are not checked in.
-
-`Integrations/NYCGIS` contains the project-specific cluster renderer and showcase snapshot, including wave-level compaction, no-copy visible tiles, cluster-local 16-bit indices, sensor paths, and GPU vegetation. It is deliberately outside the root Unity `Assets` directory because it depends on types and data contracts owned by the SUMMIT/NYCGIS host project.
-
-## Requirements
-
-For the Unity host and native instrumentation:
-
-- Windows x64
-- Unity `6000.5.2f1`
-- Direct3D 12 for native timestamp measurements
-- PowerShell 7 recommended
-- Visual Studio C++ toolchain plus the Unity native plugin headers when rebuilding `SummitGpuTimestamps.dll`
+I implemented the reusable GPU packages, native D3D12 timestamp integration, deterministic A/B harnesses and benchmark automation, together with the isolated NYCGIS integration snapshot. [Migration/provenance manifest](MIGRATION_MANIFEST.md). External benchmark adapters retain their [upstream source contracts and notices](PublicBenchmarks/External/README.md); adapted workloads are not presented as upstream native benchmark results.
 
 ## Quick start
 
-1. With .NET 10 installed, inspect the pure decision API from the repository root:
+For CPU-only checks, install .NET 10, PowerShell 7, Python and Git, then run from the repository root:
 
-   ```powershell
-   dotnet run --project Tools/Examples/IndexQueryPlanning/IndexQueryPlanning.csproj -c Release
-   ```
+```powershell
+pwsh -File Tools/Run-FunctionalChecks.ps1
+dotnet run --project Tools/Examples/IndexQueryPlanning/IndexQueryPlanning.csproj -c Release
+```
 
-   The four synthetic examples construct plans only; Unity is not required.
-2. With PowerShell 7 and Python also available, run the explicit CPU functional checks:
-
-   ```powershell
-   .\Tools\Run-FunctionalChecks.ps1
-   ```
-
-3. To integrate the GPU packages, open the root as a Unity project and let Unity
-   resolve the embedded packages and compile the benchmark assemblies.
-4. For a separately selected performance run, existing benchmark commands remain
-   available. They were not run for the Unmeasured implementation update:
-
-   ```powershell
-   .\Tools\Run-GpuPrimitiveBenchmark.ps1
-   .\Tools\Run-GpuDirectBinningBenchmark.ps1
-   .\Tools\Run-GpuSensorPipelineBenchmark.ps1
-   ```
-
-Use `Get-Help <script> -Detailed` or inspect the parameter block for workload matrices, repetitions, output paths, and build reuse switches.
+These check functionality and demonstrate synthetic planning; they do not execute Unity/GPU benchmarks or establish a faster algorithm. [Requirements, offline evidence checks and separately selected GPU runs](Docs/RUNNING.md).
 
 ## Consuming a package from another Unity project
 
-During local development, add an embedded package with a `file:` dependency. After pushing a tag, a consumer can reference a package subdirectory with a Git UPM URL, for example:
+Use a local `file:` dependency or an existing commit-pinned Git UPM dependency. Add internal `com.summit.*` dependencies explicitly as needed. [Manifest example and prerequisites](Docs/RUNNING.md#consuming-packages).
 
-```json
-{
-  "com.summit.gpu-primitives": "https://github.com/Yanagisawa2002/summit-gpu-systems.git?path=/Packages/com.summit.gpu-primitives#v0.1.0"
-}
-```
+Public source visibility is **not an open-source license**. Read the [limited benchmark reproduction permission](LICENSE.md#limited-benchmark-reproduction-permission) and package/third-party notices before reuse; this documentation does not change those rights.
 
-Packages with internal dependencies require the corresponding `com.summit.*` dependencies to be added to the consumer manifest as well. Public repository access does not require credentials. The [limited benchmark reproduction permission](LICENSE.md#limited-benchmark-reproduction-permission) allows benchmark execution, local reproduction changes, and publication of measurement results. Other plugin rights remain reserved; this is not an open-source license.
+## Relationship to HLSL Kernel Pipeline
+
+**SUMMIT** studies data representation and the producer/index/consumer path in a Unity runtime. **[HLSL Kernel Pipeline](https://github.com/Yanagisawa2002/hlsl-kernel-pipeline)** studies engine-neutral kernel execution, correctness, autotuning and device-specific profiles. Their timing boundaries are different.
+
+The [optional verified scan bridge](Integrations/HlslKernelPipeline/README.md) binds an exact HLSL artifact to Unity buffers and dispatch recording, including explicit Raw/Structured conversion. A kernel-level result does not certify SUMMIT scene or engine-frame performance.
 
 ## Repository policy
 
-- Portable packages and benchmark harnesses must not reference NYCGIS, BFP2, FishNet, city datasets, or asset paths outside their own generated benchmark folders.
-- Project-specific adapters remain under `Integrations/` until their host contracts are generalized.
-- Generated players, Unity caches, raw captures, screenshots, and large datasets stay out of Git.
-- Performance claims require deterministic workloads, correctness hashes/oracles, counterbalanced ordering, native GPU timestamps where applicable, and documented hardware/driver context.
+Portable packages and standalone harnesses must not depend on NYCGIS, BFP2, FishNet or external city assets. Host-specific adapters stay under `Integrations`. Large generated Players, captures and datasets stay outside normal source paths; explicitly retained evidence packages are documented separately.
 
-See [`MIGRATION_MANIFEST.md`](MIGRATION_MANIFEST.md) for provenance and exclusions.
-
-<details>
-<summary>Evaluation details, tradeoffs and supported scope</summary>
-
-## Validated results
-
-The subsequent [capacity replay](Docs/CausalIndexCosts.md) rejects the single empty-cell-reservation candidate before GPU testing: streaming still rebuilds every update and logical consumer work increases. The [probe-control diagnosis](PublicBenchmarks/UnityGpuIntegration/RESULTS-causal-costs-2026-09-08.md) reproduces long Present waits and missing engine GPU values with no native probes. Required synchronization and runtime defaults remain unchanged; there is no new stable frame-performance claim.
-
-The focused follow-up [diagnoses index costs](Docs/FocusedIndexCosts.md) and [repairs scene timing collection](PublicBenchmarks/UnityGpuIntegration/RESULTS-focused-costs-2026-09-08.md). Reserved-layout query cost and capacity fallback explain the measured incremental-path limits; the measured hotspot/CellSerial and streaming/BatchedPointScanWave trajectories are not recommended for that path. Query and index choices remain opt-in. Complete engine GPU coverage and stable engine-cadence gains remain unresolved; unsupported allocation counters now report unavailable instead of zero.
-
-The September 8 unified comparison adds a [standalone procedural Unity scene](PublicBenchmarks/UnityGpuIntegration/README.md) covering spatial queries, dynamic index updates, rendering and actual AssetBundle loading. Its [fixed-matrix results](PublicBenchmarks/UnityGpuIntegration/RESULTS-2026-09-08.md) confirm narrow query/explicit-scene GPU improvements, while stable engine-frame cadence remains inconclusive and full-engine GPU coverage is insufficient. The [matching microbenchmark report](Docs/UnifiedMicrobenchmarkResults.md) retains all failed stability gates and the absence of a confirmed complete-GPU incremental-index benefit. Both new runtime paths remain opt-in.
-
-The retained measurements were collected on AMD Radeon AI PRO R9700, Direct3D 12, and Unity `6000.5.2f1`. NVIDIA validation has not been performed and is not claimed.
-
-- Native GPU primitives: wave exclusive scan `+29.70%`, radix sort `+16.82%`, stable compaction `+26.57%`; `29,700/29,700` native timestamp samples valid.
-- GPU-resident sensor pipeline: GPU average improved `85.99%–89.66%` and GPU P99 improved `82.85%–87.81%` across the two retained workloads, with `8/8` wins.
-- NYCGIS wave64 cluster compaction: returned atomic reservations reduced by at least `98.19%`; four-camera GPU average improved `2.28%` and GPU P99 improved `6.69%`.
-- NYCGIS no-copy visible tiles: compact output reduced from approximately `385.7 MB` of visible indices to `8.04 MB` of descriptors. The dedicated single-camera comparison improved GPU average/P99 by `52.5%/51.9%` relative to WaveCompact.
-
-These results are workload-specific, not universal performance guarantees. Definitions, validation gates, counterbalancing, and caveats are retained in [`Docs`](Docs/) and [`Evidence/README.md`](Evidence/README.md).
-
-</details>
+Performance reports must identify workloads, correctness checks, measured source/build, hardware/driver, timing scope and statistical units. Preserve negative results and unavailable metrics. See the [evidence index](Evidence/README.md) for the historical investigations, including the invalidated cinematic pilot and unresolved full-engine timing coverage.
