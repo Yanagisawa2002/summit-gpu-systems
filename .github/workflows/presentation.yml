@@ -1,0 +1,20 @@
+name: Presentation integrity
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  presentation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check validator contracts
+        run: python Tools/check_presentation.py --self-test
+      - name: Check curated entry pages and local links
+        run: python Tools/check_presentation.py
+      - name: Check patch whitespace
+        run: git show --format= --check HEAD
+      # No external-link requests, Unity/Player, GPU dispatch, or performance runs.
