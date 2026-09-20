@@ -1,0 +1,26 @@
+name: Rendering contracts
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  predicates-and-dxil:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Execute actual predicate with independent CPU oracle
+        run: |
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror Tools/Rendering/test_cone.cpp -o "$RUNNER_TEMP/test-cone"
+          "$RUNNER_TEMP/test-cone"
+      - name: Obtain pinned official DXC (compile only)
+        run: |
+          curl --fail --location --retry 2 --max-time 90 'https://github.com/microsoft/DirectXShaderCompiler/releases/download/v1.8.2505.1/linux_dxc_2025_07_14.x86_64.tar.gz' -o "$RUNNER_TEMP/dxc.tar.gz"
+          echo "f2213da1fc99dc8778c8823078e16ba97c7f80f86a1d4520ab1adf4b462bc48c  $RUNNER_TEMP/dxc.tar.gz" | sha256sum --check
+          mkdir "$RUNNER_TEMP/dxc"
+          tar -xzf "$RUNNER_TEMP/dxc.tar.gz" -C "$RUNNER_TEMP/dxc"
+      - name: Check wiring and compile all nine original compute entry points
+        run: python Tools/Rendering/check_cull_shaders.py --dxc "$RUNNER_TEMP/dxc/bin/dxc"
+      # No Unity installation, GPU execution, performance collection or source writes.

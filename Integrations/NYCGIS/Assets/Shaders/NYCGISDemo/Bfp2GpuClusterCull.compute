@@ -32,6 +32,8 @@ uint _Bfp2FlipTriangleWinding;
 float _Bfp2MinScreenRadiusRatio;
 float _Bfp2MinScreenRadiusPixels;
 
+#include "Bfp2NormalConeVisibility.hlsl"
+
 int Bfp2SignExtend16(uint value)
 {
     int v = (int)(value & 0xffffu);
@@ -238,15 +240,14 @@ bool Bfp2CompactCullClusterVisible(Bfp2CompactCullCluster cluster)
         }
     }
 
-    if (_Bfp2EnableNormalConeCulling != 0u && distanceToCamera > 0.001)
+    if (_Bfp2EnableNormalConeCulling != 0u)
     {
         int coneX = Bfp2SignExtend16(cluster.coneWord);
         int coneY = Bfp2SignExtend16(cluster.coneWord >> 16);
         int coneCutoffRaw = Bfp2SignExtend16(cluster.lodCutoffWord >> 16);
         float coneCutoff = clamp((float)coneCutoffRaw / 32767.0, -1.0, 1.0);
         float3 coneAxis = Bfp2DecodeOct16(int2(coneX, coneY));
-        float3 viewDirection = toCamera / distanceToCamera;
-        if (dot(coneAxis, viewDirection) < -coneCutoff)
+        if (Bfp2NormalConeRejectsAllCameras(cluster.center, coneAxis, coneCutoff))
         {
             return false;
         }
@@ -402,7 +403,7 @@ void CullAndCompactBfp2Clusters(uint3 id : SV_DispatchThreadID)
         }
     }
 
-    if (_Bfp2EnableNormalConeCulling != 0u && distanceToCamera > 0.001)
+    if (_Bfp2EnableNormalConeCulling != 0u)
     {
         uint coneWord = _Bfp2ClusterWords[baseWord + 14u];
         uint lodCutoffWord = _Bfp2ClusterWords[baseWord + 15u];
@@ -411,9 +412,8 @@ void CullAndCompactBfp2Clusters(uint3 id : SV_DispatchThreadID)
         int coneCutoffRaw = Bfp2SignExtend16(lodCutoffWord >> 16);
         float coneCutoff = clamp((float)coneCutoffRaw / 32767.0, -1.0, 1.0);
         float3 coneAxis = Bfp2DecodeOct16(int2(coneX, coneY));
-        float3 viewDirection = toCamera / distanceToCamera;
 
-        if (dot(coneAxis, viewDirection) < -coneCutoff)
+        if (Bfp2NormalConeRejectsAllCameras(center, coneAxis, coneCutoff))
         {
             InterlockedAdd(_Bfp2Stats[2], 1u);
             return;

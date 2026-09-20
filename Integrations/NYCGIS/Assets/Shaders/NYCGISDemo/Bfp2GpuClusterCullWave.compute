@@ -33,6 +33,8 @@ uint _Bfp2FlipTriangleWinding;
 float _Bfp2MinScreenRadiusRatio;
 float _Bfp2MinScreenRadiusPixels;
 
+#include "Bfp2NormalConeVisibility.hlsl"
+
 struct Bfp2CompactCullCluster
 {
     uint firstIndex;
@@ -231,15 +233,14 @@ bool Bfp2CompactCullClusterVisible(Bfp2CompactCullCluster cluster)
         }
     }
 
-    if (_Bfp2EnableNormalConeCulling != 0u && distanceToCamera > 0.001)
+    if (_Bfp2EnableNormalConeCulling != 0u)
     {
         int coneX = Bfp2SignExtend16(cluster.coneWord);
         int coneY = Bfp2SignExtend16(cluster.coneWord >> 16);
         int coneCutoffRaw = Bfp2SignExtend16(cluster.lodCutoffWord >> 16);
         float coneCutoff = clamp((float)coneCutoffRaw / 32767.0, -1.0, 1.0);
         float3 coneAxis = Bfp2DecodeOct16(int2(coneX, coneY));
-        float3 viewDirection = toCamera / distanceToCamera;
-        if (dot(coneAxis, viewDirection) < -coneCutoff)
+        if (Bfp2NormalConeRejectsAllCameras(cluster.center, coneAxis, coneCutoff))
         {
             return false;
         }
