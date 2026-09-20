@@ -1,0 +1,40 @@
+name: Visible tiles standalone contracts
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  source-and-fixture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Actual C# fixture/oracle and host syntax (not Unity API compilation)
+        run: dotnet run --project PublicBenchmarks/VisibleTiles/Tests/VisibleTiles.Contracts.csproj -c Release
+      - name: Staging safety and actual self-contained source export
+        run: |
+          python -B -m unittest discover -s PublicBenchmarks/VisibleTiles/Tests -p 'test_*.py' -v
+          python PublicBenchmarks/VisibleTiles/prepare.py --output "$RUNNER_TEMP/visible-tiles-project"
+          python PublicBenchmarks/VisibleTiles/prepare.py --output "$RUNNER_TEMP/visible-tiles-project" --verify
+      - name: Validate PowerShell launcher syntax only
+        shell: pwsh
+        run: |
+          $tokens=$null; $parseErrors=$null
+          [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD 'PublicBenchmarks/VisibleTiles/Run.ps1'),[ref]$tokens,[ref]$parseErrors)
+          if($parseErrors.Count -gt 0){throw ($parseErrors | Out-String)}
+      - name: Compile actual draw shader functions with pinned official DXC
+        run: |
+          curl --fail --location --retry 2 --max-time 90 'https://github.com/microsoft/DirectXShaderCompiler/releases/download/v1.8.2505.1/linux_dxc_2025_07_14.x86_64.tar.gz' -o "$RUNNER_TEMP/dxc.tar.gz"
+          echo "f2213da1fc99dc8778c8823078e16ba97c7f80f86a1d4520ab1adf4b462bc48c  $RUNNER_TEMP/dxc.tar.gz" | sha256sum --check
+          mkdir "$RUNNER_TEMP/dxc"
+          tar -xzf "$RUNNER_TEMP/dxc.tar.gz" -C "$RUNNER_TEMP/dxc"
+          for entry in Vert ReferenceVert; do
+            "$RUNNER_TEMP/dxc/bin/dxc" -T vs_6_0 -E "$entry" PublicBenchmarks/VisibleTiles/Shaders/VisibleTilesDraw.hlsl -Fo "$RUNNER_TEMP/$entry.dxil"
+          done
+          "$RUNNER_TEMP/dxc/bin/dxc" -T ps_6_0 -E Frag PublicBenchmarks/VisibleTiles/Shaders/VisibleTilesDraw.hlsl -Fo "$RUNNER_TEMP/Frag.dxil"
+      # No Unity installation/import, Player launch, device execution or speedup claim.
