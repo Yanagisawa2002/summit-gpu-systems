@@ -1,0 +1,4 @@
+Tests/bin/
+Tests/obj/
+__pycache__/
+Tests/__pycache__/
